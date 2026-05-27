@@ -426,6 +426,43 @@ export function parseThemeYaml(id: string, content: string): Theme | null {
   }
 }
 
+// Rejects any string that contains characters capable of escaping a CSS property
+// declaration (semicolon, braces).  These should never appear in a legitimate
+// colour or font-family value and are the primary CSS-injection vectors.
+function sanitiseCssString(v: unknown, fallback: string): string {
+  if (typeof v !== 'string') return fallback;
+  const s = v.trim();
+  return /[;{}]/.test(s) ? fallback : s;
+}
+
+function sanitiseColors(c: Partial<ThemeColors>, base: ThemeColors): ThemeColors {
+  const s = (v: unknown, fb: string) => sanitiseCssString(v, fb);
+  const result: ThemeColors = {
+    primary:    s(c.primary,    base.primary),
+    accent:     s(c.accent,     base.accent),
+    background: s(c.background, base.background),
+    text:       s(c.text,       base.text),
+    code_bg:    s(c.code_bg,    base.code_bg),
+    title_text: s(c.title_text, base.title_text),
+    section_bg: s(c.section_bg, base.section_bg),
+  };
+  if (Array.isArray(c.chart_colors)) {
+    result.chart_colors = c.chart_colors.filter(
+      (x): x is string => typeof x === 'string' && !/[;{}]/.test(x),
+    );
+  }
+  return result;
+}
+
+function sanitiseFonts(f: Partial<ThemeFonts>, base: ThemeFonts): ThemeFonts {
+  const s = (v: unknown, fb: string) => sanitiseCssString(v, fb);
+  return {
+    title: s(f.title, base.title),
+    body:  s(f.body,  base.body),
+    code:  s(f.code,  base.code),
+  };
+}
+
 function normaliseTheme(id: string, raw: Record<string, unknown>): Theme {
   const base = DEFAULT_THEME;
   const colors = (raw.colors as Partial<ThemeColors>) ?? {};
@@ -438,8 +475,8 @@ function normaliseTheme(id: string, raw: Record<string, unknown>): Theme {
   return {
     id,
     name: (raw.name as string) ?? id,
-    colors: { ...base.colors, ...colors },
-    fonts: { ...base.fonts, ...fonts },
+    colors: sanitiseColors(colors, base.colors),
+    fonts:  sanitiseFonts(fonts, base.fonts),
     layout: { ...base.layout, ...layout },
     logo,
     logo_position: ((raw.logo_position as Theme['logo_position']) ?? base.logo_position),

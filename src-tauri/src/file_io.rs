@@ -22,7 +22,7 @@ pub fn safe_read_path(path: &str) -> Result<PathBuf, String> {
 }
 
 // For writes the file may not exist yet; canonicalize the parent instead.
-fn safe_write_path(path: &str) -> Result<PathBuf, String> {
+pub fn safe_write_path(path: &str) -> Result<PathBuf, String> {
     let p = Path::new(path);
     let parent = p.parent().ok_or_else(|| "Invalid path: no parent directory".to_string())?;
     let filename = p.file_name().ok_or_else(|| "Invalid path: no filename".to_string())?;

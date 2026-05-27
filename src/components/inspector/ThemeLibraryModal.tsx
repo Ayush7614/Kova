@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-const REGISTRY_URL = 'https://themes.kova.md/themes.json';
+// Manifest is fetched from GitHub so the SHA-256 hashes come from a source
+// independent of the CDN server — a compromised themes.kova.md cannot forge
+// a hash that wasn't committed to the repo by the CI pipeline.
+const REGISTRY_URL = 'https://raw.githubusercontent.com/kovamd/themes/main/themes.json';
 const THEME_URL = (id: string) => `https://themes.kova.md/themes/${id}.yaml`;
 
 interface RemoteTheme {
@@ -254,7 +257,7 @@ export function ThemeLibraryModal({ installedIds, onThemesChanged, onClose }: Pr
           textAlign: 'center',
         }}>
           From{' '}
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>themes.kova.md</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>github.com/kovamd/themes</span>
           {' · '}Installed themes are added to the Theme picker immediately
         </div>
 

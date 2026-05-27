@@ -332,8 +332,11 @@ pub fn start_watching(
 #[tauri::command]
 pub fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
     let old = file_io::safe_read_path(&old_path)?;
-    let new = PathBuf::from(&new_path);
-    file_io::check_in_home(&new)?;
+    // safe_write_path canonicalises the parent directory, resolving any `..`
+    // components before the home-boundary check runs.  Using PathBuf::from +
+    // check_in_home directly allowed traversal because starts_with matches
+    // components lexically without normalising `..`.
+    let new = file_io::safe_write_path(&new_path)?;
     std::fs::rename(&old, &new).map_err(|e| e.to_string())
 }
 
