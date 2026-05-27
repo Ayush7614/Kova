@@ -88,15 +88,13 @@ sudo zypper refresh && sudo zypper install kova
 - **Mermaid diagrams** — pie, bar, line charts and flowcharts inline
 - **Themes** — 11 built-in themes, community themes via the theme library, and custom YAML themes
 - **Focus mode** — dims non-active slides, collapses side panels
-- **Fullscreen presentation** — speaker notes, slide counter, keyboard and click navigation *(in development — multi-monitor mode is currently unstable)*
+- **Fullscreen presentation** — speaker notes, slide counter, keyboard and click navigation
 - **PPTX export** — export to PowerPoint (16:9 and 4:3)
 - **YouTube & poll embeds** — `!youtube[label](url)` opens in browser; `!poll[label](url)` renders a QR code
 - **File watcher** — reloads automatically when the file is edited externally
 - **Keybindings** — configurable via `~/.kova/keybindings.yaml`
 
 ## Building from source
-
-These instructions are for contributors and developers. If you just want to use Kova, download a pre-built binary from the [Releases page](https://github.com/KovaMD/Kova/releases/latest) instead.
 
 ### Prerequisites
 
@@ -119,6 +117,8 @@ npm run tauri dev
 npm run tauri build
 ```
 
+See the [Contributing guide](https://wiki.kova.md/contributing/) for more details.
+
 ## Keybindings
 
 Default shortcuts:
@@ -131,13 +131,13 @@ Default shortcuts:
 | Save as | `Ctrl+Shift+S` |
 | Focus mode | `Ctrl+Shift+F` |
 
-To customise, edit `~/.kova/keybindings.yaml` (created automatically on first launch). Open it from **Settings → Keyboard Shortcuts → Open file**.
+To customise, edit `~/.kova/keybindings.yaml` (created automatically on first launch). Open it from **Settings → Keyboard Shortcuts → Open file**. Full reference on the [Keyboard Shortcuts](https://wiki.kova.md/keyboard-shortcuts/) wiki page.
 
 ## Themes
 
 **Theme library** — open the Inspector, expand **Theme**, and click **More Themes…** to browse and install community themes from [themes.kova.md](https://themes.kova.md). Each download is verified against a SHA-256 checksum. Installed themes appear in the picker immediately.
 
-**Custom themes** — place YAML theme files in `~/.kova/themes/`. They appear in the Inspector alongside built-in themes. See the [Themes wiki page](https://github.com/KovaMD/Kova/wiki/Themes) for the full YAML format.
+**Custom themes** — place YAML theme files in `~/.kova/themes/`. They appear in the Inspector alongside built-in themes. See the [Themes](https://wiki.kova.md/themes/) wiki page for the full YAML format.
 
 ## License
 
