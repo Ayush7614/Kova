@@ -414,13 +414,13 @@ save_as:    ctrl+shift+s
 focus_mode: ctrl+shift+f
 ";
 
-/// Reads ~/.kova/keybindings.yaml, creating it from defaults if absent.
+/// Reads keybindings.yaml from the platform config dir, creating it from defaults if absent.
 /// Returns (absolute_path, yaml_content).
 #[tauri::command]
 pub fn load_keybindings(app: AppHandle) -> Result<(String, String), String> {
     use tauri::Manager;
-    let home = app.path().home_dir().map_err(|e| e.to_string())?;
-    let path = home.join(".kova").join("keybindings.yaml");
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let path = config_dir.join("keybindings.yaml");
 
     if !path.exists() {
         if let Some(parent) = path.parent() {
@@ -476,12 +476,12 @@ header:
 
 /// Returns (themes_dir_path, entries) where each entry is
 /// (filename_without_extension, yaml_content).
-/// Creates ~/.kova/themes/ and an example file on first run.
+/// Creates the platform config themes dir and an example file on first run.
 #[tauri::command]
 pub fn load_custom_themes(app: AppHandle) -> Result<(String, Vec<(String, String)>), String> {
     use tauri::Manager;
-    let home = app.path().home_dir().map_err(|e| e.to_string())?;
-    let themes_dir = home.join(".kova").join("themes");
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let themes_dir = config_dir.join("themes");
     let dir_str = themes_dir.to_string_lossy().into_owned();
 
     if !themes_dir.exists() {
@@ -515,30 +515,29 @@ pub fn load_custom_themes(app: AppHandle) -> Result<(String, Vec<(String, String
     Ok((dir_str, result))
 }
 
-/// Writes a theme YAML file to ~/.kova/themes/{id}.yaml (remote install).
+/// Writes a theme YAML file to the platform config themes dir (remote install).
 #[tauri::command]
 pub fn save_theme(app: AppHandle, id: String, yaml: String) -> Result<(), String> {
     use tauri::Manager;
     if id.is_empty() || !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
         return Err("invalid theme id".into());
     }
-    let home = app.path().home_dir().map_err(|e| e.to_string())?;
-    let themes_dir = home.join(".kova").join("themes");
+    let themes_dir = app.path().app_config_dir().map_err(|e| e.to_string())?.join("themes");
     std::fs::create_dir_all(&themes_dir).map_err(|e| e.to_string())?;
     let path = themes_dir.join(format!("{id}.yaml"));
     std::fs::write(path, yaml).map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// Removes ~/.kova/themes/{id}.yaml (remote uninstall). Silent if file absent.
+/// Removes a theme YAML file from the platform config themes dir (remote uninstall). Silent if file absent.
 #[tauri::command]
 pub fn delete_theme(app: AppHandle, id: String) -> Result<(), String> {
     use tauri::Manager;
     if id.is_empty() || !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
         return Err("invalid theme id".into());
     }
-    let path = app.path().home_dir().map_err(|e| e.to_string())?
-        .join(".kova").join("themes").join(format!("{id}.yaml"));
+    let path = app.path().app_config_dir().map_err(|e| e.to_string())?
+        .join("themes").join(format!("{id}.yaml"));
     if path.exists() {
         std::fs::remove_file(path).map_err(|e| e.to_string())?;
     }

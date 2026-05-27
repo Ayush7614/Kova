@@ -125,16 +125,17 @@ To customise, edit your keybindings file (created automatically on first launch)
 
 | Platform | Path |
 |----------|------|
-| **macOS / Linux** | `~/.kova/keybindings.yaml` |
-| **Windows** | `%USERPROFILE%\.kova\keybindings.yaml` |
+| **macOS** | `~/Library/Application Support/md.kova.app/keybindings.yaml` |
+| **Linux** | `~/.config/md.kova.app/keybindings.yaml` |
+| **Windows** | `%APPDATA%\md.kova.app\keybindings.yaml` |
 
-Full reference on the [Keyboard Shortcuts](https://wiki.kova.md/keyboard-shortcuts/) wiki page.
+Custom themes follow the same base path, under a `themes/` subfolder. Full reference on the [Keyboard Shortcuts](https://wiki.kova.md/keyboard-shortcuts/) wiki page.
 
 ## Themes
 
 **Theme library** — open the Inspector, expand **Theme**, and click **More Themes…** to browse and install community themes from the [KovaMD/Themes](https://github.com/KovaMD/Themes) repository. Each download is verified against a SHA-256 checksum. Installed themes appear in the picker immediately.
 
-**Custom themes** — place YAML theme files in `~/.kova/themes/`. They appear in the Inspector alongside built-in themes. See the [Themes](https://wiki.kova.md/themes/) wiki page for the full YAML format.
+**Custom themes** — place YAML theme files in the `themes/` subfolder of your config directory (see Keybindings above for platform paths). They appear in the Inspector alongside built-in themes. See the [Themes](https://wiki.kova.md/themes/) wiki page for the full YAML format.
 
 ## License
 
