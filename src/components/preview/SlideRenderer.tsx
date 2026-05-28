@@ -794,11 +794,14 @@ function MermaidDiagram({ value }: { value: string }) {
 
   if (!svg) {
     return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100%', fontSize: 'clamp(7px, 1.5cqi, 12px)',
-        color: 'var(--sl-accent)', opacity: 0.7,
-      }}>
+      <div
+        data-mermaid-src={value}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          height: '100%', fontSize: 'clamp(7px, 1.5cqi, 12px)',
+          color: 'var(--sl-accent)', opacity: 0.7,
+        }}
+      >
         ◇ Diagram
       </div>
     );
@@ -807,6 +810,7 @@ function MermaidDiagram({ value }: { value: string }) {
   return (
     <div
       ref={containerRef}
+      data-mermaid-src={value}
       className="sl-mermaid"
       dangerouslySetInnerHTML={{ __html: svg }}
     />

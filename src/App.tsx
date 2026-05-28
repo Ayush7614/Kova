@@ -26,6 +26,8 @@ import { parseDocument } from './engine/parser/markdownToSlides';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
 import { fetchUpdate } from './engine/updater';
 import { exportToPptx } from './engine/export/exportPptx';
+import { exportToPdf } from './engine/export/exportPdf';
+import { SlideRenderer } from './components/preview/SlideRenderer';
 import { BUILT_IN_THEMES, DEFAULT_THEME, parseThemeYaml } from './engine/theme';
 import type { Slide, Frontmatter, ListItem } from './engine/types';
 import { parseAspectRatio } from './engine/types';
@@ -97,6 +99,11 @@ export default function App() {
   const [isRenaming, setIsRenaming]       = useState(false);
   const [renameValue, setRenameValue]     = useState('');
   const [resolvedUiTheme, setResolvedUiTheme] = useState<'dark' | 'light'>('dark');
+  const [exportMenuOpen, setExportMenuOpen]   = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const [pdfExportContext, setPdfExportContext] = useState<{ slides: Slide[]; savePath: string } | null>(null);
+  const pdfSlideRefs   = useRef<Map<number, HTMLElement>>(new Map());
+  const pdfExportResolveRef = useRef<(() => void) | null>(null);
 
   // Theme state: active theme id + per-session overrides
   const [allThemes, setAllThemes]         = useState<Theme[]>(BUILT_IN_THEMES);
@@ -642,6 +649,24 @@ export default function App() {
     } catch (err) { console.error('Export failed:', err); }
   }, [slides, frontmatter, activeTheme, filePath]);
 
+  const handleExportPdf = useCallback(async () => {
+    if (slides.length === 0) return;
+    const defaultPath = filePath
+      ? filePath.replace(/\.(md|markdown)$/i, '.pdf')
+      : 'presentation.pdf';
+    const target = await save({
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      defaultPath,
+    });
+    if (!target) return;
+    const savePath = target.toLowerCase().endsWith('.pdf') ? target : `${target}.pdf`;
+    pdfSlideRefs.current.clear();
+    await new Promise<void>(resolve => {
+      pdfExportResolveRef.current = resolve;
+      setPdfExportContext({ slides: [...slides], savePath });
+    });
+  }, [slides, filePath]);
+
   const handleContentChange = useCallback((newBody: string) => {
     if (showFrontmatterRef.current) {
       // Editor holds the full document — use it directly.
@@ -725,6 +750,46 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [presentMode, keybindings.combos, filePath, handleNewFile, handleOpenFile, handleSave, handleSaveAs, toggleFocusMode]);
 
+  // Close the export dropdown when the user clicks outside it.
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [exportMenuOpen]);
+
+  // After off-screen slides mount and Mermaid has had time to render, capture
+  // them as PNGs and compile the PDF.
+  useEffect(() => {
+    if (!pdfExportContext) return;
+    const { slides: exportSlides, savePath } = pdfExportContext;
+    const tid = setTimeout(async () => {
+      try {
+        const elements = Array.from(
+          { length: exportSlides.length },
+          (_, i) => pdfSlideRefs.current.get(i),
+        ).filter((el): el is HTMLElement => Boolean(el));
+        const { base64, warnings } = await exportToPdf(elements, activeTheme, aspectRatio);
+        await invoke('write_file_bytes', { path: savePath, data: base64 });
+        if (warnings.length > 0) {
+          window.alert(`PDF export complete with ${warnings.length} warning(s):\n\n${warnings.join('\n')}`);
+        }
+      } catch (err) {
+        console.error('PDF export failed:', err);
+      } finally {
+        setPdfExportContext(null);
+        pdfSlideRefs.current.clear();
+        pdfExportResolveRef.current?.();
+        pdfExportResolveRef.current = null;
+      }
+    }, 2000);
+    return () => clearTimeout(tid);
+  }, [pdfExportContext, aspectRatio]);
+
   return (
     <div className="app">
       {presentMode && (
@@ -787,7 +852,26 @@ export default function App() {
         <button className="btn" onClick={handleOpenFile} title={`Open (${formatCombo(getCombo(keybindings.combos, 'openFile'))})`}>Open</button>
         <button className="btn" onClick={handleSave} disabled={!filePath || !isDirty} title={`Save (${formatCombo(getCombo(keybindings.combos, 'save'))})`}>Save</button>
         <button className="btn" onClick={handleSaveAs} disabled={!content} title={`Save As (${formatCombo(getCombo(keybindings.combos, 'saveAs'))})`}>Save As</button>
-        <button className="btn" onClick={handleExport} disabled={slides.length === 0} title="Export as PowerPoint (.pptx)">Export</button>
+        <div className="btn-group" ref={exportMenuRef}>
+          <button
+            className="btn"
+            disabled={slides.length === 0 || pdfExportContext !== null}
+            title="Export presentation"
+            onClick={() => setExportMenuOpen((o) => !o)}
+          >
+            {pdfExportContext ? 'Exporting PDF…' : 'Export ▾'}
+          </button>
+          {exportMenuOpen && (
+            <div className="btn-group-menu">
+              <button className="btn-group-menu-item" onClick={() => { setExportMenuOpen(false); handleExport(); }}>
+                PowerPoint (.pptx)
+              </button>
+              <button className="btn-group-menu-item" onClick={() => { setExportMenuOpen(false); handleExportPdf(); }}>
+                PDF (.pdf)
+              </button>
+            </div>
+          )}
+        </div>
         <div className="toolbar-spacer" data-tauri-drag-region />
         {isRenaming ? (
           <input
@@ -1021,6 +1105,45 @@ export default function App() {
           </div>
         </>
       )}
+
+      {/* Off-screen slide rendering for PDF export */}
+      {pdfExportContext && (() => {
+        const SLIDE_W = 960;
+        const slideH = Math.round(SLIDE_W * aspectRatio.h / aspectRatio.w);
+        return (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'fixed',
+              top: -99999,
+              left: -99999,
+              width: SLIDE_W,
+              display: 'flex',
+              flexDirection: 'column',
+              pointerEvents: 'none',
+            }}
+          >
+            {pdfExportContext.slides.map((slide, i) => (
+              <div
+                key={i}
+                ref={(el) => {
+                  if (el) pdfSlideRefs.current.set(i, el);
+                  else pdfSlideRefs.current.delete(i);
+                }}
+                style={{ width: SLIDE_W, height: slideH, flexShrink: 0, overflow: 'hidden' }}
+              >
+                <SlideRenderer
+                  slide={slide}
+                  theme={activeTheme}
+                  slideNumber={i + 1}
+                  totalSlides={pdfExportContext.slides.length}
+                  docTitle={frontmatter.title ?? ''}
+                />
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }

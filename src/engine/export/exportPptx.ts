@@ -1,5 +1,6 @@
 import PptxGenJS from 'pptxgenjs';
 import { mermaidSvgCache } from './mermaidSvgCache';
+import { svgToPngDataUrl } from './svgToPng';
 import mermaid from 'mermaid';
 import hljs from 'highlight.js';
 import type { Slide, SlideElement, Frontmatter } from '../types';
@@ -76,125 +77,6 @@ function buildExportMermaidInit(t: Theme): string {
   return `%%{init: ${JSON.stringify({ theme: 'base', themeVariables: vars })}}%%\n`;
 }
 
-async function svgToPngDataUrl(svgString: string, bgColor: string): Promise<{ dataUrl: string; aspectRatio: number }> {
-  // Insert via the HTML parser (innerHTML) rather than DOMParser/image/svg+xml —
-  // the HTML parser is lenient about non-XML-valid content inside <foreignObject>,
-  // whereas the XML parser rejects it and returns the SVG unchanged (still tainted).
-  // We then strip <foreignObject> elements from the live DOM before serialising,
-  // which is the only reliable way to avoid the WebKit canvas SecurityError.
-  const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;left:-99999px;top:0;visibility:hidden;width:1200px;height:900px;';
-  container.innerHTML = svgString;
-  document.body.appendChild(container);
-
-  const svgEl = container.querySelector('svg');
-  let correctedSvg = svgString;
-  if (svgEl) {
-    // Replace each <foreignObject> (used by Mermaid for <br/>-split node labels)
-    // with a native SVG <text>/<tspan> block. This must happen in the live DOM so
-    // the result is guaranteed free of foreignObject regardless of XML validity.
-    const ns = 'http://www.w3.org/2000/svg';
-    for (const fo of Array.from(svgEl.querySelectorAll('foreignObject'))) {
-      const foX = parseFloat(fo.getAttribute('x') || '0');
-      const foY = parseFloat(fo.getAttribute('y') || '0');
-      const foW = parseFloat(fo.getAttribute('width') || '100');
-      const foH = parseFloat(fo.getAttribute('height') || '20');
-      const cx  = foX + foW / 2;
-
-      const lines: string[] = [];
-      let cur = '';
-      const walk = (node: Node) => {
-        if (node.nodeType === Node.TEXT_NODE) { cur += node.textContent ?? ''; }
-        else if ((node as Element).tagName?.toLowerCase() === 'br') { lines.push(cur); cur = ''; }
-        else { node.childNodes.forEach(walk); }
-      };
-      fo.childNodes.forEach(walk);
-      if (cur) lines.push(cur);
-      const nonEmpty = lines.map(l => l.trim()).filter(Boolean);
-
-      if (nonEmpty.length === 0) { fo.remove(); continue; }
-
-      const fontSize   = 14;
-      const lineHeight = fontSize * 1.35;
-      const blockH     = nonEmpty.length * lineHeight;
-      const startY     = foY + (foH - blockH) / 2 + fontSize * 0.85;
-
-      const textEl = document.createElementNS(ns, 'text');
-      textEl.setAttribute('text-anchor', 'middle');
-      textEl.setAttribute('font-size', String(fontSize));
-      textEl.setAttribute('font-family', 'Arial, sans-serif');
-      nonEmpty.forEach((line, i) => {
-        const tspan = document.createElementNS(ns, 'tspan');
-        tspan.setAttribute('x', String(cx));
-        tspan.setAttribute('y', String(startY + i * lineHeight));
-        tspan.textContent = line;
-        textEl.appendChild(tspan);
-      });
-      fo.replaceWith(textEl);
-    }
-
-    try {
-      const { x, y, width, height } = svgEl.getBBox();
-      if (width > 0 && height > 0) {
-        const pad = 12;
-        svgEl.setAttribute('viewBox', `${x - pad} ${y - pad} ${width + pad * 2} ${height + pad * 2}`);
-      }
-    } catch { /* getBBox unavailable in this context */ }
-    correctedSvg = new XMLSerializer().serializeToString(svgEl);
-  }
-  document.body.removeChild(container);
-
-  // Step 2: derive pixel dimensions from the (corrected) viewBox.
-  const viewBoxMatch = correctedSvg.match(/\bviewBox="([^"]*)"/i);
-  let renderW = 1200;
-  let renderH = 900;
-  if (viewBoxMatch) {
-    const parts = viewBoxMatch[1].trim().split(/[\s,]+/).map(Number);
-    if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0) {
-      const scale = 1200 / Math.max(parts[2], parts[3]);
-      renderW = Math.round(parts[2] * scale);
-      renderH = Math.round(parts[3] * scale);
-    }
-  }
-
-  // Step 3: inject explicit pixel dimensions so the browser renders at the right size.
-  const sized = correctedSvg.replace(/<svg\b([^>]*)>/i, (_m, attrs: string) => {
-    let a = attrs
-      .replace(/\bwidth="[^"]*"/, `width="${renderW}"`)
-      .replace(/\bheight="[^"]*"/, `height="${renderH}"`)
-      .replace(/\bstyle="[^"]*max-width[^"]*"/, '');
-    if (!/\bwidth=/.test(a))  a += ` width="${renderW}"`;
-    if (!/\bheight=/.test(a)) a += ` height="${renderH}"`;
-    return `<svg${a}>`;
-  });
-
-  const aspectRatio = renderW / renderH;
-
-  return new Promise((resolve, reject) => {
-    const blob = new Blob([sized], { type: 'image/svg+xml;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const img  = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width  = renderW;
-        canvas.height = renderH;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) { URL.revokeObjectURL(url); reject(new Error('Canvas 2D context unavailable')); return; }
-        ctx.fillStyle = bgColor;
-        ctx.fillRect(0, 0, renderW, renderH);
-        ctx.drawImage(img, 0, 0, renderW, renderH);
-        URL.revokeObjectURL(url);
-        resolve({ dataUrl: canvas.toDataURL('image/png'), aspectRatio });
-      } catch (e) {
-        URL.revokeObjectURL(url);
-        reject(e);
-      }
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('SVG load failed')); };
-    img.src = url;
-  });
-}
 
 function makeMermaidTimeout(ms: number): Promise<never> {
   return new Promise((_, reject) => setTimeout(() => reject(new Error('Mermaid render timeout')), ms));
