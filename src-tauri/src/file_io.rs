@@ -6,7 +6,12 @@ fn home_dir() -> Result<PathBuf, String> {
 
 pub fn check_in_home(path: &Path) -> Result<(), String> {
     let home = home_dir()?;
-    if path.starts_with(&home) {
+    // On Windows, std::fs::canonicalize adds a \\?\ UNC prefix. The `path`
+    // argument is already canonical, so home must also be canonicalized before
+    // starts_with — otherwise the prefix mismatch causes the check to always
+    // fail, blocking every file read/write on Windows.
+    let canonical_home = std::fs::canonicalize(&home).unwrap_or(home);
+    if path.starts_with(&canonical_home) {
         Ok(())
     } else {
         Err("Access denied: path is outside your home directory".to_string())
@@ -46,4 +51,39 @@ pub fn write(path: &str, content: &str) -> Result<(), String> {
 pub fn write_bytes(path: &str, bytes: &[u8]) -> Result<(), String> {
     let safe = safe_write_path(path)?;
     std::fs::write(&safe, bytes).map_err(|e| format!("Failed to write file: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    // These tests use Windows-style paths with backslash separators and the
+    // \\?\ UNC prefix that std::fs::canonicalize adds on Windows. They only
+    // make sense on Windows because backslash is not a path separator on
+    // Linux/macOS, so Path would treat the whole string as one component.
+    #[cfg(target_os = "windows")]
+    mod windows_unc {
+        use std::path::Path;
+
+        #[test]
+        fn unc_prefix_mismatch_was_the_bug() {
+            let bare_home      = Path::new(r"C:\Users\ross");
+            let canonical_path = Path::new(r"\\?\C:\Users\ross\Documents\file.md");
+            // Old behaviour: bare home vs canonical path — always false.
+            assert!(!canonical_path.starts_with(bare_home));
+        }
+
+        #[test]
+        fn unc_prefix_matches_when_home_is_also_canonical() {
+            let canonical_home = Path::new(r"\\?\C:\Users\ross");
+            let canonical_path = Path::new(r"\\?\C:\Users\ross\Documents\file.md");
+            // Fixed behaviour: both canonical — starts_with works correctly.
+            assert!(canonical_path.starts_with(canonical_home));
+        }
+
+        #[test]
+        fn traversal_still_blocked_after_fix() {
+            let canonical_home = Path::new(r"\\?\C:\Users\ross");
+            let outside        = Path::new(r"\\?\C:\Users\other\secret.txt");
+            assert!(!outside.starts_with(canonical_home));
+        }
+    }
 }
