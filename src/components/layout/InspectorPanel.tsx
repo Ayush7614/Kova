@@ -16,7 +16,7 @@ interface Props {
   theme: Theme;
   allThemes: Theme[];
   onThemeSelect: (id: string) => void;
-  onThemeChange: (patch: Partial<Theme>) => void;
+  onThemeChange: (patch: Partial<Theme>) => void | Promise<void>;
   onMetaChange: (field: 'title' | 'author' | 'date', value: string) => void;
   onFormat: (cmd: FormatCmd) => void;
   onOpenLibrary: () => void;

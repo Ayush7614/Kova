@@ -44,6 +44,8 @@ export interface AppSettings {
   laserColor: LaserColor;
   // Editor
   showFrontmatter: boolean;
+  // Presentation defaults
+  defaultThemeId: string;
 }
 
 const KEY = 'kova:settings';
@@ -64,6 +66,7 @@ function buildDefaults(): AppSettings {
     presenterNotesFontSize: 'md',
     laserColor: '#ff2020',
     showFrontmatter: false,
+    defaultThemeId: 'light',
   };
 }
 

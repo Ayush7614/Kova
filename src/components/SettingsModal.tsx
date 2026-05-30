@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { AppSettings, PresentationMode, NotesFontSize, LaserColor } from '../store/settings';
 import { EDITOR_FONT_OPTIONS, LASER_COLOR_OPTIONS } from '../store/settings';
+import type { Theme } from '../engine/theme';
 import { isFontAvailable } from '../engine/fontDetect';
 import { fetchUpdate, canSelfUpdate } from '../engine/updater';
 import type { AvailableUpdate } from '../engine/updater';
@@ -134,12 +135,13 @@ type UpdateState =
 interface Props {
   settings: AppSettings;
   availableUpdate: string | null;
+  allThemes: Theme[];
   onChange: (s: AppSettings) => void;
   onUpdateChecked: (tag: string | null) => void;
   onClose: () => void;
 }
 
-export function SettingsModal({ settings, availableUpdate, onChange, onUpdateChecked, onClose }: Props) {
+export function SettingsModal({ settings, availableUpdate, allThemes, onChange, onUpdateChecked, onClose }: Props) {
   const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) =>
     onChange({ ...settings, [key]: value });
 
@@ -336,6 +338,45 @@ export function SettingsModal({ settings, availableUpdate, onChange, onUpdateChe
           description="Displays the YAML frontmatter block at the top of the editor so it can be edited directly alongside the slides."
           control={<Toggle checked={settings.showFrontmatter} onChange={(v) => set('showFrontmatter', v)} />}
         />
+
+        <div style={{ padding: '10px 0' }}>
+          <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 8 }}>Default presentation theme</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
+            Applied when creating a new presentation.
+          </div>
+          <div style={{ position: 'relative' }}>
+            <select
+              value={settings.defaultThemeId}
+              onChange={(e) => set('defaultThemeId', e.target.value)}
+              style={{
+                width: '100%',
+                padding: '6px 28px 6px 10px',
+                fontSize: 12,
+                borderRadius: 4,
+                border: '1px solid var(--border-alt)',
+                background: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                outline: 'none',
+              }}
+            >
+              {allThemes.map(({ id, name }) => (
+                <option key={id} value={id}>{name}</option>
+              ))}
+            </select>
+            <svg
+              viewBox="0 0 10 6"
+              style={{
+                position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                width: 10, height: 6, pointerEvents: 'none', color: 'var(--text-dim)',
+              }}
+            >
+              <path d="M0 0l5 6 5-6z" fill="currentColor" />
+            </svg>
+          </div>
+        </div>
 
         {/* Language & Spelling */}
         <Section label="Language &amp; Spelling" />

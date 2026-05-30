@@ -226,7 +226,7 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
           )}
           {footerText && <span className="sl-footer-text">{footerText}</span>}
           {theme.footer.show_slide_number && slideNumber !== undefined && (
-            <span className="sl-slide-num">{slideNumber}{totalSlides ? ` / ${totalSlides}` : ''}</span>
+            <span className="sl-slide-num">{slideNumber}</span>
           )}
         </div>
       )}
