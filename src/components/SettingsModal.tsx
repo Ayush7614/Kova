@@ -15,11 +15,12 @@ import {
 } from '../engine/spellcheck/spellChecker';
 
 const THIRD_PARTY_LICENSES: { name: string; license: string; copyright: string }[] = [
-  { name: 'IBM Plex Mono',           license: 'SIL Open Font License 1.1', copyright: '© 2017 IBM Corp.'                        },
   { name: 'CodeMirror',              license: 'MIT',                        copyright: '© Marijn Haverbeke and contributors'     },
   { name: 'highlight.js',            license: 'BSD 3-Clause',               copyright: '© 2006 Ivan Sagalaev'                   },
+  { name: 'IBM Plex Mono',           license: 'SIL Open Font License 1.1', copyright: '© 2017 IBM Corp.'                        },
   { name: 'js-yaml',                 license: 'MIT',                        copyright: '© 2011 Vitaly Puzrin and contributors'   },
   { name: 'Mermaid',                 license: 'MIT',                        copyright: '© 2014 Knut Sveidqvist and contributors' },
+  { name: 'Montserrat',              license: 'SIL Open Font License 1.1', copyright: '© 2011 The Montserrat Project Authors'   },
   { name: 'PptxGenJS',               license: 'MIT',                        copyright: '© 2015 Brent Ely'                       },
   { name: 'React',                   license: 'MIT',                        copyright: '© Meta Platforms, Inc.'                 },
   { name: 'react-resizable-panels',  license: 'MIT',                        copyright: '© 2022 Brian Vaughn'                    },

@@ -39,7 +39,7 @@ export function ThemeLibraryModal({ installedIds, onThemesChanged, onClose }: Pr
   async function fetchManifest() {
     setStatus('loading');
     try {
-      const res = await fetch(REGISTRY_URL);
+      const res = await fetch(REGISTRY_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error();
       setThemes(await res.json());
       setStatus('ready');
@@ -56,7 +56,7 @@ export function ThemeLibraryModal({ installedIds, onThemesChanged, onClose }: Pr
       if (!theme?.sha256) {
         throw new Error('Cannot install: theme is missing its integrity hash');
       }
-      const res = await fetch(THEME_URL(id));
+      const res = await fetch(THEME_URL(id), { cache: 'no-store' });
       if (!res.ok) throw new Error('Download failed');
       const buffer = await res.arrayBuffer();
       const digest = await crypto.subtle.digest('SHA-256', buffer);
