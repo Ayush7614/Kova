@@ -200,12 +200,26 @@ export async function exportToPptx(
   const docDate  = frontmatter.date != null ? String(frontmatter.date) : '';
   const warnings: string[] = [];
 
+  // Pre-resolve theme logo once (fetch → data URL, measure AR) so it can be
+  // stamped on every slide without repeated network requests.
+  let logoDataUrl: string | null = null;
+  let logoAr: number | null = null;
+  if (theme.logo) {
+    try {
+      const resolved = await assetUrlToDataUrl(theme.logo);
+      if (resolved.startsWith('data:')) {
+        logoDataUrl = resolved;
+        logoAr = await getImageAspectRatio(resolved);
+      }
+    } catch { /* logo unavailable — skip silently */ }
+  }
+
   const resolvedSlides = await resolveSlideImages(slides, theme, warnings);
 
   for (let i = 0; i < resolvedSlides.length; i++) {
     const pSlide = pres.addSlide();
     const meta: Meta = { docTitle, docDate, slideNum: i + 1, totalSlides: slides.length };
-    addSlide(pSlide as PS, resolvedSlides[i], theme, meta, H, warnings);
+    addSlide(pSlide as PS, resolvedSlides[i], theme, meta, H, warnings, logoDataUrl, logoAr);
   }
 
   const base64 = (await pres.write({ outputType: 'base64' })) as string;
@@ -217,11 +231,23 @@ export async function exportToPptx(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PS = any;
 
-function addSlide(s: PS, slide: Slide, t: Theme, meta: Meta, H: number, warnings: string[]) {
+function addSlide(
+  s: PS, slide: Slide, t: Theme, meta: Meta, H: number, warnings: string[],
+  logoDataUrl: string | null, logoAr: number | null,
+) {
   const hasHead = t.header.show;
   const hasFoot = t.footer.show;
   const cy = M + (hasHead ? HEAD_H : 0);
   const ch = H - M - cy - (hasFoot ? FOOT_H : 0);
+
+  // Bar-left accent stripe: drawn first so it sits behind all content.
+  if (t.layout.decoration === 'bar-left') {
+    s.addShape('rect', {
+      x: 0, y: 0, w: 0.07, h: H,
+      fill: { color: hex(t.colors.accent) },
+      line: { type: 'none' },
+    });
+  }
 
   switch (slide.layout) {
     case 'title':         addTitleSlide(s, slide, t, cy, ch); break;
@@ -241,6 +267,7 @@ function addSlide(s: PS, slide: Slide, t: Theme, meta: Meta, H: number, warnings
 
   if (hasHead) addHeaderBar(s, t, meta);
   if (hasFoot) addFooterBar(s, t, meta, H);
+  if (logoDataUrl) addLogo(s, logoDataUrl, logoAr, t.logo_position, t.logo_opacity, H);
 }
 
 // ── Layout renderers ──────────────────────────────────────────────────────────
@@ -268,7 +295,7 @@ function addTitleSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
       fontSize: 40, bold: true,
       color: hex(t.colors.title_text),
       fontFace: firstFont(t.fonts.title),
-      align: hAlign, valign: titleVAlign(t.layout.title_align, hasSubs), wrap: true,
+      align: hAlign, valign: titleVAlign(t.layout.title_align, hasSubs), wrap: true, shrinkText: true,
     });
   }
 
@@ -281,7 +308,7 @@ function addTitleSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
       x: M, y: cy + titleH + 0.15, w: W - M * 2, h: ch - titleH - 0.15,
       color: hex(t.colors.title_text),
       fontFace: firstFont(t.fonts.body),
-      align: hAlign, valign: 'top', wrap: true,
+      align: hAlign, valign: 'top', wrap: true, shrinkText: true,
     });
   }
 }
@@ -296,21 +323,21 @@ function addSectionSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) 
       fontFace: firstFont(t.fonts.title),
       align: titleHAlign(t.layout.title_align),
       valign: t.layout.title_align === 'bottom-left' ? 'bottom' : 'middle',
-      wrap: true,
+      wrap: true, shrinkText: true,
     });
   }
 }
 
 function addTitleContentSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[]) {
   s.background = { fill: hex(t.colors.background) };
-  const hh = slide.title ? 0.75 : 0;
+  const hh = slide.title ? 0.85 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 28, bold: true,
       color: hex(t.colors.text),
       fontFace: firstFont(t.fonts.title),
-      align: t.layout.heading_align, valign: 'middle', wrap: true,
+      align: t.layout.heading_align, valign: 'middle', wrap: true, shrinkText: true,
     });
   }
   addElements(s, slide.elements, t, { x: M, y: cy + hh + 0.1, w: W - M * 2, h: ch - hh - 0.1 }, warnings);
@@ -328,7 +355,7 @@ function addTitleImageSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: numbe
       fontSize: 26, bold: true,
       color: hex(t.colors.text),
       fontFace: firstFont(t.fonts.title),
-      align: 'left', valign: 'middle', wrap: true,
+      align: 'left', valign: 'middle', wrap: true, shrinkText: true,
     });
   }
   const img = slide.elements.find((e) => e.type === 'image');
@@ -346,7 +373,7 @@ function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, wa
       fontSize: 24, bold: true,
       color: hex(t.colors.text),
       fontFace: firstFont(t.fonts.title),
-      align: t.layout.heading_align, wrap: true,
+      align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
   }
   const bodyY = cy + hh + 0.1;
@@ -417,7 +444,7 @@ function addTwoColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number
       fontSize: 24, bold: true,
       color: hex(t.colors.text),
       fontFace: firstFont(t.fonts.title),
-      align: t.layout.heading_align, wrap: true,
+      align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
   }
   const bodyY = cy + hh + 0.1;
@@ -447,7 +474,7 @@ function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warn
       fontSize: 24, bold: true,
       color: hex(t.colors.text),
       fontFace: firstFont(t.fonts.title),
-      align: t.layout.heading_align, wrap: true,
+      align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
   }
   const bodyY = cy + hh + 0.1;
@@ -503,7 +530,7 @@ function addGridSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, war
       fontSize: 24, bold: true,
       color: hex(t.colors.text),
       fontFace: firstFont(t.fonts.title),
-      align: t.layout.heading_align, wrap: true,
+      align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
   }
   const bodyY = cy + hh + 0.1;
@@ -536,7 +563,7 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
       fontSize: 24, bold: true,
       color: hex(t.colors.text),
       fontFace: firstFont(t.fonts.title),
-      align: t.layout.heading_align, wrap: true,
+      align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
   }
   const bodyY = cy + hh + 0.1;
@@ -580,7 +607,7 @@ function addCodeSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, war
       fontSize: 24, bold: true,
       color: hex(t.colors.text),
       fontFace: firstFont(t.fonts.title),
-      align: t.layout.heading_align, wrap: true,
+      align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
   }
   const codeY = cy + hh + 0.1;
@@ -656,6 +683,30 @@ function addFooterBar(s: PS, t: Theme, meta: Meta, H: number) {
   }
 }
 
+function addLogo(
+  s: PS,
+  logoDataUrl: string,
+  logoAr: number | null,
+  position: Theme['logo_position'],
+  opacity: number,
+  H: number,
+) {
+  const LOGO_H = 0.35;
+  const LOGO_W = logoAr ? LOGO_H * logoAr : 0.7;
+  const PAD    = 0.12;
+  let lx: number, ly: number;
+  switch (position) {
+    case 'top-left':     lx = PAD;                ly = PAD; break;
+    case 'top-right':    lx = W - PAD - LOGO_W;   ly = PAD; break;
+    case 'bottom-left':  lx = PAD;                ly = H - PAD - LOGO_H; break;
+    case 'bottom-right': lx = W - PAD - LOGO_W;   ly = H - PAD - LOGO_H; break;
+  }
+  const transparency = Math.round((1 - Math.min(1, Math.max(0, opacity))) * 100);
+  try {
+    s.addImage({ data: logoDataUrl, x: lx, y: ly, w: LOGO_W, h: LOGO_H, transparency });
+  } catch { /* ignore */ }
+}
+
 // ── Layout helpers (mirror SlideRenderer.tsx) ─────────────────────────────────
 
 function groupProgressRuns(elements: SlideElement[]): SlideElement[][] {
@@ -726,6 +777,49 @@ const HLJS_STYLE: Record<string, { color: string; bold?: true; italic?: true }> 
 };
 
 type PptxRun = { text: string; options: Record<string, unknown> };
+
+// Walk markdown-generated HTML (bold, italic, code, links) into PptxGenJS runs.
+function htmlToInlineRuns(
+  html: string,
+  defaultColor: string,
+  codeFont: string,
+  accentColor: string,
+): PptxRun[] {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  const runs: PptxRun[] = [];
+
+  function walk(node: Node, bold: boolean, italic: boolean, isCode: boolean, color: string) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent ?? '';
+      if (!text) return;
+      runs.push({
+        text,
+        options: {
+          color,
+          ...(bold   ? { bold: true }   : {}),
+          ...(italic ? { italic: true } : {}),
+          ...(isCode ? { fontFace: codeFont } : {}),
+        },
+      });
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as Element;
+      const tag = el.tagName.toLowerCase();
+      for (const child of node.childNodes) {
+        walk(
+          child,
+          bold   || tag === 'strong' || tag === 'b',
+          italic || tag === 'em'     || tag === 'i',
+          isCode || tag === 'code',
+          tag === 'a' ? accentColor : color,
+        );
+      }
+    }
+  }
+
+  for (const child of div.childNodes) walk(child, false, false, false, defaultColor);
+  return runs.length > 0 ? runs : [{ text: stripHtml(html) || ' ', options: { color: defaultColor } }];
+}
 
 // Walk the hljs HTML DOM and produce a flat list of coloured text runs.
 // Newlines inside runs are converted to explicit breakLine: true entries.
@@ -876,19 +970,23 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
 
       case 'list':
         for (const item of el.items) {
-          runs.push({
-            text: stripHtml(item.html),
-            options: {
-              bullet: el.ordered ? { type: 'number', style: 'arabicPeriod' } : true,
-              fontSize: 18,
-              paraSpaceAfter: 4,
-            },
-          });
+          const bulletBase = {
+            bullet: el.ordered ? { type: 'number', style: 'arabicPeriod' } as const : true as const,
+            fontSize: 18,
+            paraSpaceAfter: 4,
+          };
+          const itemRuns = htmlToInlineRuns(item.html, hex(t.colors.text), firstFont(t.fonts.code), hex(t.colors.accent));
+          runs.push({ text: itemRuns[0].text, options: { ...itemRuns[0].options, ...bulletBase } });
+          for (let ri = 1; ri < itemRuns.length; ri++) {
+            runs.push({ text: itemRuns[ri].text, options: { fontSize: 18, ...itemRuns[ri].options } });
+          }
           for (const child of item.children) {
-            runs.push({
-              text: stripHtml(child.html),
-              options: { bullet: true, indentLevel: 1, fontSize: 16, paraSpaceAfter: 3 },
-            });
+            const childBase = { bullet: true as const, indentLevel: 1, fontSize: 16, paraSpaceAfter: 3 };
+            const childRuns = htmlToInlineRuns(child.html, hex(t.colors.text), firstFont(t.fonts.code), hex(t.colors.accent));
+            runs.push({ text: childRuns[0].text, options: { ...childRuns[0].options, ...childBase } });
+            for (let ri = 1; ri < childRuns.length; ri++) {
+              runs.push({ text: childRuns[ri].text, options: { fontSize: 16, ...childRuns[ri].options } });
+            }
           }
         }
         break;
@@ -923,7 +1021,7 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
       x: area.x, y: area.y, w: area.w, h: area.h,
       fontSize: 18, color: hex(t.colors.text),
       fontFace: firstFont(t.fonts.body),
-      valign: 'middle', wrap: true,
+      valign: 'top', wrap: true,
     });
   }
 
