@@ -295,7 +295,7 @@ export default function App() {
     if (!settings.checkForUpdates) return;
     fetchUpdate()
       .then((update) => { if (update) setAvailableUpdate(update.version); })
-      .catch(() => {});
+      .catch((err) => console.error('[updater] startup check failed:', err));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally runs once on mount
 

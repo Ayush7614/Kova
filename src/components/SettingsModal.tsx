@@ -192,7 +192,8 @@ export function SettingsModal({ settings, availableUpdate, allThemes, onChange, 
         setUpdateState('up-to-date');
         onUpdateChecked(null);
       }
-    } catch {
+    } catch (err) {
+      console.error('[updater] check failed:', err);
       setUpdateState('error');
     }
   }
@@ -206,7 +207,8 @@ export function SettingsModal({ settings, availableUpdate, allThemes, onChange, 
         update = await fetchUpdate();
         if (!update) { setUpdateState('up-to-date'); return; }
         pendingUpdate.current = update;
-      } catch {
+      } catch (err) {
+        console.error('[updater] re-fetch failed:', err);
         setUpdateState('error');
         return;
       }
@@ -220,7 +222,8 @@ export function SettingsModal({ settings, availableUpdate, allThemes, onChange, 
         setUpdateState({ phase: 'downloading', version, pct: total ? Math.round((downloaded / total) * 100) : null });
       });
       setUpdateState({ phase: 'done', version });
-    } catch {
+    } catch (err) {
+      console.error('[updater] install failed:', err);
       setUpdateState('error');
     }
   }
