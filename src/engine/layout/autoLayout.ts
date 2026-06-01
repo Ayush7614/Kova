@@ -133,8 +133,12 @@ export function detectLayout(
   // ── Overflow guard ────────────────────────────────────────────────────────
   // When pure-text content is dense enough to overflow the slide, split into
   // two columns. The renderer auto-splits at the list/element midpoint.
+  // A single paragraph cannot be split — it stays full-width regardless of length.
+  const canSplitIntoColumns =
+    bodyElements.length > 1 ||
+    (bodyElements.length === 1 && bodyElements[0].type === 'list' && bodyElements[0].items.length > 1);
 
-  if (allPureText && estimateLines(bodyElements) > OVERFLOW_LINE_THRESHOLD) {
+  if (allPureText && canSplitIntoColumns && estimateLines(bodyElements) > OVERFLOW_LINE_THRESHOLD) {
     return 'two-column';
   }
 
