@@ -72,6 +72,20 @@ function base64ToUint8Array(b64: string): Uint8Array {
 
 // ── Text extraction from txBody ───────────────────────────────────────────────
 
+// Return whether the txBody's lstStyle declares a bullet at the given indent level.
+// Most real PPTX body placeholders inherit bullet formatting from the slide layout/master
+// and don't repeat it on each paragraph; this covers the common case where the txBody
+// itself carries the default via lstStyle.
+function lstStyleHasBullet(txBody: Element, lvl: number): boolean {
+  const lstStyle = txBody.getElementsByTagNameNS(A, 'lstStyle')[0] ?? null;
+  if (!lstStyle) return false;
+  const levelTags = ['lvl1pPr', 'lvl2pPr', 'lvl3pPr', 'lvl4pPr', 'lvl5pPr', 'lvl6pPr', 'lvl7pPr', 'lvl8pPr', 'lvl9pPr'];
+  const lvlEl = lstStyle.getElementsByTagNameNS(A, levelTags[lvl] ?? levelTags[0])[0] ?? null;
+  if (!lvlEl) return false;
+  if (lvlEl.getElementsByTagNameNS(A, 'buNone')[0]) return false;
+  return !!(lvlEl.getElementsByTagNameNS(A, 'buChar')[0] ?? lvlEl.getElementsByTagNameNS(A, 'buAutoNum')[0]);
+}
+
 function extractTextBody(txBody: Element): { text: string; isMultiPara: boolean } {
   const paragraphs = qAll(txBody, A, 'p');
   const lines: string[] = [];
@@ -92,13 +106,14 @@ function extractTextBody(txBody: Element): { text: string; isMultiPara: boolean 
     const trimmed = lineText.trim();
     if (!trimmed) continue;
 
-    // Detect explicit bullet on this paragraph
     const pPr = para.getElementsByTagNameNS(A, 'pPr')[0] ?? null;
     const buChar = pPr?.getElementsByTagNameNS(A, 'buChar')[0];
     const buAutoNum = pPr?.getElementsByTagNameNS(A, 'buAutoNum')[0];
     const buNone = pPr?.getElementsByTagNameNS(A, 'buNone')[0];
     const lvl = pPr ? (parseInt(pPr.getAttribute('lvl') ?? '0') || 0) : 0;
-    const isBullet = (buChar != null || buAutoNum != null) && buNone == null;
+    // A paragraph is a bullet if it has an explicit bullet marker, or if the txBody's
+    // lstStyle declares a bullet at this level and there's no explicit buNone override.
+    const isBullet = buNone == null && (buChar != null || buAutoNum != null || lstStyleHasBullet(txBody, lvl));
 
     if (isBullet) {
       lines.push('  '.repeat(lvl) + '- ' + trimmed);
@@ -366,12 +381,14 @@ async function extractSlideBlocks(
 // ── Resolve a relationship Target relative to a base ZIP path ─────────────────
 
 function resolveRelTarget(basePath: string, target: string): string {
-  if (!target.startsWith('..')) return basePath + target;
+  // Absolute ZIP paths (rare but valid in OOXML) — strip leading slash.
+  if (target.startsWith('/')) return target.slice(1);
+  // Normalise all relative paths (handles both '../' and same-directory cases).
   const parts = (basePath + target).split('/');
   const resolved: string[] = [];
   for (const part of parts) {
     if (part === '..') resolved.pop();
-    else if (part !== '.') resolved.push(part);
+    else if (part !== '' && part !== '.') resolved.push(part);
   }
   return resolved.join('/');
 }

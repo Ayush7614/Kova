@@ -105,6 +105,7 @@ function buildMermaidInit(theme: Theme): string {
 
   const secondary = mutedSecondary(c.primary);
   const tertiaryBg = c.code_bg;
+  const fontFamily = firstFont(theme.fonts.body);
   const vars = {
     fontFamily,
     primaryColor:          c.primary,
@@ -143,7 +144,6 @@ function buildMermaidInit(theme: Theme): string {
       yAxisLineColor:    c.text,
     },
   };
-  const fontFamily = firstFont(theme.fonts.body);
   return `%%{init: ${JSON.stringify({ theme: 'base', fontFamily, themeVariables: vars })}}%%\n`;
 }
 

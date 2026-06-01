@@ -583,21 +583,37 @@ export default function App() {
     });
   }, []);
 
+  // Shared post-load sequence: apply theme, content, and watcher for a file that
+  // has already been read (or generated) and saved to disk.
+  const applyFileContent = useCallback(async (text: string, path: string) => {
+    const { frontmatter: fm } = extractFrontmatter(text);
+    if (typeof fm.theme === 'string') {
+      const found = allThemes.find((t) => t.id === fm.theme);
+      if (found) {
+        setActiveThemeId(found.id);
+        setMissingThemeId(null);
+        setThemeOverrides(sanitiseThemeOverrides(fm.theme_overrides as Record<string, unknown> ?? {}));
+      } else {
+        setMissingThemeId(fm.theme);
+        setThemeOverrides({});
+      }
+    } else {
+      setActiveThemeId(DEFAULT_THEME.id);
+      setMissingThemeId(null);
+      setThemeOverrides({});
+    }
+    setFilePath(path);
+    setContent(text);
+    setIsDirty(false);
+    setCurrentSlideIndex(0);
+    await invoke('start_watching', { path }).catch(console.error);
+  }, [allThemes]);
+
   const handleImportComplete = useCallback(async (markdown: string, savedPath: string) => {
     setShowImport(false);
     await invoke('stop_watching').catch(() => {});
-    const { frontmatter: fm } = extractFrontmatter(markdown);
-    if (typeof fm.theme === 'string') {
-      const found = allThemes.find((t) => t.id === fm.theme);
-      if (found) { setActiveThemeId(found.id); setMissingThemeId(null); setThemeOverrides(sanitiseThemeOverrides(fm.theme_overrides as Record<string, unknown> ?? {})); }
-      else { setMissingThemeId(fm.theme); setThemeOverrides({}); }
-    } else { setActiveThemeId(DEFAULT_THEME.id); setMissingThemeId(null); setThemeOverrides({}); }
-    setFilePath(savedPath);
-    setContent(markdown);
-    setIsDirty(false);
-    setCurrentSlideIndex(0);
-    await invoke('start_watching', { path: savedPath }).catch(console.error);
-  }, [allThemes]);
+    await applyFileContent(markdown, savedPath);
+  }, [applyFileContent]);
 
   const handleOpenFile = useCallback(() => {
     guardDirty(async () => { try {
@@ -606,34 +622,11 @@ export default function App() {
         multiple: false,
       });
       if (!selected || typeof selected !== 'string') return;
+      await invoke('stop_watching').catch(() => {});
       const text: string = await invoke('read_file', { path: selected });
-      const { frontmatter: fm } = extractFrontmatter(text);
-      if (typeof fm.theme === 'string') {
-        const found = allThemes.find((t) => t.id === fm.theme);
-        if (found) {
-          setActiveThemeId(found.id);
-          setMissingThemeId(null);
-          const overrides = fm.theme_overrides ?? {};
-          // Sanitise overrides through the same CSS-injection checks applied to
-          // installed theme YAML files, preventing crafted .md files from
-          // injecting raw CSS property values into slide styles.
-          setThemeOverrides(sanitiseThemeOverrides(overrides as Record<string, unknown>));
-        } else {
-          setMissingThemeId(fm.theme);
-          setThemeOverrides({});
-        }
-      } else {
-        setActiveThemeId(DEFAULT_THEME.id);
-        setMissingThemeId(null);
-        setThemeOverrides({});
-      }
-      setFilePath(selected);
-      setContent(text);
-      setIsDirty(false);
-      setCurrentSlideIndex(0);
-      await invoke('start_watching', { path: selected }).catch(console.error);
+      await applyFileContent(text, selected);
     } catch (err) { console.error('Open failed:', err); }});
-  }, [guardDirty, allThemes]);
+  }, [guardDirty, applyFileContent]);
 
   const buildSaveContent = useCallback(() => {
     const overridePatch: Record<string, unknown> = {};

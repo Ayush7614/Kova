@@ -694,12 +694,14 @@ function addLogo(
   const LOGO_H = 0.35;
   const LOGO_W = logoAr ? LOGO_H * logoAr : 0.7;
   const PAD    = 0.12;
-  let lx: number, ly: number;
+  let lx: number;
+  let ly: number;
   switch (position) {
     case 'top-left':     lx = PAD;                ly = PAD; break;
     case 'top-right':    lx = W - PAD - LOGO_W;   ly = PAD; break;
     case 'bottom-left':  lx = PAD;                ly = H - PAD - LOGO_H; break;
-    case 'bottom-right': lx = W - PAD - LOGO_W;   ly = H - PAD - LOGO_H; break;
+    case 'bottom-right':
+    default:             lx = W - PAD - LOGO_W;   ly = H - PAD - LOGO_H; break;
   }
   const transparency = Math.round((1 - Math.min(1, Math.max(0, opacity))) * 100);
   try {

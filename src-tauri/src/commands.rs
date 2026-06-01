@@ -16,6 +16,10 @@ extern "system" {
     fn SetThreadExecutionState(esFlags: u32) -> u32;
 }
 
+// Sender whose drop signals the wake-lock thread to exit.
+#[cfg(target_os = "windows")]
+static WIN_WAKE_TX: Mutex<Option<std::sync::mpsc::SyncSender<()>>> = Mutex::new(None);
+
 #[tauri::command]
 #[allow(unused_variables)]
 pub fn set_wake_lock(active: bool) {
@@ -77,14 +81,35 @@ pub fn set_wake_lock(active: bool) {
         }
     }
 
+    // SetThreadExecutionState is per-thread; calling it on a Tokio pool thread
+    // whose lifetime we don't control would let the inhibit lapse silently when
+    // that thread is recycled. A dedicated persistent thread holds the state for
+    // the full duration of the presentation and re-asserts every 30 s as
+    // recommended by the Windows docs.
     #[cfg(target_os = "windows")]
-    unsafe {
-        const ES_CONTINUOUS: u32 = 0x80000000;
-        const ES_DISPLAY_REQUIRED: u32 = 0x00000002;
+    {
+        let mut guard = WIN_WAKE_TX.lock().unwrap();
         if active {
-            SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+            if guard.is_none() {
+                let (tx, rx) = std::sync::mpsc::sync_channel::<()>(0);
+                *guard = Some(tx);
+                std::thread::spawn(move || unsafe {
+                    const ES_CONTINUOUS: u32 = 0x80000000;
+                    const ES_DISPLAY_REQUIRED: u32 = 0x00000002;
+                    SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+                    loop {
+                        match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                                SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+                            }
+                            _ => break,
+                        }
+                    }
+                    SetThreadExecutionState(ES_CONTINUOUS);
+                });
+            }
         } else {
-            SetThreadExecutionState(ES_CONTINUOUS);
+            guard.take(); // drop sender → thread's recv returns Disconnected → exits
         }
     }
 }
@@ -443,32 +468,58 @@ pub fn stop_watching(state: State<'_, AppState>) {
     s.current_file = None;
 }
 
+// Sanitise a filename stem: replace whitespace and characters that break Markdown
+// link syntax with underscores.
+fn sanitise_stem(raw: &str) -> String {
+    raw.chars()
+        .map(|c| if c.is_whitespace() || matches!(c, '(' | ')' | '[' | ']' | '"' | '\'') { '_' } else { c })
+        .collect()
+}
+
+// Validate dest_dir, create assets/ subdirectory, and return its path.
+fn prepare_assets_dir(dest_dir: &str) -> Result<std::path::PathBuf, String> {
+    let canonical = std::fs::canonicalize(dest_dir)
+        .map_err(|e| format!("Cannot access destination directory: {e}"))?;
+    file_io::check_in_home(&canonical)?;
+    let assets_dir = canonical.join("assets");
+    std::fs::create_dir_all(&assets_dir)
+        .map_err(|e| format!("Cannot create assets dir: {e}"))?;
+    Ok(assets_dir)
+}
+
+// Write `bytes` into `assets_dir` under `{stem}.{ext}`, appending a numeric
+// suffix on name collisions. Returns the final filename.
+fn write_bytes_to_assets(bytes: &[u8], stem: &str, ext: &str, assets_dir: &std::path::Path) -> Result<String, String> {
+    let mut name = format!("{stem}.{ext}");
+    let mut counter = 1u32;
+    loop {
+        if counter > 10_000 {
+            return Err("Too many files with the same name in assets/".into());
+        }
+        let dest = assets_dir.join(&name);
+        if !dest.exists() {
+            std::fs::write(&dest, bytes)
+                .map_err(|e| format!("Cannot write asset: {e}"))?;
+            return Ok(name);
+        }
+        name = format!("{stem}-{counter}.{ext}");
+        counter += 1;
+    }
+}
+
 /// Copies `src` into `{dest_dir}/assets/`, creating the directory if needed.
 /// Returns the final filename (e.g. "screenshot.png") so the caller can
 /// insert a relative `assets/<filename>` reference in the document.
 /// If a file with the same name already exists, appends a numeric suffix.
 #[tauri::command]
 pub fn copy_image_to_assets(src: String, dest_dir: String) -> Result<String, String> {
-    // Validate src: canonicalize (resolves symlinks/traversal) and enforce home boundary.
     let src_path = file_io::safe_read_path(&src)?;
-
     let raw_stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
     let ext      = src_path.extension().and_then(|s| s.to_str()).unwrap_or("png");
+    let stem     = sanitise_stem(raw_stem);
+    let assets_dir = prepare_assets_dir(&dest_dir)?;
 
-    // Sanitise: replace whitespace and characters that break Markdown link syntax.
-    let stem: String = raw_stem.chars()
-        .map(|c| if c.is_whitespace() || matches!(c, '(' | ')' | '[' | ']' | '"' | '\'') { '_' } else { c })
-        .collect();
-
-    // Validate dest_dir: canonicalize and enforce home boundary.
-    let canonical_dest = std::fs::canonicalize(&dest_dir)
-        .map_err(|e| format!("Cannot access destination directory: {e}"))?;
-    file_io::check_in_home(&canonical_dest)?;
-
-    let assets_dir = canonical_dest.join("assets");
-    std::fs::create_dir_all(&assets_dir)
-        .map_err(|e| format!("Cannot create assets dir: {e}"))?;
-
+    // Use std::fs::copy to preserve file metadata (timestamps, permissions).
     let mut name = format!("{stem}.{ext}");
     let mut counter = 1u32;
     loop {
@@ -583,38 +634,12 @@ pub fn write_asset_bytes(data: String, filename: String, dest_dir: String) -> Re
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&data)
         .map_err(|e| format!("Base64 decode error: {e}"))?;
-
-    let canonical_dest = std::fs::canonicalize(&dest_dir)
-        .map_err(|e| format!("Cannot access destination directory: {e}"))?;
-    file_io::check_in_home(&canonical_dest)?;
-
-    let path = std::path::Path::new(&filename);
+    let path     = std::path::Path::new(&filename);
     let raw_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
     let ext      = path.extension().and_then(|s| s.to_str()).unwrap_or("png");
-
-    let stem: String = raw_stem.chars()
-        .map(|c| if c.is_whitespace() || matches!(c, '(' | ')' | '[' | ']' | '"' | '\'') { '_' } else { c })
-        .collect();
-
-    let assets_dir = canonical_dest.join("assets");
-    std::fs::create_dir_all(&assets_dir)
-        .map_err(|e| format!("Cannot create assets dir: {e}"))?;
-
-    let mut name = format!("{stem}.{ext}");
-    let mut counter = 1u32;
-    loop {
-        if counter > 10_000 {
-            return Err("Too many files with the same name in assets/".into());
-        }
-        let dest = assets_dir.join(&name);
-        if !dest.exists() {
-            std::fs::write(&dest, &bytes)
-                .map_err(|e| format!("Cannot write image: {e}"))?;
-            return Ok(name);
-        }
-        name = format!("{stem}-{counter}.{ext}");
-        counter += 1;
-    }
+    let stem     = sanitise_stem(raw_stem);
+    let assets_dir = prepare_assets_dir(&dest_dir)?;
+    write_bytes_to_assets(&bytes, &stem, ext, &assets_dir)
 }
 
 const DEFAULT_KEYBINDINGS: &str = "\
