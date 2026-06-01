@@ -70,6 +70,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.4.0" date="2026-06-01">
+      <description>
+        <p>PPTX import and export, display sleep prevention during presentations, and stability fixes.</p>
+      </description>
+    </release>
     <release version="0.3.3" date="2026-05-31">
       <description>
         <p>Theme system overhaul, PDF export, default theme setting, remote font loading, and stability fixes.</p>
