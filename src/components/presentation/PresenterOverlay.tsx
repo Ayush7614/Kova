@@ -123,17 +123,18 @@ export function PresenterOverlay({
     const handler = (e: KeyboardEvent) => {
       switch (e.key) {
         case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
-          e.preventDefault(); goNext(); break;
+          e.preventDefault(); e.stopPropagation(); goNext(); break;
         case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
-          e.preventDefault(); goPrev(); break;
+          e.preventDefault(); e.stopPropagation(); goPrev(); break;
         case 'l': case 'L':
+          e.preventDefault(); e.stopPropagation();
           setLaserActive((p) => !p); break;
         case 'Escape':
-          e.preventDefault(); onExit(); break;
+          e.preventDefault(); e.stopPropagation(); onExit(); break;
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, [goNext, goPrev, onExit]);
 
   if (!slide) return null;
