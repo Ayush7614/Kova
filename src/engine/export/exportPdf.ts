@@ -99,6 +99,58 @@ async function captureSlide(slideEl: HTMLElement, theme: Theme): Promise<string>
   return canvas.toDataURL('image/jpeg', JPEG_QUALITY);
 }
 
+export async function printPresentation(
+  slideElements: HTMLElement[],
+  theme: Theme,
+  aspectRatio: AspectRatio,
+): Promise<{ warnings: string[] }> {
+  const warnings: string[] = [];
+  const images: string[] = [];
+
+  for (let i = 0; i < slideElements.length; i++) {
+    try {
+      images.push(await captureSlide(slideElements[i], theme));
+    } catch (err) {
+      warnings.push(`Slide ${i + 1}: capture failed — ${String(err)}`);
+    }
+  }
+
+  if (images.length === 0) return { warnings };
+
+  const orientation = aspectRatio.w >= aspectRatio.h ? 'landscape' : 'portrait';
+  const html = [
+    '<!DOCTYPE html><html><head><style>',
+    '*{margin:0;padding:0;box-sizing:border-box}',
+    `@page{size:${orientation};margin:0}`,
+    'html,body{width:100%;height:100%;background:#000}',
+    '.page{page-break-after:always;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}',
+    '.page:last-child{page-break-after:avoid}',
+    'img{max-width:100%;max-height:100%;object-fit:contain;display:block}',
+    '</style></head><body>',
+    images.map((url) => `<div class="page"><img src="${url}"/></div>`).join(''),
+    '</body></html>',
+  ].join('');
+
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;top:-99999px;left:-99999px;width:1280px;height:720px;border:none;visibility:hidden';
+  document.body.appendChild(iframe);
+
+  await new Promise<void>((resolve) => {
+    const cleanup = () => { iframe.remove(); resolve(); };
+    const iwin = iframe.contentWindow!;
+    iwin.addEventListener('afterprint', cleanup, { once: true });
+    const fallback = setTimeout(cleanup, 120_000);
+    iwin.addEventListener('afterprint', () => clearTimeout(fallback), { once: true });
+    const idoc = iframe.contentDocument!;
+    idoc.open();
+    idoc.write(html);
+    idoc.close();
+    iwin.print();
+  });
+
+  return { warnings };
+}
+
 export async function exportToPdf(
   slideElements: HTMLElement[],
   theme: Theme,

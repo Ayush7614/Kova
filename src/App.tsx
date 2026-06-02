@@ -27,7 +27,7 @@ import { parseDocument } from './engine/parser/markdownToSlides';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
 import { fetchUpdate } from './engine/updater';
 import { exportToPptx } from './engine/export/exportPptx';
-import { exportToPdf } from './engine/export/exportPdf';
+import { exportToPdf, printPresentation } from './engine/export/exportPdf';
 import { SlideRenderer } from './components/preview/SlideRenderer';
 import { BUILT_IN_THEMES, DEFAULT_THEME, parseThemeYaml, sanitiseThemeOverrides } from './engine/theme';
 import { registerBundledFonts, registerCachedFont } from './engine/bundledFonts';
@@ -102,13 +102,14 @@ export default function App() {
   const [isRenaming, setIsRenaming]       = useState(false);
   const [renameValue, setRenameValue]     = useState('');
   const [resolvedUiTheme, setResolvedUiTheme] = useState<'dark' | 'light'>('dark');
-  const [exportMenuOpen, setExportMenuOpen]   = useState(false);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
-  const [saveAsMenuOpen, setSaveAsMenuOpen]   = useState(false);
-  const saveAsMenuRef = useRef<HTMLDivElement>(null);
+  const [fileMenuOpen, setFileMenuOpen]       = useState(false);
+  const fileMenuRef = useRef<HTMLDivElement>(null);
   const [pdfExportContext, setPdfExportContext] = useState<{ slides: Slide[]; savePath: string } | null>(null);
   const pdfSlideRefs   = useRef<Map<number, HTMLElement>>(new Map());
   const pdfExportResolveRef = useRef<(() => void) | null>(null);
+  const [printContext, setPrintContext] = useState<{ slides: Slide[] } | null>(null);
+  const printSlideRefs = useRef<Map<number, HTMLElement>>(new Map());
+  const printResolveRef = useRef<(() => void) | null>(null);
 
   // Theme state: active theme id + per-session overrides
   const [allThemes, setAllThemes]         = useState<Theme[]>(BUILT_IN_THEMES);
@@ -735,6 +736,15 @@ export default function App() {
     });
   }, [slides, filePath]);
 
+  const handlePrint = useCallback(async () => {
+    if (slides.length === 0) return;
+    printSlideRefs.current.clear();
+    await new Promise<void>(resolve => {
+      printResolveRef.current = resolve;
+      setPrintContext({ slides: [...slides] });
+    });
+  }, [slides]);
+
   const handleCopyWithAssets = useCallback(async () => {
     if (!filePath) return;
     const defaultPath = filePath.replace(/\.(md|markdown)$/i, '') + '-copy.md';
@@ -848,28 +858,17 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [presentMode, keybindings.combos, filePath, handleNewFile, handleOpenFile, handleSave, handleSaveAs, toggleFocusMode]);
 
-  // Close the export dropdown when the user clicks outside it.
+  // Close menus when the user clicks outside them.
   useEffect(() => {
-    if (!exportMenuOpen) return;
+    if (!fileMenuOpen) return;
     const onDown = (e: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
-        setExportMenuOpen(false);
+      if (fileMenuRef.current && !fileMenuRef.current.contains(e.target as Node)) {
+        setFileMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, [exportMenuOpen]);
-
-  useEffect(() => {
-    if (!saveAsMenuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (saveAsMenuRef.current && !saveAsMenuRef.current.contains(e.target as Node)) {
-        setSaveAsMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [saveAsMenuOpen]);
+  }, [fileMenuOpen]);
 
   // After off-screen slides mount and Mermaid has had time to render, capture
   // them as PNGs and compile the PDF.
@@ -898,6 +897,31 @@ export default function App() {
     }, 2000);
     return () => clearTimeout(tid);
   }, [pdfExportContext, aspectRatio]);
+
+  useEffect(() => {
+    if (!printContext) return;
+    const { slides: exportSlides } = printContext;
+    const tid = setTimeout(async () => {
+      try {
+        const elements = Array.from(
+          { length: exportSlides.length },
+          (_, i) => printSlideRefs.current.get(i),
+        ).filter((el): el is HTMLElement => Boolean(el));
+        const { warnings } = await printPresentation(elements, activeTheme, aspectRatio);
+        if (warnings.length > 0) {
+          window.alert(`Print complete with ${warnings.length} warning(s):\n\n${warnings.join('\n')}`);
+        }
+      } catch (err) {
+        console.error('Print failed:', err);
+      } finally {
+        setPrintContext(null);
+        printSlideRefs.current.clear();
+        printResolveRef.current?.();
+        printResolveRef.current = null;
+      }
+    }, 2000);
+    return () => clearTimeout(tid);
+  }, [printContext, aspectRatio]);
 
   return (
     <div className="app">
@@ -957,41 +981,44 @@ export default function App() {
             </button>
           </div>
         )}
-        <button className="btn" onClick={handleNewFile} title={`New (${formatCombo(getCombo(keybindings.combos, 'newFile'))})`}>New</button>
-        <button className="btn" onClick={handleOpenFile} title={`Open (${formatCombo(getCombo(keybindings.combos, 'openFile'))})`}>Open</button>
-        <button className="btn" onClick={() => guardDirty(() => setShowImport(true))} title="Import from PowerPoint (.pptx)">Import</button>
-        <button className="btn" onClick={handleSave} disabled={!filePath || !isDirty} title={`Save (${formatCombo(getCombo(keybindings.combos, 'save'))})`}>Save</button>
-        <div className="btn-group" ref={saveAsMenuRef}>
-          <button className="btn" disabled={!content} onClick={() => setSaveAsMenuOpen((o) => !o)}>
-            Save As ▾
+        <div className="btn-group" ref={fileMenuRef}>
+          <button className="btn" onClick={() => setFileMenuOpen((o) => !o)}>
+            File ▾
           </button>
-          {saveAsMenuOpen && (
+          {fileMenuOpen && (
             <div className="btn-group-menu">
-              <button className="btn-group-menu-item" onClick={() => { setSaveAsMenuOpen(false); handleSaveAs(); }}>
-                Save As…
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setFileMenuOpen(false); handleNewFile(); }}>
+                New <span>{formatCombo(getCombo(keybindings.combos, 'newFile'))}</span>
               </button>
-              <button className="btn-group-menu-item" disabled={!filePath} onClick={() => { setSaveAsMenuOpen(false); handleCopyWithAssets(); }}>
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setFileMenuOpen(false); handleOpenFile(); }}>
+                Open <span>{formatCombo(getCombo(keybindings.combos, 'openFile'))}</span>
+              </button>
+              <button className="btn-group-menu-item" onClick={() => { setFileMenuOpen(false); guardDirty(() => setShowImport(true)); }}>
+                Import from PowerPoint…
+              </button>
+              <div className="btn-group-menu-separator" />
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" disabled={!filePath || !isDirty} onClick={() => { setFileMenuOpen(false); handleSave(); }}>
+                Save <span>{formatCombo(getCombo(keybindings.combos, 'save'))}</span>
+              </button>
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" disabled={!content} onClick={() => { setFileMenuOpen(false); handleSaveAs(); }}>
+                Save As… <span>{formatCombo(getCombo(keybindings.combos, 'saveAs'))}</span>
+              </button>
+              <button className="btn-group-menu-item" disabled={!filePath} onClick={() => { setFileMenuOpen(false); handleCopyWithAssets(); }}>
                 Copy with Assets…
               </button>
-            </div>
-          )}
-        </div>
-        <div className="btn-group" ref={exportMenuRef}>
-          <button
-            className="btn"
-            disabled={slides.length === 0 || pdfExportContext !== null}
-            title="Export presentation"
-            onClick={() => setExportMenuOpen((o) => !o)}
-          >
-            {pdfExportContext ? 'Exporting PDF…' : 'Export ▾'}
-          </button>
-          {exportMenuOpen && (
-            <div className="btn-group-menu">
-              <button className="btn-group-menu-item" onClick={() => { setExportMenuOpen(false); handleExport(); }}>
-                PowerPoint (.pptx)
+              <div className="btn-group-menu-separator" />
+              <button className="btn-group-menu-item" disabled={slides.length === 0 || pdfExportContext !== null} onClick={() => { setFileMenuOpen(false); handleExport(); }}>
+                Export PowerPoint (.pptx)
               </button>
-              <button className="btn-group-menu-item" onClick={() => { setExportMenuOpen(false); handleExportPdf(); }}>
-                PDF (.pdf)
+              <button className="btn-group-menu-item" disabled={slides.length === 0 || pdfExportContext !== null} onClick={() => { setFileMenuOpen(false); handleExportPdf(); }}>
+                {pdfExportContext ? 'Exporting PDF…' : 'Export PDF (.pdf)'}
+              </button>
+              <button className="btn-group-menu-item" disabled={slides.length === 0 || pdfExportContext !== null || printContext !== null} onClick={() => { setFileMenuOpen(false); handlePrint(); }}>
+                {printContext ? 'Preparing Print…' : 'Print…'}
+              </button>
+              <div className="btn-group-menu-separator" />
+              <button className="btn-group-menu-item" onClick={() => { setFileMenuOpen(false); guardDirty(() => getCurrentWindow().close()); }}>
+                Exit
               </button>
             </div>
           )}
@@ -1043,20 +1070,12 @@ export default function App() {
         <button
           className="wm-btn"
           onClick={() => setShowSettings(true)}
-          title={availableUpdate ? `Settings (update ${availableUpdate} available)` : 'Settings'}
-          style={{ position: 'relative' }}
+          title="Settings"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
-          {availableUpdate && (
-            <span style={{
-              position: 'absolute', top: 3, right: 3,
-              width: 6, height: 6, borderRadius: '50%',
-              background: '#D94F00', pointerEvents: 'none',
-            }} />
-          )}
         </button>
         {!isMac && (
           <div className="wm-controls">
@@ -1160,6 +1179,7 @@ export default function App() {
         externalImageCount={externalImageCount}
         aspectRatioLabel={`${aspectRatio.w}:${aspectRatio.h}`}
         onAspectRatioCycle={handleAspectRatioCycle}
+        availableUpdate={availableUpdate}
       />
 
       {showSettings && (
@@ -1167,6 +1187,7 @@ export default function App() {
           settings={settings}
           availableUpdate={availableUpdate}
           allThemes={allThemes}
+          isDirty={isDirty}
           onChange={handleSettingsChange}
           onUpdateChecked={setAvailableUpdate}
           onClose={() => setShowSettings(false)}
@@ -1225,7 +1246,7 @@ export default function App() {
               Unsaved changes
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>
-              You have unsaved changes. Close anyway?
+              You have unsaved changes. Save before continuing?
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button className="btn" onClick={() => setConfirmCloseAction(null)}>Cancel</button>
@@ -1233,11 +1254,64 @@ export default function App() {
                 className="btn"
                 style={{ background: '#c0392b', borderColor: '#c0392b', color: '#fff' }}
                 onClick={() => { const a = confirmCloseAction; setConfirmCloseAction(null); a(); }}
-              >Close anyway</button>
+              >Discard</button>
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  const action = confirmCloseAction;
+                  setConfirmCloseAction(null);
+                  if (filePath) {
+                    await handleSave();
+                  } else {
+                    const saved = await handleSaveAs();
+                    if (!saved) return;
+                  }
+                  action?.();
+                }}
+              >Save</button>
             </div>
           </div>
         </>
       )}
+
+      {/* Off-screen slide rendering for Print */}
+      {printContext && (() => {
+        const SLIDE_W = 960;
+        const slideH = Math.round(SLIDE_W * aspectRatio.h / aspectRatio.w);
+        return (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'fixed',
+              top: -99999,
+              left: -99999,
+              width: SLIDE_W,
+              display: 'flex',
+              flexDirection: 'column',
+              pointerEvents: 'none',
+            }}
+          >
+            {printContext.slides.map((slide, i) => (
+              <div
+                key={i}
+                ref={(el) => {
+                  if (el) printSlideRefs.current.set(i, el);
+                  else printSlideRefs.current.delete(i);
+                }}
+                style={{ width: SLIDE_W, height: slideH, flexShrink: 0, overflow: 'hidden' }}
+              >
+                <SlideRenderer
+                  slide={slide}
+                  theme={activeTheme}
+                  slideNumber={i + 1}
+                  totalSlides={printContext.slides.length}
+                  docTitle={frontmatter.title ?? ''}
+                />
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Off-screen slide rendering for PDF export */}
       {pdfExportContext && (() => {
