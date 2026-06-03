@@ -85,6 +85,7 @@ sudo zypper refresh && sudo zypper install kova
 - **Auto layout** — title, section, split, two-column, grid, quote, full-bleed, and more, detected automatically from content
 - **Live preview** — editor and preview stay in sync as you type
 - **Syntax highlighting** — fenced code blocks rendered with highlight.js
+- **Math & LaTeX** — inline and block math via KaTeX (`$...$` and `$$...$$`)
 - **Mermaid diagrams** — pie, bar, line charts and flowcharts inline
 - **Themes** — 11 built-in themes, community themes via the theme library, and custom YAML themes
 - **Focus mode** — dims non-active slides, collapses side panels
