@@ -138,12 +138,13 @@ interface Props {
   availableUpdate: string | null;
   allThemes: Theme[];
   isDirty: boolean;
+  scrollToUpdates?: boolean;
   onChange: (s: AppSettings) => void;
   onUpdateChecked: (tag: string | null) => void;
   onClose: () => void;
 }
 
-export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, onChange, onUpdateChecked, onClose }: Props) {
+export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, scrollToUpdates, onChange, onUpdateChecked, onClose }: Props) {
   const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) =>
     onChange({ ...settings, [key]: value });
 
@@ -151,12 +152,20 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, o
     availableUpdate ? { phase: 'available', version: availableUpdate } : 'idle',
   );
   const pendingUpdate = useRef<AvailableUpdate | null>(null);
+  const updatesRef = useRef<HTMLDivElement>(null);
   const [selfUpdateSupported, setSelfUpdateSupported] = useState(true);
   useEffect(() => {
     canSelfUpdate().then((supported) => {
       setSelfUpdateSupported(supported);
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (scrollToUpdates) {
+      updatesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [scrollToUpdates]);
+
   const [showLicenses, setShowLicenses] = useState(false);
 
   const [customWordList, setCustomWordList] = useState<string[]>(() => getCustomWords());
@@ -602,6 +611,7 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, o
         )}
 
         {/* Updates */}
+        <div ref={updatesRef}>
         <Section label="Updates" />
 
         {selfUpdateSupported ? (
@@ -729,6 +739,7 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, o
             </div>
           )}
         </div>}
+        </div>
 
         {/* About */}
         <Section label="About" />

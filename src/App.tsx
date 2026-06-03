@@ -90,6 +90,7 @@ export default function App() {
   const [presentMode, setPresentMode]     = useState(false);
   const [settings, setSettings]           = useState<AppSettings>(loadSettings);
   const [showSettings, setShowSettings]   = useState(false);
+  const [settingsScrollToUpdates, setSettingsScrollToUpdates] = useState(false);
   const [showThemeLibrary, setShowThemeMarketplace] = useState(false);
   const [showImport, setShowImport]       = useState(false);
   const [showInspector, setShowInspector] = useState(true);
@@ -1180,6 +1181,7 @@ export default function App() {
         aspectRatioLabel={`${aspectRatio.w}:${aspectRatio.h}`}
         onAspectRatioCycle={handleAspectRatioCycle}
         availableUpdate={availableUpdate}
+        onVersionClick={availableUpdate ? () => { setShowSettings(true); setSettingsScrollToUpdates(true); } : undefined}
       />
 
       {showSettings && (
@@ -1188,9 +1190,10 @@ export default function App() {
           availableUpdate={availableUpdate}
           allThemes={allThemes}
           isDirty={isDirty}
+          scrollToUpdates={settingsScrollToUpdates}
           onChange={handleSettingsChange}
           onUpdateChecked={setAvailableUpdate}
-          onClose={() => setShowSettings(false)}
+          onClose={() => { setShowSettings(false); setSettingsScrollToUpdates(false); }}
         />
       )}
 

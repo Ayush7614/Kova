@@ -13,9 +13,10 @@ interface Props {
   aspectRatioLabel: string;
   onAspectRatioCycle: () => void;
   availableUpdate?: string | null;
+  onVersionClick?: () => void;
 }
 
-export function StatusBar({ currentSlide, totalSlides, wordCount, isDirty, filePath, externalImageCount, aspectRatioLabel, onAspectRatioCycle, availableUpdate }: Props) {
+export function StatusBar({ currentSlide, totalSlides, wordCount, isDirty, filePath, externalImageCount, aspectRatioLabel, onAspectRatioCycle, availableUpdate, onVersionClick }: Props) {
   const minutes = Math.ceil(wordCount / WPM);
   const timeStr = minutes < 2 ? `${minutes} min` : `${minutes} mins`;
   const nextAr = AR_CYCLE[(AR_CYCLE.indexOf(aspectRatioLabel) + 1) % AR_CYCLE.length];
@@ -81,12 +82,27 @@ export function StatusBar({ currentSlide, totalSlides, wordCount, isDirty, fileP
           <Divider />
         </>
       )}
-      <Cell
-        title={availableUpdate ? `Update ${availableUpdate} available` : undefined}
-        style={availableUpdate ? { display: 'flex', alignItems: 'center', gap: 4 } : undefined}
-      >
-        kova v{APP_VERSION}
-        {availableUpdate && (
+      {availableUpdate && onVersionClick ? (
+        <button
+          type="button"
+          onClick={onVersionClick}
+          title={`Update ${availableUpdate} available — click to update`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '0 10px',
+            height: '100%',
+            background: 'none',
+            border: 'none',
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            letterSpacing: '0.02em',
+          }}
+        >
+          kova v{APP_VERSION}
           <svg
             width="11" height="11" viewBox="0 0 24 24"
             fill="none" stroke="#D94F00" strokeWidth="2.4"
@@ -96,8 +112,10 @@ export function StatusBar({ currentSlide, totalSlides, wordCount, isDirty, fileP
             <line x1="12" y1="19" x2="12" y2="5"/>
             <polyline points="5 12 12 5 19 12"/>
           </svg>
-        )}
-      </Cell>
+        </button>
+      ) : (
+        <Cell>kova v{APP_VERSION}</Cell>
+      )}
     </div>
   );
 }
