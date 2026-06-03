@@ -976,6 +976,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
             },
           },
           { type: 'item', label: 'Link',            action: () => doInsert('[link text](url)', 1) },
+          { type: 'item', label: 'Math/LaTeX Block', action: () => doInsert('$$\nE = mc^2\n$$', 3) },
           { type: 'item', label: 'Speaker Notes',   action: () => doInsert('\n\n???\n\n', 7) },
         ],
       },
