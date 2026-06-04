@@ -105,6 +105,8 @@ export default function App() {
   const [resolvedUiTheme, setResolvedUiTheme] = useState<'dark' | 'light'>('dark');
   const [fileMenuOpen, setFileMenuOpen]       = useState(false);
   const fileMenuRef = useRef<HTMLDivElement>(null);
+  const [editMenuOpen, setEditMenuOpen]       = useState(false);
+  const editMenuRef = useRef<HTMLDivElement>(null);
   const [pdfExportContext, setPdfExportContext] = useState<{ slides: Slide[]; savePath: string } | null>(null);
   const pdfSlideRefs   = useRef<Map<number, HTMLElement>>(new Map());
   const pdfExportResolveRef = useRef<(() => void) | null>(null);
@@ -871,6 +873,17 @@ export default function App() {
     return () => document.removeEventListener('mousedown', onDown);
   }, [fileMenuOpen]);
 
+  useEffect(() => {
+    if (!editMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (editMenuRef.current && !editMenuRef.current.contains(e.target as Node)) {
+        setEditMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [editMenuOpen]);
+
   // After off-screen slides mount and Mermaid has had time to render, capture
   // them as PNGs and compile the PDF.
   useEffect(() => {
@@ -984,7 +997,7 @@ export default function App() {
         )}
         <div className="btn-group" ref={fileMenuRef}>
           <button className="btn" onClick={() => setFileMenuOpen((o) => !o)}>
-            File ▾
+            File
           </button>
           {fileMenuOpen && (
             <div className="btn-group-menu">
@@ -1020,6 +1033,35 @@ export default function App() {
               <div className="btn-group-menu-separator" />
               <button className="btn-group-menu-item" onClick={() => { setFileMenuOpen(false); guardDirty(() => getCurrentWindow().close()); }}>
                 Exit
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="btn-group" ref={editMenuRef}>
+          <button className="btn" onClick={() => setEditMenuOpen((o) => !o)}>
+            Edit
+          </button>
+          {editMenuOpen && (
+            <div className="btn-group-menu">
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setEditMenuOpen(false); editorRef.current?.undo(); }}>
+                Undo <span>{formatCombo('ctrl+z')}</span>
+              </button>
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setEditMenuOpen(false); editorRef.current?.redo(); }}>
+                Redo <span>{formatCombo(isMac ? 'meta+shift+z' : 'ctrl+y')}</span>
+              </button>
+              <div className="btn-group-menu-separator" />
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setEditMenuOpen(false); setTimeout(() => { editorRef.current?.focus(); document.execCommand('cut'); }, 0); }}>
+                Cut <span>{formatCombo('ctrl+x')}</span>
+              </button>
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setEditMenuOpen(false); setTimeout(() => { editorRef.current?.focus(); document.execCommand('copy'); }, 0); }}>
+                Copy <span>{formatCombo('ctrl+c')}</span>
+              </button>
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setEditMenuOpen(false); setTimeout(() => { editorRef.current?.focus(); document.execCommand('paste'); }, 0); }}>
+                Paste <span>{formatCombo('ctrl+v')}</span>
+              </button>
+              <div className="btn-group-menu-separator" />
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setEditMenuOpen(false); editorRef.current?.selectAll(); }}>
+                Select All <span>{formatCombo('ctrl+a')}</span>
               </button>
             </div>
           )}

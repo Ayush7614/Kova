@@ -2,7 +2,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
-import { indentWithTab } from '@codemirror/commands';
+import { indentWithTab, undo, redo, selectAll } from '@codemirror/commands';
 import { Compartment, EditorSelection, EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
@@ -465,6 +465,10 @@ export type FormatCmd =
 export interface EditorHandle {
   runFormat: (cmd: FormatCmd) => void;
   scrollToSlide: (index: number) => void;
+  undo: () => void;
+  redo: () => void;
+  selectAll: () => void;
+  focus: () => void;
 }
 
 interface ContextMenuState { x: number; y: number; hasSelection: boolean; clickPos: number | null }
@@ -527,6 +531,31 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
           break;
         }
       }
+    },
+
+    undo() {
+      const view = viewRef.current;
+      if (!view) return;
+      undo(view);
+      view.focus();
+    },
+
+    redo() {
+      const view = viewRef.current;
+      if (!view) return;
+      redo(view);
+      view.focus();
+    },
+
+    selectAll() {
+      const view = viewRef.current;
+      if (!view) return;
+      selectAll(view);
+      view.focus();
+    },
+
+    focus() {
+      viewRef.current?.focus();
     },
 
     scrollToSlide(index: number) {
