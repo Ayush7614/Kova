@@ -23,6 +23,39 @@ function parseSizeHint(title?: string): React.CSSProperties | null {
   return null;
 }
 
+// Returns true when a container's content overflows its visible height.
+// Re-checks on every render (catches content edits) and on container resize.
+function useOverflowDetect(ref: React.RefObject<HTMLElement | null>): boolean {
+  const [overflow, setOverflow] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (el) setOverflow(el.scrollHeight > el.clientHeight + 2);
+  });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setOverflow(el.scrollHeight > el.clientHeight + 2));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+
+  return overflow;
+}
+
+function OverflowPane({ className, elements }: { className: string; elements: SlideElement[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { isThumbnail } = useContext(SlideCtx);
+  const overflow = useOverflowDetect(ref);
+  return (
+    <div ref={ref} className={className}>
+      <Elements elements={elements} />
+      {overflow && !isThumbnail && <div className="sl-overflow-badge">content overflow</div>}
+    </div>
+  );
+}
+
 // Context passed to child components so they can adapt for thumbnail vs full rendering
 interface SlideCtxValue { isThumbnail: boolean; textColor: string; mermaidInit: string }
 const SlideCtx = createContext<SlideCtxValue>({ isThumbnail: false, textColor: '#1a1a1a', mermaidInit: '' });
@@ -326,11 +359,7 @@ function SplitLayout({ slide }: { slide: Slide }) {
   // Put the image on the right when it appears after text in the source.
   const imgOnRight = imgIdx > 0;
 
-  const textCol = (
-    <div className="sl-split__right">
-      <Elements elements={rest} />
-    </div>
-  );
+  const textCol = <OverflowPane className="sl-split__right" elements={rest} />;
   const imgCol = (
     <div className="sl-split__left">
       {img && img.type === 'image' && (
@@ -416,13 +445,9 @@ function TwoColumnLayout({ slide }: { slide: Slide }) {
     <div className="sl-two-col">
       {slide.title && <div className="sl-heading sl-two-col__title">{slide.title}</div>}
       <div className="sl-two-col__body">
-        <div className="sl-two-col__col">
-          <Elements elements={left} />
-        </div>
+        <OverflowPane className="sl-two-col__col" elements={left} />
         <div className="sl-two-col__divider" />
-        <div className="sl-two-col__col">
-          <Elements elements={right} />
-        </div>
+        <OverflowPane className="sl-two-col__col" elements={right} />
       </div>
     </div>
   );
@@ -459,20 +484,14 @@ function BspLayout({ slide }: { slide: Slide }) {
     <div className="sl-bsp">
       {slide.title && <div className="sl-heading sl-bsp__title">{slide.title}</div>}
       <div className="sl-bsp__body">
-        <div className="sl-bsp__pane">
-          <Elements elements={leftGroup} />
-        </div>
+        <OverflowPane className="sl-bsp__pane" elements={leftGroup} />
         <div className="sl-bsp__divider" />
         {rightGroups.length === 1 ? (
-          <div className="sl-bsp__pane">
-            <Elements elements={rightGroups[0]} />
-          </div>
+          <OverflowPane className="sl-bsp__pane" elements={rightGroups[0]} />
         ) : (
           <div className="sl-bsp__right">
             {rightGroups.map((g, i) => (
-              <div key={i} className="sl-bsp__subpane">
-                <Elements elements={g} />
-              </div>
+              <OverflowPane key={i} className="sl-bsp__subpane" elements={g} />
             ))}
           </div>
         )}

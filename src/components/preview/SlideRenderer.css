@@ -139,9 +139,13 @@
 .sl-list li { margin-bottom: 0.25em; }
 .sl-list--nested { margin-top: 0.15em; margin-bottom: 0; }
 
+/* Safety net: any img without an explicit class is constrained to its container.
+   :where() gives zero specificity so all class-based rules still win. */
+:where(.slide-frame) img { max-width: 100%; height: auto; }
+
 /* Image in body context — constrained by wrapper, user can override via title */
-.sl-img-wrap { display: flex; justify-content: center; overflow: hidden; max-height: 18cqi; max-width: 60%; }
-.sl-img-wrap--user { max-height: unset; max-width: unset; }
+.sl-img-wrap { display: flex; justify-content: center; overflow: hidden; max-height: 18cqi; max-width: 60%; align-self: center; }
+.sl-img-wrap--user { max-height: unset; max-width: unset; align-self: auto; }
 .sl-img { max-width: 100%; height: auto; object-fit: contain; display: block; }
 .sl-img-fill { width: 100%; height: 100%; object-fit: contain; display: block; }
 .sl-img-cover { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -278,7 +282,7 @@
 
 /* ── Title + Image ───────────────────────────────────────────────────────── */
 
-.sl-title-image { height: 100%; display: flex; }
+.sl-title-image { height: 100%; display: flex; overflow: hidden; }
 .sl-ti-text { flex: 1; display: flex; flex-direction: column; justify-content: center; }
 .sl-ti-img { flex: 1; overflow: hidden; background: color-mix(in srgb, var(--sl-text) 5%, var(--sl-bg)); }
 
@@ -288,7 +292,7 @@
 .sl-split__title { padding-bottom: 2%; }
 .sl-split__body { flex: 1; display: flex; overflow: hidden; padding: 2% 4% 4%; gap: 3%; }
 .sl-split__left { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-.sl-split__right { flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start; font-size: clamp(8px, 1.8cqi, 16px); line-height: 1.6; font-family: var(--sl-font-body); padding: 0 2% 0; min-width: 0; }
+.sl-split__right { flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start; font-size: clamp(8px, 2.5cqi, 24px); line-height: 1.6; font-family: var(--sl-font-body); padding: 0 2% 0; min-width: 0; position: relative; }
 
 /* ── Full-bleed image ────────────────────────────────────────────────────── */
 
@@ -332,7 +336,7 @@
 
 .sl-two-col { height: 100%; display: flex; flex-direction: column; }
 .sl-two-col__title { padding-bottom: 2%; }
-.sl-two-col__body { flex: 1; display: flex; padding: 2% 4% 4%; overflow: hidden; font-size: clamp(8px, 1.8cqi, 16px); line-height: 1.65; font-family: var(--sl-font-body); }
+.sl-two-col__body { flex: 1; display: flex; padding: 2% 4% 4%; overflow: hidden; font-size: clamp(8px, 2.5cqi, 24px); line-height: 1.65; font-family: var(--sl-font-body); }
 .sl-two-col__col { flex: 1; overflow: hidden; padding: 0 3%; position: relative; }
 .sl-two-col__col::after {
   content: '';
@@ -354,7 +358,7 @@
   min-height: 0;
   padding: 0 4% 4%;
   overflow: hidden;
-  font-size: clamp(8px, 1.8cqi, 16px);
+  font-size: clamp(8px, 2.5cqi, 24px);
   font-family: var(--sl-font-body);
   line-height: 1.6;
 }
@@ -540,6 +544,31 @@
 /* Scale KaTeX up significantly in the math layout */
 .sl-math-layout .sl-math { font-size: clamp(14px, 4.5cqi, 56px); width: 100%; }
 .sl-math-layout .sl-math .katex-display { overflow-x: auto; overflow-y: hidden; }
+
+/* Scale math up in split panes — the formula needs extra boost since cqi is
+   relative to the full slide width but the pane is only ~50% of that. */
+.sl-bsp__pane .sl-math,
+.sl-bsp__subpane .sl-math,
+.sl-two-col__col .sl-math { font-size: clamp(12px, 5cqi, 60px); }
+
+/* ── Overflow badge ──────────────────────────────────────────────────────── */
+
+.sl-overflow-badge {
+  position: absolute;
+  bottom: 2.5cqi;
+  right: 0.8cqi;
+  font-size: clamp(6px, 1.1cqi, 9px);
+  font-family: var(--sl-font-body);
+  background: color-mix(in srgb, var(--sl-accent) 12%, var(--sl-bg));
+  color: var(--sl-accent);
+  border: 1px solid color-mix(in srgb, var(--sl-accent) 30%, transparent);
+  border-radius: 2px;
+  padding: 0.2em 0.5em;
+  pointer-events: none;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  z-index: 2;
+}
 
 /* ── Code layout ─────────────────────────────────────────────────────────── */
 
