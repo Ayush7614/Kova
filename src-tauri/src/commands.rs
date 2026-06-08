@@ -28,7 +28,9 @@ pub fn set_wake_lock(active: bool) {
         let mut guard = CAFFEINATE.lock().unwrap();
         if active {
             if guard.is_none() {
-                if let Ok(child) = std::process::Command::new("caffeinate").arg("-d").spawn() {
+                // -d: prevent display sleep; -i: prevent idle sleep (also suppresses App Nap,
+                // which can throttle background WebViews after ~10 min of inactivity).
+                if let Ok(child) = std::process::Command::new("caffeinate").args(["-d", "-i"]).spawn() {
                     *guard = Some(child);
                 }
             }

@@ -393,6 +393,13 @@ export default function App() {
     if (isExitingRef.current) return;
     isExitingRef.current = true;
     await emit('present:exit', null).catch(() => {});
+    // Close the audience window directly — the present:exit event may not be
+    // processed promptly if macOS App Nap has throttled the window's WebView
+    // after extended idle time (typically 10+ minutes on an external display).
+    try {
+      const audienceWin = await WebviewWindow.getByLabel('audience');
+      if (audienceWin) await audienceWin.close().catch(() => {});
+    } catch { /* ignore */ }
     setPresentMode(false);
     setPresenterMode(false);
     await getCurrentWindow().setFullscreen(false).catch(() => {});
