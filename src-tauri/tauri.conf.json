@@ -23,9 +23,9 @@
     "security": {
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/**"]
+        "scope": ["**"]
       },
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: asset: tauri:; font-src 'self' data: asset:; connect-src 'self' ipc: http://ipc.localhost https://api.github.com https://raw.githubusercontent.com https://themes.kova.md; object-src 'none'; base-uri 'self'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: asset: tauri:; font-src 'self' data: asset: https:; connect-src 'self' ipc: http://ipc.localhost https://api.github.com https://raw.githubusercontent.com https://themes.kova.md; object-src 'none'; base-uri 'self'"
     }
   },
   "plugins": {
