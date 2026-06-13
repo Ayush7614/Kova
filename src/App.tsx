@@ -113,6 +113,8 @@ export default function App() {
   const [printContext, setPrintContext] = useState<{ slides: Slide[] } | null>(null);
   const printSlideRefs = useRef<Map<number, HTMLElement>>(new Map());
   const printResolveRef = useRef<(() => void) | null>(null);
+  const [fileDragOver, setFileDragOver]       = useState(false);
+  const [dropConfirmPath, setDropConfirmPath] = useState<string | null>(null);
 
   // Theme state: active theme id + per-session overrides
   const [allThemes, setAllThemes]         = useState<Theme[]>(BUILT_IN_THEMES);
@@ -620,6 +622,59 @@ export default function App() {
     await invoke('start_watching', { path }).catch(console.error);
   }, [allThemes]);
 
+  const handleMarkdownDrop = useCallback((path: string) => {
+    const doOpen = async () => {
+      try {
+        await invoke('stop_watching').catch(() => {});
+        const text: string = await invoke('read_file', { path });
+        await applyFileContent(text, path);
+      } catch (err) {
+        console.error('Drop open failed:', err);
+      }
+    };
+
+    if (!filePath && !isDirty) {
+      void doOpen();
+    } else if (isDirty) {
+      guardDirty(() => void doOpen());
+    } else {
+      setDropConfirmPath(path);
+    }
+  }, [filePath, isDirty, guardDirty, applyFileContent]);
+
+  // Listen for markdown file drops on the window (image drops are handled in EditorPanel)
+  useEffect(() => {
+    const MD_EXT = /\.(md|markdown)$/i;
+    let dragHasMd = false;
+
+    const unlisten = getCurrentWindow().onDragDropEvent((evt) => {
+      const p = evt.payload;
+
+      if (p.type === 'enter') {
+        dragHasMd = p.paths.some((f) => MD_EXT.test(f));
+        return;
+      }
+      if (p.type === 'over') {
+        if (dragHasMd) setFileDragOver(true);
+        return;
+      }
+      if (p.type === 'leave') {
+        setFileDragOver(false);
+        dragHasMd = false;
+        return;
+      }
+      if (p.type === 'drop') {
+        setFileDragOver(false);
+        dragHasMd = false;
+        const mdPath = p.paths.find((f) => MD_EXT.test(f));
+        if (!mdPath) return;
+        handleMarkdownDrop(mdPath);
+      }
+    });
+
+    return () => { unlisten.then((fn) => fn()); };
+  }, [handleMarkdownDrop]);
+
   const handleImportComplete = useCallback(async (markdown: string, savedPath: string) => {
     setShowImport(false);
     await invoke('stop_watching').catch(() => {});
@@ -946,6 +1001,16 @@ export default function App() {
 
   return (
     <div className="app">
+      {fileDragOver && !presentMode && !presenterMode && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 5000, pointerEvents: 'none',
+          border: '2px dashed #D94F00', borderRadius: 4,
+          background: 'rgba(217,79,0,0.06)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <span style={{ color: '#D94F00', fontSize: 14, fontWeight: 500 }}>Drop to open</span>
+        </div>
+      )}
       {presentMode && (
         <PresentationOverlay
           slides={slides}
@@ -1168,7 +1233,7 @@ export default function App() {
           defaultLayout={defaultLayout}
           onLayoutChanged={onLayoutChanged}
         >
-          <Panel id="thumb" panelRef={thumbPanelRef} defaultSize={14} minSize={8} collapsible>
+          <Panel id="thumb" panelRef={thumbPanelRef} defaultSize={22} minSize={8} collapsible>
             <ThumbnailPanel
               slides={slides}
               currentIndex={safeSlideIndex}
@@ -1182,7 +1247,7 @@ export default function App() {
 
           <PanelResizeHandle />
 
-          <Panel id="editor" defaultSize={72} minSize={20}>
+          <Panel id="editor" defaultSize={64} minSize={20}>
             <EditorPanel
               ref={editorRef}
               content={editorContent}
@@ -1321,6 +1386,43 @@ export default function App() {
                   action?.();
                 }}
               >Save</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {dropConfirmPath && (
+        <>
+          <div
+            onClick={() => setDropConfirmPath(null)}
+            style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }}
+          />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
+            boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
+            padding: '24px 28px', width: 340, maxWidth: '90vw',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+              Open file
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>
+              Opening <strong>{dropConfirmPath.split(/[\\/]/).pop()}</strong> will replace the current document.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn" onClick={() => setDropConfirmPath(null)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  const path = dropConfirmPath;
+                  setDropConfirmPath(null);
+                  try {
+                    await invoke('stop_watching').catch(() => {});
+                    const text: string = await invoke('read_file', { path });
+                    await applyFileContent(text, path);
+                  } catch (err) { console.error('Drop open failed:', err); }
+                }}
+              >Open</button>
             </div>
           </div>
         </>
