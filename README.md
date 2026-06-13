@@ -1,9 +1,3 @@
----
-title: Kova
-footer: kova.md
-theme: nord
----
-
 # Kova
 
 Kova turns plain Markdown into polished slides — with live preview, multiple layouts, theming, and PPTX export — all in a native desktop app.
