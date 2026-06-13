@@ -397,14 +397,28 @@ function titleAlignVars(align: ThemeLayout['title_align']): Record<string, strin
   }
 }
 
+/** Returns true when the hex color has a lightness above 0.55 (perceptually light). */
+export function isLightHex(hex: string): boolean {
+  if (!hex.startsWith('#') || hex.length < 6) return false;
+  try {
+    const [, , l] = hexToHsl(hex);
+    return l > 0.55;
+  } catch { return false; }
+}
+
 /** Returns an inline-style object that sets all --sl-* CSS custom properties. */
 export function themeToVars(theme: Theme): React.CSSProperties {
+  // Pick a legible foreground for code blocks based on code_bg luminance.
+  // All built-in themes have dark code_bg; custom themes may not.
+  const codeText = isLightHex(theme.colors.code_bg) ? '#1a1a1a' : '#F0F0F0';
+
   return {
     '--sl-bg':           theme.colors.background,
     '--sl-text':         theme.colors.text,
     '--sl-primary':      theme.colors.primary,
     '--sl-accent':       theme.colors.accent,
     '--sl-code-bg':      theme.colors.code_bg,
+    '--sl-code-text':    codeText,
     '--sl-title-text':   theme.colors.title_text,
     '--sl-section-bg':   theme.colors.section_bg,
     '--sl-font-title':   theme.fonts.title,

@@ -43,7 +43,8 @@ export function ThemeLibraryModal({ installedIds, onThemesChanged, onClose }: Pr
     try {
       const res = await fetch(REGISTRY_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error();
-      setThemes(await res.json());
+      const data: RemoteTheme[] = await res.json();
+      setThemes(data.sort((a, b) => a.name.localeCompare(b.name)));
       setStatus('ready');
     } catch {
       setStatus('error');

@@ -8,7 +8,7 @@ import QRCode from 'react-qr-code';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Slide, SlideElement, ListItem } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
-import { themeToVars, resolveTemplate, DEFAULT_THEME, hexToHsl, hslToHex, defaultChartPalette } from '../../engine/theme';
+import { themeToVars, resolveTemplate, DEFAULT_THEME, hexToHsl, hslToHex, defaultChartPalette, isLightHex } from '../../engine/theme';
 import './SlideRenderer.css';
 import { mermaidSvgCache } from '../../engine/export/mermaidSvgCache';
 
@@ -220,6 +220,7 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
       className={`slide-frame layout-${slide.layout}`}
       style={{ ...vars, ...(scale !== 1 ? { transform: `scale(${scale})`, transformOrigin: 'top left' } : {}) }}
       data-layout={slide.layout}
+      data-code-scheme={isLightHex(theme.colors.code_bg) ? 'light' : 'dark'}
     >
       {/* Header bar */}
       {theme.header.show && (

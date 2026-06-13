@@ -172,7 +172,7 @@
 
 .sl-code-inline {
   background: var(--sl-code-bg);
-  color: #e8e8e8;
+  color: var(--sl-code-text);
   border-radius: 4px;
   padding: 0.6em 0.8em;
   margin: 0.4em 0;
@@ -437,10 +437,57 @@
 
 /* ── highlight.js override — let the slide supply the background ─────────── */
 
-.slide-frame .hljs { background: transparent; }
+/* Background comes from --sl-code-bg; base text from --sl-code-text (computed
+   from code_bg luminance so it's always legible, light or dark). */
+.slide-frame .hljs { background: transparent; color: var(--sl-code-text); }
 /* hljs sets `pre code.hljs { overflow-x: auto }` at specificity 0,1,2 which
    forces a scrollbar and blocks wrapping. Counter-override at 0,2,2. */
 .slide-frame pre code.hljs { overflow-x: hidden; white-space: pre-wrap; overflow-wrap: break-word; padding: 0; text-indent: 0.75ch hanging; }
+
+/* ── hljs light-theme tokens (GitHub light palette) ─────────────────────────
+   Applied when a theme sets a light code_bg (data-code-scheme="light").
+   The default import is github-dark.css whose pale token colours (#a5d6ff,
+   #ff7b72 etc.) lose contrast on light backgrounds.                        */
+[data-code-scheme="light"] .hljs { color: #24292e; }
+[data-code-scheme="light"] .hljs-comment,
+[data-code-scheme="light"] .hljs-formula { color: #6a737d; }
+[data-code-scheme="light"] .hljs-doctag,
+[data-code-scheme="light"] .hljs-keyword,
+[data-code-scheme="light"] .hljs-meta .hljs-keyword,
+[data-code-scheme="light"] .hljs-template-tag,
+[data-code-scheme="light"] .hljs-template-variable,
+[data-code-scheme="light"] .hljs-type,
+[data-code-scheme="light"] .hljs-variable.language_ { color: #d73a49; }
+[data-code-scheme="light"] .hljs-title,
+[data-code-scheme="light"] .hljs-title.class_,
+[data-code-scheme="light"] .hljs-title.class_.inherited__,
+[data-code-scheme="light"] .hljs-title.function_ { color: #6f42c1; }
+[data-code-scheme="light"] .hljs-attr,
+[data-code-scheme="light"] .hljs-attribute,
+[data-code-scheme="light"] .hljs-literal,
+[data-code-scheme="light"] .hljs-meta,
+[data-code-scheme="light"] .hljs-number,
+[data-code-scheme="light"] .hljs-operator,
+[data-code-scheme="light"] .hljs-selector-attr,
+[data-code-scheme="light"] .hljs-selector-class,
+[data-code-scheme="light"] .hljs-selector-id,
+[data-code-scheme="light"] .hljs-variable { color: #005cc5; }
+[data-code-scheme="light"] .hljs-meta .hljs-string,
+[data-code-scheme="light"] .hljs-regexp,
+[data-code-scheme="light"] .hljs-string { color: #032f62; }
+[data-code-scheme="light"] .hljs-built_in,
+[data-code-scheme="light"] .hljs-symbol { color: #e36209; }
+[data-code-scheme="light"] .hljs-name,
+[data-code-scheme="light"] .hljs-quote,
+[data-code-scheme="light"] .hljs-selector-pseudo,
+[data-code-scheme="light"] .hljs-selector-tag { color: #22863a; }
+[data-code-scheme="light"] .hljs-subst { color: #24292e; }
+[data-code-scheme="light"] .hljs-section { color: #005cc5; font-weight: bold; }
+[data-code-scheme="light"] .hljs-bullet { color: #735c0f; }
+[data-code-scheme="light"] .hljs-emphasis { color: #24292e; font-style: italic; }
+[data-code-scheme="light"] .hljs-strong { color: #24292e; font-weight: bold; }
+[data-code-scheme="light"] .hljs-addition { color: #22863a; background-color: #f0fff4; }
+[data-code-scheme="light"] .hljs-deletion { color: #b31d28; background-color: #ffeef0; }
 
 /* ── Progress bar ────────────────────────────────────────────────────────── */
 
@@ -576,7 +623,7 @@
 .sl-code__title { color: var(--sl-text) !important; }
 .sl-code__block { flex: 1; padding: 2% 4% 4%; overflow: auto; display: flex; flex-direction: column; }
 .sl-code__block pre { margin: 0; flex: 1; overflow: hidden; white-space: pre-wrap; background: var(--sl-code-bg); border-radius: 6px; padding: 4%; }
-.sl-code__block code { font-family: var(--sl-font-code); font-size: clamp(8px, 1.8cqi, 16px); color: #e8e8e8; white-space: pre-wrap; overflow-wrap: break-word; display: block; }
+.sl-code__block code { font-family: var(--sl-font-code); font-size: clamp(8px, 1.8cqi, 16px); color: var(--sl-code-text); white-space: pre-wrap; overflow-wrap: break-word; display: block; }
 .sl-code__mermaid { background: var(--sl-code-bg); }
 .sl-code__lang { font-size: clamp(7px, 1.4cqi, 11px); color: var(--sl-accent); font-family: var(--sl-font-code); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5em; }
 
