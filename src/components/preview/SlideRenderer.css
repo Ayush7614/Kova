@@ -123,14 +123,6 @@
   font-family: var(--sl-font-body);
   position: relative;
 }
-.sl-body::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 2.5em;
-  background: linear-gradient(transparent, var(--sl-bg));
-  pointer-events: none;
-}
 
 .sl-para { margin: 0 0 0.5em; }
 .sl-para:last-child { margin-bottom: 0; }
@@ -338,14 +330,6 @@
 .sl-two-col__title { padding-bottom: 2%; }
 .sl-two-col__body { flex: 1; display: flex; padding: 2% 4% 4%; overflow: hidden; font-size: clamp(8px, 2.5cqi, 24px); line-height: 1.65; font-family: var(--sl-font-body); }
 .sl-two-col__col { flex: 1; overflow: hidden; padding: 0 3%; position: relative; }
-.sl-two-col__col::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 2em;
-  background: linear-gradient(transparent, var(--sl-bg));
-  pointer-events: none;
-}
 .sl-two-col__divider { width: 1px; background: color-mix(in srgb, var(--sl-text) 15%, transparent); align-self: stretch; flex-shrink: 0; }
 
 /* ── BSP auto-tiling ─────────────────────────────────────────────────────── */
@@ -371,15 +355,6 @@
   padding: 0 2%;
   min-width: 0;
   position: relative;
-}
-.sl-bsp__pane::after,
-.sl-bsp__subpane::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 2em;
-  background: linear-gradient(transparent, var(--sl-bg));
-  pointer-events: none;
 }
 .sl-bsp__divider {
   width: 1px;

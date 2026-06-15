@@ -1,4 +1,5 @@
 import PptxGenJS from 'pptxgenjs';
+import { invoke } from '@tauri-apps/api/core';
 import { mermaidSvgCache } from './mermaidSvgCache';
 import { svgToPngDataUrl } from './svgToPng';
 import mermaid from 'mermaid';
@@ -120,8 +121,25 @@ interface Area { x: number; y: number; w: number; h: number }
 
 export interface ExportResult { base64: string; warnings: string[] }
 
+function extToMime(ext: string): string {
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'gif')  return 'image/gif';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'svg')  return 'image/svg+xml';
+  return 'image/png';
+}
+
 async function assetUrlToDataUrl(src: string): Promise<string> {
   try {
+    // asset:// URLs are user files served via Tauri's asset protocol.
+    // fetch() on macOS WKWebView cannot reach asset:// because connect-src
+    // does not include asset:. Read the file natively instead.
+    if (src.startsWith('asset://')) {
+      const path = decodeURIComponent(src.replace(/^asset:\/\/[^/]*/, ''));
+      const ext  = path.split('.').pop()?.toLowerCase() ?? 'png';
+      const b64  = await invoke<string>('read_file_b64', { path });
+      return `data:${extToMime(ext)};base64,${b64}`;
+    }
     const res = await fetch(src);
     const blob = await res.blob();
     return await new Promise<string>((resolve, reject) => {

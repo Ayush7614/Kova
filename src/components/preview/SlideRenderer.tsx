@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
 import katex from 'katex';
@@ -23,35 +23,51 @@ function parseSizeHint(title?: string): React.CSSProperties | null {
   return null;
 }
 
-// Returns true when a container's content overflows its visible height.
-// Re-checks on every render (catches content edits) and on container resize.
-function useOverflowDetect(ref: React.RefObject<HTMLElement | null>): boolean {
-  const [overflow, setOverflow] = useState(false);
+// Scales content down to fit its container when it overflows.
+// Measures scrollHeight vs clientHeight after every render and on resize,
+// then applies a CSS transform to the inner wrapper — no visual flash because
+// the measurement and style update both happen inside useLayoutEffect (before paint).
+function OverflowPane({ className, elements }: { className: string; elements: SlideElement[] }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const { isThumbnail } = useContext(SlideCtx);
+  const fitScaleRef = useRef(1);
+  const [fitScale, setFitScale] = useState(1);
+
+  const remeasure = useCallback(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const contentH = inner.scrollHeight;
+    const availH = outer.clientHeight;
+    // transform: scale doesn't affect scrollHeight, so this measurement is always
+    // the true content height regardless of any current scale applied.
+    const s = contentH > availH + 2 && availH > 0
+      ? Math.max(0.4, availH / contentH)
+      : 1;
+    inner.style.transform = s < 1 ? `scale(${s})` : '';
+    if (Math.abs(s - fitScaleRef.current) > 0.005) {
+      fitScaleRef.current = s;
+      setFitScale(s);
+    }
+  }, []);
+
+  useLayoutEffect(() => { remeasure(); });
 
   useEffect(() => {
-    const el = ref.current;
-    if (el) setOverflow(el.scrollHeight > el.clientHeight + 2);
-  });
-
-  useEffect(() => {
-    const el = ref.current;
+    const el = outerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setOverflow(el.scrollHeight > el.clientHeight + 2));
+    const ro = new ResizeObserver(remeasure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ref]);
+  }, [remeasure]);
 
-  return overflow;
-}
-
-function OverflowPane({ className, elements }: { className: string; elements: SlideElement[] }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const { isThumbnail } = useContext(SlideCtx);
-  const overflow = useOverflowDetect(ref);
   return (
-    <div ref={ref} className={className}>
-      <Elements elements={elements} />
-      {overflow && !isThumbnail && <div className="sl-overflow-badge">content overflow</div>}
+    <div ref={outerRef} className={className}>
+      <div ref={innerRef} style={{ transformOrigin: 'top left' }}>
+        <Elements elements={elements} />
+      </div>
+      {fitScale < 0.99 && !isThumbnail && <div className="sl-overflow-badge">rescaled to fit</div>}
     </div>
   );
 }
@@ -330,9 +346,7 @@ function TitleContentLayout({ slide }: { slide: Slide }) {
   return (
     <div className="sl-title-content">
       {slide.title && <div className="sl-heading">{slide.title}</div>}
-      <div className="sl-body">
-        <Elements elements={slide.elements} />
-      </div>
+      <OverflowPane className="sl-body" elements={slide.elements} />
     </div>
   );
 }

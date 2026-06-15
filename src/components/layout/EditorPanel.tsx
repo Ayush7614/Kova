@@ -746,14 +746,68 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
     return () => { unlisten.then((fn) => fn()); };
   }, []);
 
-  // Handle clipboard image paste via Ctrl/Cmd+V.
-  // We intercept keydown (not paste) so we can call the native GTK clipboard command
-  // asynchronously before deciding whether to preventDefault — WebKitGTK does not
-  // expose binary image data through e.clipboardData.items for system clipboard images.
+  // Handle clipboard image paste.
+  // macOS (WKWebView): intercept the native 'paste' event. e.clipboardData.items
+  //   exposes image blobs directly without a permission prompt because the paste
+  //   event itself is the user's consent. If there's no image, fall through so
+  //   CodeMirror's own paste handler processes text — no permission dialog needed.
+  // Linux/Windows: intercept keydown instead, because WebKitGTK does not expose
+  //   binary image data through e.clipboardData, so we must read it via the native
+  //   GTK clipboard command before deciding whether to preventDefault.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
+    if (isMac) {
+      const handler = (e: ClipboardEvent) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        const imageItem = Array.from(items).find((item) => item.type.startsWith('image/'));
+        if (!imageItem) return; // no image — let CodeMirror handle text paste natively
+        e.preventDefault();
+        const blob = imageItem.getAsFile();
+        if (!blob) return;
+        const view = viewRef.current;
+        if (!view) return;
+        void (async () => {
+          const docPath = filePathRef.current ?? null;
+          if (!docPath) {
+            onWarnRef.current?.('Save your document first before pasting images.');
+            return;
+          }
+          const docDir = docPath.substring(
+            0,
+            Math.max(docPath.lastIndexOf('/'), docPath.lastIndexOf('\\'))
+          );
+          const arrayBuffer = await blob.arrayBuffer();
+          const pasteExt = blob.type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png';
+          const imageBase64 = btoa(
+            Array.from(new Uint8Array(arrayBuffer)).map((b) => String.fromCharCode(b)).join('')
+          );
+          try {
+            const savedFilename = await invoke<string>('write_asset_bytes', {
+              data: imageBase64,
+              filename: `paste-${Date.now()}.${pasteExt}`,
+              destDir: docDir,
+            });
+            const snippet = `![](assets/${encodeMarkdownPath(savedFilename)})`;
+            const { from, to } = view.state.selection.main;
+            view.dispatch({
+              changes: { from, to, insert: snippet },
+              selection: EditorSelection.cursor(from + snippet.length),
+            });
+            view.focus();
+          } catch (err) {
+            console.error('[Kova] paste image failed:', err);
+            onWarnRef.current?.('Could not paste image.');
+          }
+        })();
+      };
+      el.addEventListener('paste', handler, { capture: true });
+      return () => el.removeEventListener('paste', handler, { capture: true });
+    }
+
+    // Linux / Windows: keydown interception.
     const handler = (e: KeyboardEvent) => {
       if (!((e.ctrlKey || e.metaKey) && e.key === 'v')) return;
 
@@ -764,7 +818,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
         let imageBase64: string | null = null;
         let pasteExt = 'png';
 
-        // Step 1: GTK native clipboard (Linux — WebKitGTK doesn't expose binary
+        // GTK native clipboard (Linux — WebKitGTK doesn't expose binary
         // image data through e.clipboardData, so we read it natively).
         try {
           imageBase64 = await invoke<string>('read_clipboard_image');
@@ -773,9 +827,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
           // Not Linux, or clipboard has no image.
         }
 
-        // Step 2: Web Clipboard API (macOS WebKit, Windows WebView2).
-        // navigator.clipboard.read() accesses the system clipboard directly and
-        // correctly exposes image blobs on both platforms.
+        // Web Clipboard API (Windows WebView2).
         if (imageBase64 === null) {
           try {
             const clipboardItems = await navigator.clipboard.read();
