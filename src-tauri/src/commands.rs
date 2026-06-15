@@ -923,13 +923,19 @@ pub async fn list_system_fonts() -> Vec<String> {
 #[tauri::command]
 pub async fn fetch_url_b64(url: String) -> Result<(String, String), String> {
     use base64::Engine;
-    let resp = reqwest::get(&url)
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("client error: {e}"))?;
+    let resp = client
+        .get(&url)
+        .send()
         .await
         .map_err(|e| format!("fetch failed: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("fetch failed: HTTP {}", resp.status()));
     }
-    let mime = resp
+    let raw_mime = resp
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
@@ -938,7 +944,12 @@ pub async fn fetch_url_b64(url: String) -> Result<(String, String), String> {
         .next()
         .unwrap_or("image/png")
         .trim()
-        .to_string();
+        .to_lowercase();
+    // Normalise non-standard JPEG variants so browsers accept the data URL.
+    let mime = match raw_mime.as_str() {
+        "image/jpg" | "image/pjpeg" | "image/x-jpeg" => "image/jpeg".to_string(),
+        other => other.to_string(),
+    };
     let bytes = resp.bytes().await.map_err(|e| format!("read failed: {e}"))?;
     Ok((base64::engine::general_purpose::STANDARD.encode(&bytes), mime))
 }

@@ -1165,15 +1165,11 @@ function tryAddImage(s: PS, src: string, area: Area, warnings: string[], aspectR
     }
     return;
   }
-  if (src.startsWith('http://') || src.startsWith('https://')) {
-    try {
-      s.addImage({ path: src, x: placed.x, y: placed.y, w: placed.w, h: placed.h });
-    } catch {
-      warnings.push(`Image could not be fetched and was skipped: ${src}`);
-    }
-    return;
-  }
-  warnings.push(`Image skipped (unsupported source): ${src.slice(0, 80)}`);
+  // Do NOT pass http/https URLs to PptxGenJS — it would attempt its own XHR fetch
+  // during write(), which is blocked by CSP on macOS WKWebView and throws, killing
+  // the entire export. All remote images should have been pre-resolved to data: URLs
+  // by resolveSlideImages; reaching here means the fetch failed, so skip gracefully.
+  warnings.push(`Image skipped (could not be fetched): ${src.slice(0, 80)}`);
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

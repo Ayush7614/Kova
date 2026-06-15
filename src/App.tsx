@@ -780,7 +780,10 @@ export default function App() {
       if (warnings.length > 0) {
         window.alert(`Export complete with ${warnings.length} warning(s):\n\n${warnings.join('\n')}`);
       }
-    } catch (err) { console.error('Export failed:', err); }
+    } catch (err) {
+      console.error('Export failed:', err);
+      window.alert(`PPTX export failed: ${String(err)}`);
+    }
   }, [slides, frontmatter, activeTheme, filePath]);
 
   const handleExportPdf = useCallback(async () => {
