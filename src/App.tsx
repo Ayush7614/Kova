@@ -1242,6 +1242,7 @@ export default function App() {
           docTitle={frontmatter.title}
           aspectRatio={aspectRatio}
           laserColor={settings.laserColor}
+          showTimer={settings.presenterShowTimer}
           onNavigate={setPresentIndex}
           onExit={handlePresentExit}
         />

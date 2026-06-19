@@ -11,8 +11,17 @@ interface Props {
   docTitle?: string;
   aspectRatio?: AspectRatio;
   laserColor?: string;
+  showTimer?: boolean;
   onNavigate: (index: number) => void;
   onExit: () => void;
+}
+
+function formatTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 const HUD_H   = 40;   // px — HUD bar height
@@ -20,7 +29,7 @@ const NOTE_H  = 160;  // px — speaker notes panel height
 const SLIDE_W = 960;  // virtual slide width (matches ThumbnailPanel)
 
 export function PresentationOverlay({
-  slides, currentIndex, theme, docTitle, aspectRatio = { w: 16, h: 9 }, laserColor = '#ff2020', onNavigate, onExit,
+  slides, currentIndex, theme, docTitle, aspectRatio = { w: 16, h: 9 }, laserColor = '#ff2020', showTimer = false, onNavigate, onExit,
 }: Props) {
   const slide = slides[currentIndex];
   const total = slides.length;
@@ -34,6 +43,8 @@ export function PresentationOverlay({
     const frameW = Math.min(window.innerWidth, (window.innerHeight - HUD_H) * aspectRatio.w / aspectRatio.h);
     return frameW / SLIDE_W;
   });
+  const [elapsed, setElapsed] = useState(0);
+  const startTime = useRef(Date.now());
   const idleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const overlayRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -54,6 +65,15 @@ export function PresentationOverlay({
     obs.observe(frameRef.current);
     return () => obs.disconnect();
   }, []);
+
+  // Timer
+  useEffect(() => {
+    if (!showTimer) return;
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime.current) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [showTimer]);
 
   // ── Navigation helpers ─────────────────────────────────────────────────────
 
@@ -212,6 +232,10 @@ export function PresentationOverlay({
           disabled={currentIndex === total - 1}
           title="Next (→ / Space)"
         >›</button>
+
+        {showTimer && (
+          <span className="pres-hud__timer" title="Elapsed time">{formatTime(elapsed)}</span>
+        )}
 
         {hasNotes && (
           <button
