@@ -5,80 +5,21 @@ Kova turns plain Markdown into polished slides — with live preview, multiple l
 [![Latest release](https://img.shields.io/github/v/release/KovaMD/Kova?label=release&color=orange)](https://github.com/KovaMD/Kova/releases/latest)
 [![Service status](https://status.kova.md/api/badge/1/status?style=flat&label=services)](https://status.kova.md/status/infra)
 
----
+## Features
 
-## Write. Present.
-
----
-
-## Everything you need
-
-- Auto-detected layouts: title, section, two-column, split, code, math, grid, and more
-- Live preview as you type
-- Syntax highlighting via highlight.js
-- Math via KaTeX — `$E = mc^2$` and `$$...$$` blocks
-
-|||
-
-- Mermaid diagrams — pie, bar, line, flowchart
-- 11 built-in themes, community library, custom YAML
-- Fullscreen presentation mode with speaker notes
-- PPTX export (16:9 and 4:3)
-
----
-
-## Syntax highlighting
-
-```typescript
-// Separate slides with ---. Kova auto-detects the layout.
-function makeSlides(markdown: string): Slide[] {
-  return markdown
-    .split(/^---$/m)
-    .map(parseSlide)
-    .filter(Boolean)
-}
-```
-
----
-
-$$
-E = mc^2 \qquad \frac{d}{dx}\!\left(e^x\right) = e^x \qquad \int_0^\infty e^{-x}\,dx = 1
-$$
-
----
-
-```mermaid
-pie title Slide layouts in a typical deck
-  "title-content" : 35
-  "two-column" : 20
-  "section" : 15
-  "code" : 15
-  "split / BSP / grid" : 15
-```
-
----
-
-## The Kova workflow
-
-Open any Markdown file. Separate slides with `---` and Kova detects the layout automatically.
-
-```markdown
-## Quarterly Review
-
-Revenue grew **32%** YoY.
-
-- Customer count: 1,240
-- NPS score: 72
-- Churn rate: 2.1%
-```
-
-A live preview updates in real time as you type.
-
----
-
-> Plain text in. Polished slides out.
-
----
+- **Markdown-first** — write slides in plain text, separated by `---`
+- **Auto layout** — title, section, split, two-column, grid, quote, full-bleed, and more
+- **Live preview** — editor and preview stay in sync as you type
+- **Syntax highlighting** — fenced code blocks rendered with highlight.js
+- **Math & LaTeX** — inline and block math via KaTeX (`$...$` and `$$...$$`)
+- **Mermaid diagrams** — pie, bar, line charts and flowcharts inline
+- **Themes** — 11 built-in themes, community themes, and custom YAML
+- **Focus mode** — dims non-active slides, collapses side panels
+- **Fullscreen presentation** — speaker notes, slide counter, keyboard and click navigation
+- **PPTX export** — export to PowerPoint (16:9 and 4:3)
+- **YouTube & poll embeds** — `!youtube[label](url)` and `!poll[label](url)`
+- **File watcher** — reloads automatically when the file is edited externally
+- **Keybindings** — configurable via `~/.kova/keybindings.yaml`
 
 ## Download
 
@@ -88,8 +29,6 @@ A live preview updates in real time as you type.
 | **Windows 10/11** | [**Download .msi**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows.msi) · [Setup .exe](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows_setup.exe) |
 | **Linux (Debian/Ubuntu)** | [**.deb package**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.deb) · [or via package manager](#linux-package-managers) |
 | **Linux (Fedora/RHEL/openSUSE)** | [**.rpm package**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.rpm) · [or via package manager](#linux-package-managers) |
-
----
 
 ## Linux package managers
 
@@ -105,8 +44,6 @@ sudo apt update && sudo apt install kova
 
 Debian 13+ — use the [DEB822 source format](https://wiki.kova.md/install/linux/).
 
-|||
-
 **Fedora / RHEL / openSUSE**
 
 ```bash
@@ -116,31 +53,7 @@ sudo curl -o /etc/yum.repos.d/kova.repo \
 sudo dnf install kova   # openSUSE: zypper install kova
 ```
 
----
-
-## Features
-
-- **Markdown-first** — write slides in plain text, separated by `---`
-- **Auto layout** — title, section, split, two-column, grid, quote, full-bleed, and more
-- **Live preview** — editor and preview stay in sync as you type
-- **Syntax highlighting** — fenced code blocks rendered with highlight.js
-- **Math & LaTeX** — inline and block math via KaTeX (`$...$` and `$$...$$`)
-- **Mermaid diagrams** — pie, bar, line charts and flowcharts inline
-- **Themes** — 11 built-in themes, community themes, and custom YAML
-
-|||
-
-- **Focus mode** — dims non-active slides, collapses side panels
-- **Fullscreen presentation** — speaker notes, slide counter, keyboard and click navigation
-- **PPTX export** — export to PowerPoint (16:9 and 4:3)
-- **YouTube & poll embeds** — `!youtube[label](url)` and `!poll[label](url)`
-- **File watcher** — reloads automatically when the file is edited externally
-- **Keybindings** — configurable via `~/.kova/keybindings.yaml`
-
----
-
 ## Building from source
-<!-- layout: title-content -->
 
 **Prerequisites:** [Node.js](https://nodejs.org/) 18+, [Rust](https://rustup.rs/) (stable), and [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your platform.
 
@@ -154,8 +67,6 @@ npm run tauri build    # release binary
 
 See the [Contributing guide](https://wiki.kova.md/contributing/) for more details.
 
----
-
 ## Keybindings
 
 To customise, edit your keybindings file (created automatically on first launch), or open it from **Settings → Keyboard Shortcuts → Open file**.
@@ -168,15 +79,11 @@ To customise, edit your keybindings file (created automatically on first launch)
 
 Custom themes follow the same base path, under a `themes/` subfolder. Full reference on the [Keyboard Shortcuts](https://wiki.kova.md/keyboard-shortcuts/) wiki page.
 
----
-
 ## Themes
 
 **Theme library** — open the Inspector, expand **Theme**, and click **More Themes…** to browse and install community themes from the [KovaMD/Themes](https://github.com/KovaMD/Themes) repository. Each download is verified against a SHA-256 checksum. Installed themes appear in the picker immediately.
 
 **Custom themes** — place YAML theme files in the `themes/` subfolder of your config directory (see Keybindings above for platform paths). They appear in the Inspector alongside built-in themes. See the [Themes](https://wiki.kova.md/themes/) wiki page for the full YAML format.
-
----
 
 ## License
 
@@ -185,7 +92,3 @@ Kova is free and open source software, released under the **GNU General Public L
 You are free to use, study, modify, and distribute this software under the terms of the GPL v3. Any modified versions distributed to others must also be made available under the GPL v3.
 
 See [LICENSE](LICENSE) for the full license text.
-
----
-
-© 2026 Kova contributors
