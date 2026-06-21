@@ -107,7 +107,10 @@ jobs:
             |---|---|---|
             | **macOS** (Apple Silicon + Intel) | `.dmg` | Double-click to install — app is signed and notarised |
             | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Click **More info → Run anyway** if SmartScreen appears (app is unsigned) |
-            | **Linux** | `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/RHEL/openSUSE) | Install via your package manager |
+            | **Linux (Debian/Ubuntu)** | `.deb` | `sudo apt install ./Kova_Linux.deb` |
+            | **Linux (Fedora/RHEL/openSUSE)** | `.rpm` | `sudo dnf install ./Kova_Linux.rpm` |
+            | **Linux (Arch)** | AUR: `kova-bin` | `yay -S kova-bin` |
+            | **Linux (universal)** | `.AppImage` | `chmod +x Kova_Linux.AppImage && ./Kova_Linux.AppImage` |
 
             > **Alpha release** — expect rough edges. Please report bugs via [Issues](../../issues).
           releaseDraft: true    # appears as a draft; publish manually after reviewing the assets
@@ -160,6 +163,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Create a plain tar.gz with the binary + desktop entry + icons for AUR and
+      # direct installs that don't want a package manager bundle.
+      - name: Package Linux tar.gz
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          OUTNAME="Kova_${VERSION}_x86_64.tar.gz"
+          mkdir -p /tmp/kova/icons
+          cp src-tauri/target/release/kova   /tmp/kova/
+          cp src-tauri/kova.desktop          /tmp/kova/
+          cp src-tauri/icons/32x32.png       /tmp/kova/icons/
+          cp src-tauri/icons/64x64.png       /tmp/kova/icons/
+          cp src-tauri/icons/128x128.png     /tmp/kova/icons/
+          cp src-tauri/icons/128x128@2x.png  /tmp/kova/icons/
+          cp LICENSE                         /tmp/kova/
+          tar -czf "$OUTNAME" -C /tmp kova
+          gh release upload "${{ github.ref_name }}" "$OUTNAME" --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # Runs after all platform builds. Adds stable-named (version-free) download
   # aliases so README links never need updating, then removes .sig files to
   # keep the release page clean for non-technical users.
@@ -180,7 +203,7 @@ jobs:
 
           gh release download "$TAG" -R KovaMD/Kova \
             -p "*.dmg" -p "*_en-US.msi" -p "*-setup.exe" \
-            -p "*.deb" -p "*.rpm" \
+            -p "*.deb" -p "*.rpm" -p "*.AppImage" -p "*_x86_64.tar.gz" \
             -D /tmp/assets --clobber
 
           cp "/tmp/assets/Kova_${VERSION}_universal.dmg"        "/tmp/assets/Kova_macOS.dmg"
@@ -188,6 +211,8 @@ jobs:
           cp "/tmp/assets/Kova_${VERSION}_x64-setup.exe"        "/tmp/assets/Kova_Windows_setup.exe"
           cp "/tmp/assets/Kova_${VERSION}_amd64.deb"            "/tmp/assets/Kova_Linux.deb"
           cp "/tmp/assets/Kova-${VERSION}-1.x86_64.rpm"         "/tmp/assets/Kova_Linux.rpm"
+          cp "/tmp/assets/Kova_${VERSION}_amd64.AppImage"       "/tmp/assets/Kova_Linux.AppImage"
+          cp "/tmp/assets/Kova_${VERSION}_x86_64.tar.gz"        "/tmp/assets/Kova_Linux.tar.gz"
 
           gh release upload "$TAG" -R KovaMD/Kova \
             /tmp/assets/Kova_macOS.dmg \
@@ -195,6 +220,8 @@ jobs:
             /tmp/assets/Kova_Windows_setup.exe \
             /tmp/assets/Kova_Linux.deb \
             /tmp/assets/Kova_Linux.rpm \
+            /tmp/assets/Kova_Linux.AppImage \
+            /tmp/assets/Kova_Linux.tar.gz \
             --clobber
 
           # Remove .sig files — signatures are embedded in latest.json
