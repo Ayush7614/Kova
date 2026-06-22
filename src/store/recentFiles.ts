@@ -22,6 +22,12 @@ export function addRecentFile(path: string): string[] {
   return next;
 }
 
+export function removeRecentFile(path: string): string[] {
+  const next = loadRecentFiles().filter((p) => p !== path);
+  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  return next;
+}
+
 export function clearRecentFiles(): void {
   try { localStorage.removeItem(KEY); } catch { /* ignore */ }
 }

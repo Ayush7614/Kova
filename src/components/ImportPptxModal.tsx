@@ -25,6 +25,7 @@ const WILL_IMPORT: string[] = [
   'Text — titles, body, bullet lists',
   'Images (extracted and saved locally)',
   'Tables',
+  'Speaker notes',
 ];
 
 const WONT_IMPORT: string[] = [
@@ -32,7 +33,6 @@ const WONT_IMPORT: string[] = [
   'Animations and transitions',
   'SmartArt diagrams',
   'Charts and graphs',
-  'Speaker notes',
   'Slide backgrounds and decorative shapes',
 ];
 

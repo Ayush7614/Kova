@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Theme } from '../../engine/theme';
 import { defaultChartPalette } from '../../engine/theme';
 import type { Frontmatter } from '../../engine/types';
@@ -33,10 +33,12 @@ export function InspectorPanel({
   const [localTitle,  setLocalTitle]  = useState(frontmatter.title  ?? '');
   const [localAuthor, setLocalAuthor] = useState(frontmatter.author ?? '');
   const [localDate,   setLocalDate]   = useState(frontmatter.date   != null ? String(frontmatter.date) : '');
+  const focusedFieldRef = useRef<'title' | 'author' | 'date' | null>(null);
 
-  useEffect(() => { setLocalTitle(frontmatter.title ?? ''); },  [frontmatter.title]);
-  useEffect(() => { setLocalAuthor(frontmatter.author ?? ''); }, [frontmatter.author]);
-  useEffect(() => { setLocalDate(frontmatter.date != null ? String(frontmatter.date) : ''); }, [frontmatter.date]);
+  // Guard against overwriting a field the user is actively editing.
+  useEffect(() => { if (focusedFieldRef.current !== 'title')  setLocalTitle(frontmatter.title ?? ''); },  [frontmatter.title]);
+  useEffect(() => { if (focusedFieldRef.current !== 'author') setLocalAuthor(frontmatter.author ?? ''); }, [frontmatter.author]);
+  useEffect(() => { if (focusedFieldRef.current !== 'date')   setLocalDate(frontmatter.date != null ? String(frontmatter.date) : ''); }, [frontmatter.date]);
 
   const toggle = (s: Section) =>
     setOpen((prev) => {
@@ -75,21 +77,24 @@ export function InspectorPanel({
             value={localTitle}
             placeholder="Untitled"
             onChange={setLocalTitle}
-            onBlur={() => onMetaChange('title', localTitle)}
+            onFocus={() => { focusedFieldRef.current = 'title'; }}
+            onBlur={() => { focusedFieldRef.current = null; onMetaChange('title', localTitle); }}
           />
           <EditableRow
             label="Author"
             value={localAuthor}
             placeholder="Author"
             onChange={setLocalAuthor}
-            onBlur={() => onMetaChange('author', localAuthor)}
+            onFocus={() => { focusedFieldRef.current = 'author'; }}
+            onBlur={() => { focusedFieldRef.current = null; onMetaChange('author', localAuthor); }}
           />
           <EditableRow
             label="Date"
             value={localDate}
             placeholder="Date"
             onChange={setLocalDate}
-            onBlur={() => onMetaChange('date', localDate)}
+            onFocus={() => { focusedFieldRef.current = 'date'; }}
+            onBlur={() => { focusedFieldRef.current = null; onMetaChange('date', localDate); }}
           />
         </InfoSection>
 
@@ -212,11 +217,12 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EditableRow({ label, value, placeholder, onChange, onBlur }: {
+function EditableRow({ label, value, placeholder, onChange, onFocus, onBlur }: {
   label: string;
   value: string;
   placeholder: string;
   onChange: (v: string) => void;
+  onFocus?: () => void;
   onBlur: () => void;
 }) {
   return (
@@ -227,7 +233,8 @@ function EditableRow({ label, value, placeholder, onChange, onBlur }: {
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
+        onFocus={(e) => { onFocus?.(); e.currentTarget.style.borderBottomColor = 'var(--accent, var(--border))'; }}
+        onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; onBlur(); }}
         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
         style={{
           flex: 1,
@@ -243,8 +250,6 @@ function EditableRow({ label, value, placeholder, onChange, onBlur }: {
           borderRadius: 0,
           fontFamily: 'inherit',
         }}
-        onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--accent, var(--border))'; }}
-        onBlurCapture={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
       />
     </div>
   );

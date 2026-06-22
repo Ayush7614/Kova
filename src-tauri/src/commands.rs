@@ -157,8 +157,11 @@ pub fn show_in_file_manager(path: String) -> Result<(), String> {
     {
         let mut cmd = std::process::Command::new("explorer");
         if is_file {
-            // Quote the path so Explorer handles spaces in directory/file names correctly.
-            cmd.arg(format!("/select,\"{}\"", canonical.display()));
+            // Strip the \\?\ extended-length prefix that canonicalize adds on Windows
+            // — Explorer /select does not recognise UNC-prefixed paths.
+            let path_str = canonical.to_string_lossy();
+            let clean = path_str.strip_prefix(r"\\?\").unwrap_or(&path_str);
+            cmd.arg(format!("/select,\"{}\"", clean));
         } else {
             cmd.arg(&canonical);
         }
@@ -956,6 +959,9 @@ pub async fn list_system_fonts() -> Vec<String> {
 #[tauri::command]
 pub async fn fetch_url_b64(url: String) -> Result<(String, String), String> {
     use base64::Engine;
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("URL must use HTTP or HTTPS".into());
+    }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
@@ -991,6 +997,9 @@ pub async fn fetch_url_b64(url: String) -> Result<(String, String), String> {
 /// to bypass webview CSP connect-src restrictions.
 #[tauri::command]
 pub async fn fetch_url_text(url: String) -> Result<String, String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("URL must use HTTP or HTTPS".into());
+    }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()

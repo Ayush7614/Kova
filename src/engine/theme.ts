@@ -327,6 +327,7 @@ export const DEFAULT_THEME = BUILT_IN_THEMES[0]; // light
 // ── Colour utilities (shared with renderer and inspector) ─────────────────────
 
 export function hexToHsl(hex: string): [number, number, number] {
+  if (!hex.startsWith('#') || hex.length < 7) return [0, 0, 0];
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
@@ -490,23 +491,29 @@ export function sanitiseThemeOverrides(raw: Record<string, unknown>): Partial<Th
   if (typeof raw.logo === 'string' && /^(https?:|data:image\/)/.test(raw.logo)) {
     result.logo = raw.logo;
   }
-  if (raw.logo_position) {
+  const VALID_LOGO_POSITIONS: Set<string> = new Set(['top-left', 'top-right', 'bottom-left', 'bottom-right']);
+  if (typeof raw.logo_position === 'string' && VALID_LOGO_POSITIONS.has(raw.logo_position)) {
     result.logo_position = raw.logo_position as Theme['logo_position'];
   }
   if (typeof raw.logo_opacity === 'number') {
     result.logo_opacity = Math.min(1, Math.max(0, raw.logo_opacity));
   }
 
-  // Header/footer: pass the partial through unchanged — the activeTheme memo
-  // merges with the active theme's own header/footer, so pre-merging here with
-  // DEFAULT_THEME would override active-theme values with light-theme defaults.
-  // Cast via `unknown` because Partial<Theme>.header is ThemeHeader, but the memo
-  // spread handles partial objects correctly at runtime.
+  // Header/footer: validate individual fields rather than blindly passing through.
   if (raw.header && typeof raw.header === 'object') {
-    result.header = raw.header as unknown as ThemeHeader;
+    const h = raw.header as Record<string, unknown>;
+    const header: Record<string, unknown> = {};
+    if (typeof h.show === 'boolean') header.show = h.show;
+    if (typeof h.text === 'string' && !/[;{}]/.test(h.text)) header.text = h.text;
+    if (Object.keys(header).length > 0) result.header = header as unknown as ThemeHeader;
   }
   if (raw.footer && typeof raw.footer === 'object') {
-    result.footer = raw.footer as unknown as ThemeFooter;
+    const f = raw.footer as Record<string, unknown>;
+    const footer: Record<string, unknown> = {};
+    if (typeof f.show === 'boolean') footer.show = f.show;
+    if (typeof f.text === 'string' && !/[;{}]/.test(f.text)) footer.text = f.text;
+    if (typeof f.show_slide_number === 'boolean') footer.show_slide_number = f.show_slide_number;
+    if (Object.keys(footer).length > 0) result.footer = footer as unknown as ThemeFooter;
   }
   return result;
 }

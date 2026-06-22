@@ -58,7 +58,8 @@ export function registerCachedFont(
   if (registeredRemote.has(sha256)) return;
 
   const url = convertFileSrc(cachedPath);
-  const css = `@font-face {\n  font-family: "${family}";\n  src: url("${url}") format("woff2");\n  font-weight: ${weight};\n  font-style: ${style};\n  font-display: swap;\n}`;
+  const safeWeight = /[;{}'"]/.test(String(weight)) ? 'normal' : String(weight);
+  const css = `@font-face {\n  font-family: "${family}";\n  src: url("${url}") format("woff2");\n  font-weight: ${safeWeight};\n  font-style: ${style};\n  font-display: swap;\n}`;
   const el = document.createElement('style');
   el.dataset.remoteFont = family;
   el.textContent = css;

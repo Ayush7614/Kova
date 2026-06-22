@@ -44,7 +44,7 @@ describe('importMarp', () => {
 
   it('preserves passthrough frontmatter (title)', () => {
     const { markdown } = importMarp('---\nmarp: true\ntitle: My Deck\n---\n# X');
-    expect(markdown).toContain('title: My Deck');
+    expect(markdown).toContain('title: "My Deck"');
   });
 
   it('maps _class:lead to layout:title', () => {

@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 fn home_dir() -> Result<PathBuf, String> {
     dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())
@@ -53,15 +54,19 @@ pub fn write_bytes(path: &str, bytes: &[u8]) -> Result<(), String> {
     atomic_write(&safe, bytes)
 }
 
+static WRITE_SEQ: AtomicU64 = AtomicU64::new(0);
+
 // Writes `data` to `dest` via a sibling temp file then an atomic rename.
 // Keeps the temp file in the same directory as `dest` so the rename is
 // guaranteed to be on the same filesystem (required on Windows).
 // On POSIX the rename is atomic; on Windows it is near-atomic (the OS
 // replaces the destination in a single kernel transaction on NTFS).
 fn atomic_write(dest: &std::path::Path, data: &[u8]) -> Result<(), String> {
+    let seq = WRITE_SEQ.fetch_add(1, Ordering::Relaxed);
     let tmp = dest.with_file_name(format!(
-        "{}.kova-tmp",
-        dest.file_name().unwrap_or_default().to_string_lossy()
+        "{}.{}.kova-tmp",
+        dest.file_name().unwrap_or_default().to_string_lossy(),
+        seq
     ));
     std::fs::write(&tmp, data)
         .map_err(|e| format!("Failed to write file: {e}"))?;

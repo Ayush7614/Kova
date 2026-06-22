@@ -38,7 +38,7 @@ export function ColorControls({ colors, onChange, onChartColorChange, onChartPal
     ? colors.chart_colors
     : defaultChartPalette(colors.accent, CHART_PALETTE_SIZE);
 
-  const hasCustomPalette = Boolean(colors.chart_colors);
+  const hasCustomPalette = Array.isArray(colors.chart_colors) && colors.chart_colors.length === CHART_PALETTE_SIZE;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>

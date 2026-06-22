@@ -56,7 +56,8 @@ export function matchShortcut(e: KeyboardEvent, combo: string): boolean {
   if (!combo) return false;
   const parts = combo.split('+');
   const key = parts[parts.length - 1];
-  return (e.ctrlKey || e.metaKey) === parts.includes('ctrl')
+  const wantsCtrl = parts.includes('ctrl') || parts.includes('meta');
+  return (e.ctrlKey || e.metaKey) === wantsCtrl
     && e.shiftKey === parts.includes('shift')
     && e.altKey   === parts.includes('alt')
     && e.key.toLowerCase() === key;

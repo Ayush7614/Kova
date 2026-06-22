@@ -52,7 +52,7 @@ const PRIMARY_MAP: Partial<Record<string, SpellCheckLanguage>> = {
 export function detectOsLanguage(): SpellCheckLanguage {
   const osLang = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
   // Normalise "en-US" → "en_US" and try exact match
-  const normalised = osLang.replace('-', '_') as SpellCheckLanguage;
+  const normalised = osLang.replace(/-/g, '_') as SpellCheckLanguage;
   if (LANGUAGE_LABELS[normalised]) return normalised;
   // Fall back on primary subtag
   const primary = osLang.split('-')[0].toLowerCase();
@@ -105,7 +105,7 @@ function notifyChange(): void {
 }
 
 export async function initSpellChecker(lang: SpellCheckLanguage): Promise<void> {
-  if (currentLang === lang && active) { notifyChange(); return; }
+  if (currentLang === lang && active) { return; }
   if (cache.has(lang)) {
     active = cache.get(lang)!;
     currentLang = lang;

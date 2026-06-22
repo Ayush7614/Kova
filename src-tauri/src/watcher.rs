@@ -8,6 +8,8 @@ pub fn create(app: AppHandle, path: PathBuf) -> notify::Result<RecommendedWatche
             if let Ok(event) = res {
                 if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
                     let _ = app.emit("file-changed", ());
+                } else if matches!(event.kind, EventKind::Remove(_)) {
+                    let _ = app.emit("file-deleted", ());
                 }
             }
         },

@@ -39,12 +39,12 @@ export function extractWords(doc: string): WordRange[] {
       while (word.endsWith("'") || word.endsWith('-')) word = word.slice(0, -1);
       if (word.length < 2) continue;
 
-      const rawTo = rawFrom + word.length;
+      const rawTo = rawFrom + m[0].length;
       for (const [sf, st] of skip) {
         if (rawFrom < st && rawTo > sf) continue outer;
       }
 
-      result.push({ from: pos + rawFrom, to: pos + rawTo, word });
+      result.push({ from: pos + rawFrom, to: pos + rawFrom + word.length, word });
     }
     pos += len + 1;
   }

@@ -28,6 +28,7 @@ export const EDITOR_FONT_OPTIONS: { value: EditorFont; label: string; family: st
 ];
 
 export interface AppSettings {
+  settingsVersion: number;
   uiTheme: UiTheme;
   editorFont: EditorFont;
   autosave: boolean;
@@ -55,6 +56,7 @@ const KEY = 'kova:settings';
 
 function buildDefaults(): AppSettings {
   return {
+    settingsVersion: 1,
     uiTheme: 'auto',
     editorFont: 'ibm-plex-mono',
     autosave: true,

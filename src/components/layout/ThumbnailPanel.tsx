@@ -12,13 +12,14 @@ interface Props {
   onToggleHidden?: (index: number) => void;
   theme?: Theme;
   docTitle?: string;
+  docDate?: string;
   aspectRatio?: AspectRatio;
 }
 
 const SLIDE_W = 960;
 const THUMB_W = 140;
 
-export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onToggleHidden, theme = DEFAULT_THEME, docTitle, aspectRatio = { w: 16, h: 9 } }: Props) {
+export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onToggleHidden, theme = DEFAULT_THEME, docTitle, docDate, aspectRatio = { w: 16, h: 9 } }: Props) {
   const slideH = Math.round(SLIDE_W * aspectRatio.h / aspectRatio.w);
 
   // Observe the outer panel div (no overflow) so a scrollbar appearing in the
@@ -219,6 +220,7 @@ export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onTo
                   onContextMenu={handleThumbContextMenu}
                   theme={theme}
                   docTitle={docTitle}
+                  docDate={docDate}
                   scale={scale}
                   slideH={slideH}
                   thumbH={thumbH}
@@ -234,6 +236,8 @@ export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onTo
         // ponytail: fixed at cursor, may clip near the viewport edge; add flip
         // logic only if users actually hit it.
         <div
+          role="menu"
+          aria-label="Slide options"
           onMouseDown={(e) => e.stopPropagation()}
           style={{
             position: 'fixed', left: menu.x, top: menu.y, zIndex: 1000,
@@ -266,6 +270,7 @@ export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onTo
 function MenuItem({ label, disabled, onClick }: { label: string; disabled?: boolean; onClick: () => void }) {
   return (
     <button
+      role="menuitem"
       disabled={disabled}
       onClick={onClick}
       style={{
@@ -307,6 +312,7 @@ interface ThumbnailProps {
   onContextMenu: (index: number, e: React.MouseEvent) => void;
   theme: Theme;
   docTitle?: string;
+  docDate?: string;
   slideH: number;
   scale: number;
   thumbH: number;
@@ -319,7 +325,7 @@ interface ThumbnailProps {
 // keystroke. `onSelect`/`onDragStart` are forwarded as stable function
 // references (bound internally below) rather than passed as pre-bound
 // closures, specifically so they don't defeat this memoization.
-const Thumbnail = memo(function Thumbnail({ slide, index, totalSlides, isActive, isDragSource, canDrag, isHidden, onSelect, onToggleHidden, onDragStart, onContextMenu, theme, docTitle, slideH, scale, thumbH }: ThumbnailProps) {
+const Thumbnail = memo(function Thumbnail({ slide, index, totalSlides, isActive, isDragSource, canDrag, isHidden, onSelect, onToggleHidden, onDragStart, onContextMenu, theme, docTitle, docDate, slideH, scale, thumbH }: ThumbnailProps) {
   const thumbRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -388,6 +394,7 @@ const Thumbnail = memo(function Thumbnail({ slide, index, totalSlides, isActive,
             slide={slide}
             theme={theme}
             docTitle={docTitle}
+            docDate={docDate}
             slideNumber={index + 1}
             totalSlides={totalSlides}
             isThumbnail

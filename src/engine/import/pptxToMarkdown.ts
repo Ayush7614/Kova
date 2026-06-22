@@ -6,7 +6,11 @@ function tableToGfm(headers: string[], rows: string[][]): string {
   const escape = (s: string) => s.replace(/\|/g, '\\|');
   const headerRow = `| ${headers.map(escape).join(' | ')} |`;
   const sepRow    = `| ${headers.map(() => '---').join(' | ')} |`;
-  const bodyRows  = rows.map((r) => `| ${r.map(escape).join(' | ')} |`).join('\n');
+  const bodyRows  = rows.map((r) => {
+    const cells = [...r];
+    while (cells.length < headers.length) cells.push('');
+    return `| ${cells.map(escape).join(' | ')} |`;
+  }).join('\n');
   return bodyRows ? [headerRow, sepRow, bodyRows].join('\n') : [headerRow, sepRow].join('\n');
 }
 

@@ -14,6 +14,7 @@ export interface PresentInitPayload {
   index: number;
   aspectRatio: AspectRatio;
   docTitle?: string;
+  docDate?: string;
 }
 
 const SLIDE_W = 960;
@@ -119,7 +120,7 @@ export function AudienceApp() {
   }
 
   const slide  = slidesRef.current[currentIndex];
-  const { theme, aspectRatio, docTitle } = initData;
+  const { theme, aspectRatio, docTitle, docDate } = initData;
   const total  = slidesRef.current.length;
   const slideH = Math.round(SLIDE_W * aspectRatio.h / aspectRatio.w);
 
@@ -153,6 +154,7 @@ export function AudienceApp() {
                   slideNumber={currentIndex + 1}
                   totalSlides={total}
                   docTitle={docTitle}
+                  docDate={docDate}
                 />
               </div>
               <div

@@ -63,7 +63,8 @@ export function importMarp(src: string): MarpImportResult {
         default:
           // Pass through simple scalar metadata (title/author/date). Skip nested
           // maps and multiline strings — unknown structured Marp config we can't map.
-          if (typeof rawVal === 'string') { if (!rawVal.includes('\n')) passFm.push(`${key}: ${rawVal}`); }
+          // Use JSON.stringify for strings so YAML-special chars (: # [ etc.) are safe.
+          if (typeof rawVal === 'string') { if (!rawVal.includes('\n')) passFm.push(`${key}: ${JSON.stringify(rawVal)}`); }
           else if (typeof rawVal === 'number' || typeof rawVal === 'boolean') passFm.push(`${key}: ${rawVal}`);
       }
     }
@@ -79,13 +80,31 @@ export function importMarp(src: string): MarpImportResult {
   const kovaFm = fmLines.length ? `---\n${fmLines.join('\n')}\n---\n\n` : '';
 
   // ── Body / slides ──────────────────────────────────────────────────
-  const slides = body.split(/^---$/m).map((s) => transformSlide(s, dropTag));
+  const slides = splitSlides(body).map((s) => transformSlide(s, dropTag));
   const prefix = fmDropComments.length ? fmDropComments.join('\n') + '\n\n' : '';
 
   return {
     markdown: kovaFm + prefix + slides.join('\n---\n').replace(/^\n+/, ''),
     dropped,
   };
+}
+
+function splitSlides(body: string): string[] {
+  const lines = body.split(/\r?\n/);
+  const slides: string[] = [];
+  let current: string[] = [];
+  let inFence = false;
+  for (const line of lines) {
+    if (/^(`{3,}|~{3,})/.test(line)) inFence = !inFence;
+    if (!inFence && line === '---') {
+      slides.push(current.join('\n'));
+      current = [];
+    } else {
+      current.push(line);
+    }
+  }
+  slides.push(current.join('\n'));
+  return slides;
 }
 
 function transformSlide(slide: string, dropTag: (l: string) => string): string {
@@ -123,7 +142,7 @@ function transformSlide(slide: string, dropTag: (l: string) => string): string {
     const c = inner.trim();
     const cls = c.match(/^_class\s*:\s*(.+)$/);
     if (cls) {
-      if (cls[1].trim() === 'lead') return '<!-- layout:title -->';
+      if (cls[1].trim().split(/\s+/).includes('lead')) return '<!-- layout:title -->';
       dropTag(`_class:${cls[1].trim()}`);
       return '';
     }

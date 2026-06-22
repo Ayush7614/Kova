@@ -79,6 +79,15 @@ function OverflowPane({ className, elements }: { className: string; elements: Sl
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, [remeasure]);
 
+  // When the element list changes (new slide, hidden toggle, etc.) the content
+  // height may be identical to the previous slide so the ResizeObserver won't
+  // fire. Reset the bail-out bookmark and force a remeasure synchronously
+  // before paint so the scale is always correct on first frame.
+  useLayoutEffect(() => {
+    lastRef.current = { c: -1, a: -1 };
+    remeasure();
+  }, [elements, remeasure]);
+
   return (
     <div ref={outerRef} className={className}>
       <div ref={innerRef} style={{ transformOrigin: 'top left' }}>
@@ -221,19 +230,20 @@ interface Props {
   slideNumber?: number;
   totalSlides?: number;
   docTitle?: string;
+  docDate?: string;
   scale?: number;
   isThumbnail?: boolean;
 }
 
-export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, totalSlides, docTitle = '', scale = 1, isThumbnail: isThumbnailProp }: Props) {
+export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, totalSlides, docTitle = '', docDate = '', scale = 1, isThumbnail: isThumbnailProp }: Props) {
   const vars = themeToVars(theme);
 
   const headerText = theme.header.show
-    ? resolveTemplate(theme.header.text, { title: docTitle, slideNumber, totalSlides })
+    ? resolveTemplate(theme.header.text, { title: docTitle, date: docDate, slideNumber, totalSlides })
     : null;
 
   const footerText = theme.footer.show
-    ? resolveTemplate(theme.footer.text, { title: docTitle, slideNumber, totalSlides })
+    ? resolveTemplate(theme.footer.text, { title: docTitle, date: docDate, slideNumber, totalSlides })
     : null;
 
   // Show the floating logo whenever its position doesn't match a visible bar —
@@ -849,6 +859,7 @@ function MermaidDiagram({ value }: { value: string }) {
   // reuse a DOM node from the previous render. A counter forces a fresh id.
   const counter = useRef(0);
   const [svg, setSvg] = useState('');
+  const [mermaidError, setMermaidError] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
   // After Mermaid renders, expand the viewBox to the actual bounding box of all
@@ -870,6 +881,8 @@ function MermaidDiagram({ value }: { value: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    setSvg('');
+    setMermaidError('');
     // Sanitize first: strip any user-supplied securityLevel override, then
     // prepend theme init when no custom pragma is present.
     const sanitized = sanitizeMermaidSource(value);
@@ -893,7 +906,12 @@ function MermaidDiagram({ value }: { value: string }) {
           setSvg(scaled);
         }
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          const raw = err instanceof Error ? err.message : String(err);
+          setMermaidError(raw.replace(/^.*?error:?\s*/i, '').slice(0, 120) || 'Diagram error');
+        }
+      });
     return () => { cancelled = true; };
   }, [baseId, value, mermaidInit]);
 
@@ -904,10 +922,10 @@ function MermaidDiagram({ value }: { value: string }) {
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           height: '100%', fontSize: 'clamp(7px, 1.5cqi, 12px)',
-          color: 'var(--sl-accent)', opacity: 0.7,
+          color: mermaidError ? 'var(--sl-text)' : 'var(--sl-accent)', opacity: 0.7,
         }}
       >
-        ◇ Diagram
+        {mermaidError ? `⚠ ${mermaidError}` : '◇ Diagram'}
       </div>
     );
   }

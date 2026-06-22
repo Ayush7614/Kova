@@ -9,6 +9,7 @@ interface Props {
   currentIndex: number;
   theme: Theme;
   docTitle?: string;
+  docDate?: string;
   aspectRatio?: AspectRatio;
   laserColor?: string;
   showTimer?: boolean;
@@ -29,7 +30,7 @@ const NOTE_H  = 160;  // px — speaker notes panel height
 const SLIDE_W = 960;  // virtual slide width (matches ThumbnailPanel)
 
 export function PresentationOverlay({
-  slides, currentIndex, theme, docTitle, aspectRatio = { w: 16, h: 9 }, laserColor = '#ff2020', showTimer = false, onNavigate, onExit,
+  slides, currentIndex, theme, docTitle, docDate, aspectRatio = { w: 16, h: 9 }, laserColor = '#ff2020', showTimer = false, onNavigate, onExit,
 }: Props) {
   const slide = slides[currentIndex];
   const total = slides.length;
@@ -140,7 +141,8 @@ export function PresentationOverlay({
   // ── Click-to-navigate (left third = prev, rest = next) ────────────────────
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const x = e.clientX / window.innerWidth;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
     if (x < 0.3) goPrev(); else goNext();
   }, [goPrev, goNext]);
 
@@ -181,6 +183,7 @@ export function PresentationOverlay({
               slideNumber={currentIndex + 1}
               totalSlides={total}
               docTitle={docTitle}
+              docDate={docDate}
             />
           </div>
           <div
@@ -205,6 +208,11 @@ export function PresentationOverlay({
             />
           )}
         </div>
+      </div>
+
+      {/* ARIA live region announces slide changes to screen readers */}
+      <div aria-live="polite" aria-atomic="true" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
+        {`Slide ${currentIndex + 1} of ${total}`}
       </div>
 
       {/* ── Speaker notes ── */}

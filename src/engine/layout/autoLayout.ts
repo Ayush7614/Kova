@@ -141,7 +141,7 @@ export function detectLayout(
   // to benefit from side-by-side rendering. Skip if everything is plain
   // paragraph/list (stacked looks better for all-text slides).
 
-  const allPureText = bodyElements.every((e) => e.type === 'paragraph' || e.type === 'list');
+  const allPureText = bodyElements.every((e) => e.type === 'paragraph' || e.type === 'list' || e.type === 'blockquote');
   // Tables need a full-width area; bsp panes are too narrow for them.
   const hasTable = bodyElements.some((e) => e.type === 'table');
 

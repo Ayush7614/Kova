@@ -11,6 +11,7 @@ interface Props {
   currentIndex: number;
   theme: Theme;
   docTitle?: string;
+  docDate?: string;
   aspectRatio: AspectRatio;
   showNextSlide: boolean;
   showTimer: boolean;
@@ -33,7 +34,7 @@ function formatTime(seconds: number): string {
 }
 
 export function PresenterOverlay({
-  slides, currentIndex, theme, docTitle, aspectRatio,
+  slides, currentIndex, theme, docTitle, docDate, aspectRatio,
   showNextSlide, showTimer, notesFontSize, laserColor = '#ff2020', onNavigate, onExit,
 }: Props) {
   const slide     = slides[currentIndex];
@@ -45,6 +46,7 @@ export function PresenterOverlay({
   const [elapsed, setElapsed]           = useState(0);
   const [currentScale, setCurrentScale] = useState(1);
   const [nextScale, setNextScale]       = useState(1);
+  const [showNotes, setShowNotes]       = useState(true);
   const [laserActive, setLaserActive]   = useState(false);
   const [laserPos, setLaserPos]         = useState<{ x: number; y: number } | null>(null);
   const startTime      = useRef(Date.now());
@@ -109,7 +111,7 @@ export function PresenterOverlay({
     if (laserActive) {
       emitTo('audience', 'present:laser', { x, y, active: true, color: laserColor }).catch(() => {});
     }
-  }, [laserActive]);
+  }, [laserActive, laserColor]);
 
   const goNext = useCallback(() => {
     if (currentIndex < total - 1) onNavigate(currentIndex + 1);
@@ -126,6 +128,9 @@ export function PresenterOverlay({
           e.preventDefault(); e.stopPropagation(); goNext(); break;
         case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
           e.preventDefault(); e.stopPropagation(); goPrev(); break;
+        case 'n': case 'N':
+          e.preventDefault(); e.stopPropagation();
+          setShowNotes((p) => !p); break;
         case 'l': case 'L':
           e.preventDefault(); e.stopPropagation();
           setLaserActive((p) => !p); break;
@@ -174,6 +179,7 @@ export function PresenterOverlay({
                 slideNumber={currentIndex + 1}
                 totalSlides={total}
                 docTitle={docTitle}
+                docDate={docDate}
               />
             </div>
             {laserActive && laserPos && (
@@ -213,6 +219,7 @@ export function PresenterOverlay({
                       slideNumber={currentIndex + 2}
                       totalSlides={total}
                       docTitle={docTitle}
+                      docDate={docDate}
                     />
                   </div>
                 </div>
@@ -222,14 +229,22 @@ export function PresenterOverlay({
 
           {/* Speaker notes */}
           <div className="pres-presenter__notes">
-            <div className="pres-presenter__notes-label">Speaker notes</div>
-            {slide.speakerNotes ? (
+            <div className="pres-presenter__notes-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              Speaker notes
+              <button
+                className={`pres-presenter__btn${showNotes ? '' : ' pres-presenter__btn--active'}`}
+                onClick={() => setShowNotes((p) => !p)}
+                title="Toggle notes (N)"
+                style={{ fontSize: 10, padding: '2px 6px' }}
+              >{showNotes ? 'Hide' : 'Show'}</button>
+            </div>
+            {showNotes && (slide.speakerNotes ? (
               <p className={`pres-presenter__notes-text pres-presenter__notes-text--${notesFontSize}`}>
                 {slide.speakerNotes}
               </p>
             ) : (
               <span className="pres-presenter__notes-empty">No notes for this slide</span>
-            )}
+            ))}
           </div>
 
         </div>

@@ -40,14 +40,18 @@ export function ThemeLibraryModal({ installedIds, onThemesChanged, onClose }: Pr
 
   async function fetchManifest() {
     setStatus('loading');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
     try {
-      const res = await fetch(REGISTRY_URL, { cache: 'no-store' });
+      const res = await fetch(REGISTRY_URL, { cache: 'no-store', signal: controller.signal });
       if (!res.ok) throw new Error();
       const data: RemoteTheme[] = await res.json();
       setThemes(data.sort((a, b) => a.name.localeCompare(b.name)));
       setStatus('ready');
     } catch {
       setStatus('error');
+    } finally {
+      clearTimeout(timer);
     }
   }
 

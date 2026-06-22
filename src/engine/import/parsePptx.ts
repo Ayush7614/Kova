@@ -154,6 +154,42 @@ function getShapeGeom(shape: Element): ShapeGeom {
   };
 }
 
+// When a shape lives inside a p:grpSp, its coordinates are relative to the
+// group's child coordinate system, not the slide. Walk up to any ancestor
+// grpSp elements and compose their transforms to get slide coordinates.
+function getComposedGeom(shape: Element): ShapeGeom {
+  let { x, y, cx, cy } = getShapeGeom(shape);
+  let parent: Element | null = shape.parentElement;
+  while (parent && parent.localName !== 'spTree') {
+    if (parent.localName === 'grpSp') {
+      const grpSpPr = Array.from(parent.children).find((c) => c.localName === 'grpSpPr');
+      const xfrm = grpSpPr ? Array.from(grpSpPr.children).find((c) => c.localName === 'xfrm') : undefined;
+      if (xfrm) {
+        const offEl   = Array.from(xfrm.children).find((c) => c.localName === 'off');
+        const extEl   = Array.from(xfrm.children).find((c) => c.localName === 'ext');
+        const chOffEl = Array.from(xfrm.children).find((c) => c.localName === 'chOff');
+        const chExtEl = Array.from(xfrm.children).find((c) => c.localName === 'chExt');
+        const gx  = parseInt(offEl?.getAttribute('x')   ?? '0') || 0;
+        const gy  = parseInt(offEl?.getAttribute('y')   ?? '0') || 0;
+        const gw  = parseInt(extEl?.getAttribute('cx')  ?? '1') || 1;
+        const gh  = parseInt(extEl?.getAttribute('cy')  ?? '1') || 1;
+        const cox = parseInt(chOffEl?.getAttribute('x') ?? '0') || 0;
+        const coy = parseInt(chOffEl?.getAttribute('y') ?? '0') || 0;
+        const cew = parseInt(chExtEl?.getAttribute('cx') ?? '1') || 1;
+        const ceh = parseInt(chExtEl?.getAttribute('cy') ?? '1') || 1;
+        const sx = gw / cew;
+        const sy = gh / ceh;
+        x  = gx + (x  - cox) * sx;
+        y  = gy + (y  - coy) * sy;
+        cx = cx * sx;
+        cy = cy * sy;
+      }
+    }
+    parent = parent.parentElement;
+  }
+  return { x, y, cx, cy };
+}
+
 function normalise(geom: ShapeGeom, slideW: number, slideH: number) {
   return {
     normX: geom.x / slideW,
@@ -267,6 +303,7 @@ async function extractSlideBlocks(
   slideIndex: number,
   destDir: string,
   warnings: string[],
+  slidePath: string,
 ): Promise<PptxBlock[]> {
   const blocks: PptxBlock[] = [];
   const spTree = q(slideDoc, P, 'spTree') ?? q(slideDoc, A, 'spTree');
@@ -284,7 +321,7 @@ async function extractSlideBlocks(
     const { text, isMultiPara } = extractTextBody(txBody);
     if (!text.trim()) continue;
 
-    const geom = getShapeGeom(sp);
+    const geom = getComposedGeom(sp);
     const norm = normalise(geom, slideW, slideH);
     const phType = getPhType(sp);
 
@@ -310,9 +347,11 @@ async function extractSlideBlocks(
     const mediaTarget = rels.get(rId); // e.g. "../media/image1.png"
     if (!mediaTarget) continue;
 
-    // Resolve the media path inside the ZIP
-    // Relationship Target is relative to the slide file (ppt/slides/slide{N}.xml)
-    const mediaZipPath = resolveRelTarget('ppt/slides/', mediaTarget);
+    // Resolve the media path inside the ZIP.
+    // Target is relative to the slide file; derive base from the actual slidePath
+    // rather than hardcoding 'ppt/slides/' so non-standard archive layouts work.
+    const slideDir = slidePath.replace(/[^/]+$/, '');
+    const mediaZipPath = resolveRelTarget(slideDir, mediaTarget);
 
     const ext = mediaZipPath.split('.').pop()?.toLowerCase() ?? 'png';
 
@@ -345,7 +384,7 @@ async function extractSlideBlocks(
       continue;
     }
 
-    const geom = getShapeGeom(pic);
+    const geom = getComposedGeom(pic);
     const norm = normalise(geom, slideW, slideH);
     blocks.push({ kind: 'image', assetFilename: `assets/${savedName}`, ...norm });
   }
@@ -463,7 +502,7 @@ export async function parsePptx(filePath: string, destDir: string): Promise<Pptx
     const slideRels = slideRelsText ? parseRels(parseXml(slideRelsText)) : new Map<string, string>();
 
     const blocks = await extractSlideBlocks(
-      slideDoc, slideRels, zip, slideW, slideH, i, destDir, warnings,
+      slideDoc, slideRels, zip, slideW, slideH, i, destDir, warnings, slidePath,
     );
     const speakerNotes = await extractSpeakerNotes(slideRels, slidePath, zip);
     slides.push({ blocks, speakerNotes });

@@ -24,7 +24,7 @@ import { MissingThemeBanner } from './components/MissingThemeBanner';
 import { loadSettings, saveSettings, EDITOR_FONT_OPTIONS } from './store/settings';
 import type { AppSettings } from './store/settings';
 import { loadLastSession, saveLastSession } from './store/lastSession';
-import { loadRecentFiles, addRecentFile, clearRecentFiles } from './store/recentFiles';
+import { loadRecentFiles, addRecentFile, removeRecentFile, clearRecentFiles } from './store/recentFiles';
 import { buildMacMenu } from './macMenu';
 import type { MacMenuHandlers } from './macMenu';
 import { loadKeybindings, matchShortcut, getCombo, formatCombo } from './engine/keybindings';
@@ -143,6 +143,8 @@ export default function App() {
 
   // Theme state: active theme id + per-session overrides
   const [allThemes, setAllThemes]         = useState<Theme[]>(BUILT_IN_THEMES);
+  const allThemesRef = useRef(BUILT_IN_THEMES as Theme[]);
+  useEffect(() => { allThemesRef.current = allThemes; }, [allThemes]);
   const [activeThemeId, setActiveThemeId] = useState<string>(DEFAULT_THEME.id);
   const [themeOverrides, setThemeOverrides] = useState<Partial<Theme>>({});
   const [missingThemeId, setMissingThemeId]   = useState<string | null>(null);
@@ -517,6 +519,7 @@ export default function App() {
           index: startIndex,
           aspectRatio,
           docTitle: frontmatter.title,
+          docDate: frontmatter.date as string | undefined,
         };
 
         // Close any stale audience window from a previous failed session to
@@ -684,6 +687,7 @@ export default function App() {
 
   const handleThemeChange = useCallback((patch: Partial<Theme>) => {
     setThemeOverrides((prev) => ({ ...prev, ...patch }));
+    setIsDirty(true);
   }, []);
 
   const handleMetaChange = useCallback((field: 'title' | 'author' | 'date', value: string) => {
@@ -710,7 +714,7 @@ export default function App() {
   const applyFileContent = useCallback(async (text: string, path: string) => {
     const { frontmatter: fm } = extractFrontmatter(text);
     if (typeof fm.theme === 'string') {
-      const found = allThemes.find((t) => t.id === fm.theme);
+      const found = allThemesRef.current.find((t) => t.id === fm.theme);
       if (found) {
         setActiveThemeId(found.id);
         setMissingThemeId(null);
@@ -728,11 +732,11 @@ export default function App() {
     setContent(text);
     setIsDirty(false);
     setCurrentSlideIndex(0);
-    await invoke('start_watching', { path }).catch(console.error);
+    if (path) await invoke('start_watching', { path }).catch(console.error);
     setMarpPrompt(isMarp(text) ? { text, dir: dirOf(path) } : null);
     setImportDir('');
     setMarpLoss(null);
-  }, [allThemes]);
+  }, []);
 
   // Startup restore — only when the user has opted in via Settings. Best-effort:
   // a deleted/moved/unreadable file just leaves the app at its normal blank
@@ -781,6 +785,7 @@ export default function App() {
         await applyFileContent(text, path);
       } catch (err) {
         console.error('Drop open failed:', err);
+        setRecents(removeRecentFile(path));
       }
     };
 
@@ -1287,6 +1292,7 @@ export default function App() {
           currentIndex={safePresentIndex}
           theme={activeTheme}
           docTitle={frontmatter.title}
+          docDate={frontmatter.date as string | undefined}
           aspectRatio={aspectRatio}
           laserColor={settings.laserColor}
           showTimer={settings.presenterShowTimer}
@@ -1300,6 +1306,7 @@ export default function App() {
           currentIndex={safePresentIndex}
           theme={activeTheme}
           docTitle={frontmatter.title}
+          docDate={frontmatter.date as string | undefined}
           aspectRatio={aspectRatio}
           showNextSlide={settings.presenterShowNextSlide}
           showTimer={settings.presenterShowTimer}
@@ -1327,7 +1334,13 @@ export default function App() {
                 Open <span>{formatCombo(getCombo(keybindings.combos, 'openFile'))}</span>
               </button>
               <div style={{ position: 'relative' }} onMouseEnter={() => setImportSubmenuOpen(true)} onMouseLeave={() => setImportSubmenuOpen(false)}>
-                <button className="btn-group-menu-item btn-group-menu-item--shortcut">
+                <button
+                  className="btn-group-menu-item btn-group-menu-item--shortcut"
+                  aria-haspopup="true"
+                  aria-expanded={importSubmenuOpen}
+                  onClick={() => setImportSubmenuOpen((p) => !p)}
+                  onKeyDown={(e) => { if (e.key === 'ArrowRight' || e.key === 'Enter') setImportSubmenuOpen(true); }}
+                >
                   Import <span>›</span>
                 </button>
                 {importSubmenuOpen && (
@@ -1504,6 +1517,7 @@ export default function App() {
               onToggleHidden={handleToggleHidden}
               theme={activeTheme}
               docTitle={frontmatter.title}
+              docDate={frontmatter.date as string | undefined}
               aspectRatio={aspectRatio}
             />
           </Panel>
@@ -1605,6 +1619,7 @@ export default function App() {
               const { text, dir } = marpPrompt;
               const { markdown, dropped } = importMarp(text);
               setMarpPrompt(null);
+              await invoke('stop_watching').catch(() => {});
               await applyFileContent(markdown, '');
               setImportDir(dir);
               setMarpLoss(dropped.length);
@@ -1754,6 +1769,7 @@ export default function App() {
                   slideNumber={i + 1}
                   totalSlides={printContext.slides.length}
                   docTitle={frontmatter.title ?? ''}
+                  docDate={frontmatter.date as string ?? ''}
                 />
               </div>
             ))}
@@ -1793,6 +1809,7 @@ export default function App() {
                   slideNumber={i + 1}
                   totalSlides={pdfExportContext.slides.length}
                   docTitle={frontmatter.title ?? ''}
+                  docDate={frontmatter.date as string ?? ''}
                 />
               </div>
             ))}
