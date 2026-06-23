@@ -99,7 +99,7 @@ function OverflowPane({ className, elements }: { className: string; elements: Sl
 }
 
 // Context passed to child components so they can adapt for thumbnail vs full rendering
-interface SlideCtxValue { isThumbnail: boolean; textColor: string; mermaidInit: string }
+interface SlideCtxValue { isThumbnail: boolean; textColor: string; mermaidInit: string; onDiagramReady?: () => void }
 const SlideCtx = createContext<SlideCtxValue>({ isThumbnail: false, textColor: '#1a1a1a', mermaidInit: '' });
 
 // Strips any `securityLevel` key from a user-supplied `%%{init: {...}}%%` pragma
@@ -233,10 +233,24 @@ interface Props {
   docDate?: string;
   scale?: number;
   isThumbnail?: boolean;
+  onAllDiagramsReady?: () => void;
 }
 
-export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, totalSlides, docTitle = '', docDate = '', scale = 1, isThumbnail: isThumbnailProp }: Props) {
+export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, totalSlides, docTitle = '', docDate = '', scale = 1, isThumbnail: isThumbnailProp, onAllDiagramsReady }: Props) {
   const vars = themeToVars(theme);
+
+  // Signal export-readiness when all Mermaid diagrams on this slide have rendered.
+  const mermaidCount = useMemo(() => slide.elements.filter((e) => e.type === 'mermaid').length, [slide.elements]);
+  const diagramReadyCount = useRef(0);
+  const onAllDiagramsReadyRef = useRef(onAllDiagramsReady);
+  useEffect(() => { onAllDiagramsReadyRef.current = onAllDiagramsReady; });
+  const onDiagramReady = useCallback(() => {
+    diagramReadyCount.current += 1;
+    if (diagramReadyCount.current >= mermaidCount) onAllDiagramsReadyRef.current?.();
+  }, [mermaidCount]);
+  useEffect(() => {
+    if (onAllDiagramsReady && mermaidCount === 0) onAllDiagramsReady();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const headerText = theme.header.show
     ? resolveTemplate(theme.header.text, { title: docTitle, date: docDate, slideNumber, totalSlides })
@@ -253,8 +267,8 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
   const showFloatingLogo = theme.logo && !logoInHeader && !logoInFooter;
 
   const ctxValue = useMemo<SlideCtxValue>(
-    () => ({ isThumbnail: isThumbnailProp ?? scale !== 1, textColor: theme.colors.text, mermaidInit: buildMermaidInit(theme) }),
-    [isThumbnailProp, scale, theme],
+    () => ({ isThumbnail: isThumbnailProp ?? scale !== 1, textColor: theme.colors.text, mermaidInit: buildMermaidInit(theme), onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined }),
+    [isThumbnailProp, scale, theme, onAllDiagramsReady, onDiagramReady],
   );
 
   return (
@@ -333,6 +347,7 @@ function SlideLayout({ slide }: { slide: Slide }) {
     case 'media':         return <MediaLayout slide={slide} />;
     case 'code':          return <CodeLayout slide={slide} />;
     case 'math':          return <MathLayout slide={slide} />;
+    case 'blank':         return <BlankLayout />;
     default:              return <TitleContentLayout slide={slide} />;
   }
 }
@@ -610,6 +625,10 @@ function MathLayout({ slide }: { slide: Slide }) {
   );
 }
 
+function BlankLayout() {
+  return <div className="sl-blank" />;
+}
+
 // ── Progress grouping helper ──────────────────────────────────────────────────
 
 /**
@@ -852,7 +871,9 @@ function MathBlock({ value, display }: { value: string; display: boolean }) {
 // ── Mermaid diagram ───────────────────────────────────────────────────────────
 
 function MermaidDiagram({ value }: { value: string }) {
-  const { mermaidInit } = useContext(SlideCtx);
+  const { mermaidInit, onDiagramReady } = useContext(SlideCtx);
+  const onDiagramReadyRef = useRef(onDiagramReady);
+  useEffect(() => { onDiagramReadyRef.current = onDiagramReady; });
   const rawId  = useId();
   const baseId = `mermaid-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   // mermaid.render rejects a second call with the same id because it tries to
@@ -904,12 +925,14 @@ function MermaidDiagram({ value }: { value: string }) {
             return `<svg${a}>`;
           });
           setSvg(scaled);
+          onDiagramReadyRef.current?.();
         }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
           const raw = err instanceof Error ? err.message : String(err);
           setMermaidError(raw.replace(/^.*?error:?\s*/i, '').slice(0, 120) || 'Diagram error');
+          onDiagramReadyRef.current?.();
         }
       });
     return () => { cancelled = true; };

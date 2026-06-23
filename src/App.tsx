@@ -37,7 +37,7 @@ import { normalizePath } from './engine/resolvePath';
 import { exportToPptx } from './engine/export/exportPptx';
 import { exportToPdf, printPresentation } from './engine/export/exportPdf';
 import { SlideRenderer } from './components/preview/SlideRenderer';
-import { BUILT_IN_THEMES, DEFAULT_THEME, parseThemeYaml, sanitiseThemeOverrides } from './engine/theme';
+import { BUILT_IN_THEMES, DEFAULT_THEME, parseThemeYaml, sanitiseThemeOverrides, type ThemeParseResult } from './engine/theme';
 import { registerBundledFonts, registerCachedFont } from './engine/bundledFonts';
 import type { Slide, Frontmatter, ListItem } from './engine/types';
 import { parseAspectRatio } from './engine/types';
@@ -134,11 +134,15 @@ export default function App() {
   const [editMenuOpen, setEditMenuOpen]       = useState(false);
   const editMenuRef = useRef<HTMLDivElement>(null);
   const [pdfExportContext, setPdfExportContext] = useState<{ slides: Slide[]; savePath: string } | null>(null);
-  const pdfSlideRefs   = useRef<Map<number, HTMLElement>>(new Map());
-  const pdfExportResolveRef = useRef<(() => void) | null>(null);
+  const pdfSlideRefs         = useRef<Map<number, HTMLElement>>(new Map());
+  const pdfExportRunnerRef   = useRef<(() => Promise<void>) | null>(null);
+  const pdfSlideReadyCount   = useRef(0);
+  const pdfSlideReadyTotal   = useRef(0);
   const [printContext, setPrintContext] = useState<{ slides: Slide[] } | null>(null);
-  const printSlideRefs = useRef<Map<number, HTMLElement>>(new Map());
-  const printResolveRef = useRef<(() => void) | null>(null);
+  const printSlideRefs       = useRef<Map<number, HTMLElement>>(new Map());
+  const printExportRunnerRef = useRef<(() => Promise<void>) | null>(null);
+  const printSlideReadyCount = useRef(0);
+  const printSlideReadyTotal = useRef(0);
   const [fileDragOver, setFileDragOver]       = useState(false);
   const [dropConfirmPath, setDropConfirmPath] = useState<string | null>(null);
 
@@ -335,10 +339,11 @@ export default function App() {
   const reloadCustomThemes = useCallback(() => {
     invoke<[string, Array<[string, string]>]>('load_custom_themes')
       .then(([, entries]) => {
-        const custom = entries
-          .map(([id, yaml]) => parseThemeYaml(id, yaml))
-          .filter((t): t is Theme => t !== null);
+        const results: ThemeParseResult[] = entries.map(([id, yaml]) => parseThemeYaml(id, yaml));
+        const custom = results.filter((r): r is Extract<ThemeParseResult, { ok: true }> => r.ok).map((r) => r.theme);
+        const errors = results.filter((r): r is Extract<ThemeParseResult, { ok: false }> => !r.ok).map((r) => r.error);
         setAllThemes(custom.length > 0 ? [...BUILT_IN_THEMES, ...custom] : BUILT_IN_THEMES);
+        if (errors.length > 0) setWarnMessage(`Theme parse error:\n${errors.join('\n')}`);
       })
       .catch(() => {});
   }, []);
@@ -967,6 +972,16 @@ export default function App() {
     }
   }, [visibleSlides, frontmatter, activeTheme, filePath]);
 
+  // Called by each SlideRenderer when all its Mermaid diagrams have rendered.
+  const onPdfSlideReady = useRef(() => {
+    pdfSlideReadyCount.current += 1;
+    if (pdfSlideReadyCount.current >= pdfSlideReadyTotal.current) void pdfExportRunnerRef.current?.();
+  });
+  const onPrintSlideReady = useRef(() => {
+    printSlideReadyCount.current += 1;
+    if (printSlideReadyCount.current >= printSlideReadyTotal.current) void printExportRunnerRef.current?.();
+  });
+
   const handleExportPdf = useCallback(async () => {
     if (visibleSlides.length === 0) return;
     const defaultPath = filePath
@@ -978,21 +993,64 @@ export default function App() {
     });
     if (!target) return;
     const savePath = target.toLowerCase().endsWith('.pdf') ? target : `${target}.pdf`;
+    const visSlides = [...visibleSlides];
     pdfSlideRefs.current.clear();
+    pdfSlideReadyCount.current = 0;
+    pdfSlideReadyTotal.current = visSlides.length;
     await new Promise<void>(resolve => {
-      pdfExportResolveRef.current = resolve;
-      setPdfExportContext({ slides: [...visibleSlides], savePath });
+      pdfExportRunnerRef.current = async () => {
+        try {
+          const elements = Array.from(
+            { length: visSlides.length },
+            (_, i) => pdfSlideRefs.current.get(i),
+          ).filter((el): el is HTMLElement => Boolean(el));
+          const { base64, warnings } = await exportToPdf(elements, activeTheme, aspectRatio);
+          await invoke('write_file_bytes', { path: savePath, data: base64 });
+          if (warnings.length > 0) {
+            window.alert(`PDF export complete with ${warnings.length} warning(s):\n\n${warnings.join('\n')}`);
+          }
+        } catch (err) {
+          console.error('PDF export failed:', err);
+        } finally {
+          setPdfExportContext(null);
+          pdfSlideRefs.current.clear();
+          pdfExportRunnerRef.current = null;
+          resolve();
+        }
+      };
+      setPdfExportContext({ slides: visSlides, savePath });
     });
-  }, [visibleSlides, filePath]);
+  }, [visibleSlides, filePath, activeTheme, aspectRatio]);
 
   const handlePrint = useCallback(async () => {
     if (visibleSlides.length === 0) return;
+    const visSlides = [...visibleSlides];
     printSlideRefs.current.clear();
+    printSlideReadyCount.current = 0;
+    printSlideReadyTotal.current = visSlides.length;
     await new Promise<void>(resolve => {
-      printResolveRef.current = resolve;
-      setPrintContext({ slides: [...visibleSlides] });
+      printExportRunnerRef.current = async () => {
+        try {
+          const elements = Array.from(
+            { length: visSlides.length },
+            (_, i) => printSlideRefs.current.get(i),
+          ).filter((el): el is HTMLElement => Boolean(el));
+          const { warnings } = await printPresentation(elements, activeTheme, aspectRatio);
+          if (warnings.length > 0) {
+            window.alert(`Print complete with ${warnings.length} warning(s):\n\n${warnings.join('\n')}`);
+          }
+        } catch (err) {
+          console.error('Print failed:', err);
+        } finally {
+          setPrintContext(null);
+          printSlideRefs.current.clear();
+          printExportRunnerRef.current = null;
+          resolve();
+        }
+      };
+      setPrintContext({ slides: visSlides });
     });
-  }, [visibleSlides]);
+  }, [visibleSlides, activeTheme, aspectRatio]);
 
   const handleCopyWithAssets = useCallback(async () => {
     if (!filePath) return;
@@ -1223,58 +1281,6 @@ export default function App() {
     return () => document.removeEventListener('mousedown', onDown);
   }, [editMenuOpen]);
 
-  // After off-screen slides mount and Mermaid has had time to render, capture
-  // them as PNGs and compile the PDF.
-  useEffect(() => {
-    if (!pdfExportContext) return;
-    const { slides: exportSlides, savePath } = pdfExportContext;
-    const tid = setTimeout(async () => {
-      try {
-        const elements = Array.from(
-          { length: exportSlides.length },
-          (_, i) => pdfSlideRefs.current.get(i),
-        ).filter((el): el is HTMLElement => Boolean(el));
-        const { base64, warnings } = await exportToPdf(elements, activeTheme, aspectRatio);
-        await invoke('write_file_bytes', { path: savePath, data: base64 });
-        if (warnings.length > 0) {
-          window.alert(`PDF export complete with ${warnings.length} warning(s):\n\n${warnings.join('\n')}`);
-        }
-      } catch (err) {
-        console.error('PDF export failed:', err);
-      } finally {
-        setPdfExportContext(null);
-        pdfSlideRefs.current.clear();
-        pdfExportResolveRef.current?.();
-        pdfExportResolveRef.current = null;
-      }
-    }, 2000);
-    return () => clearTimeout(tid);
-  }, [pdfExportContext, aspectRatio]);
-
-  useEffect(() => {
-    if (!printContext) return;
-    const { slides: exportSlides } = printContext;
-    const tid = setTimeout(async () => {
-      try {
-        const elements = Array.from(
-          { length: exportSlides.length },
-          (_, i) => printSlideRefs.current.get(i),
-        ).filter((el): el is HTMLElement => Boolean(el));
-        const { warnings } = await printPresentation(elements, activeTheme, aspectRatio);
-        if (warnings.length > 0) {
-          window.alert(`Print complete with ${warnings.length} warning(s):\n\n${warnings.join('\n')}`);
-        }
-      } catch (err) {
-        console.error('Print failed:', err);
-      } finally {
-        setPrintContext(null);
-        printSlideRefs.current.clear();
-        printResolveRef.current?.();
-        printResolveRef.current = null;
-      }
-    }, 2000);
-    return () => clearTimeout(tid);
-  }, [printContext, aspectRatio]);
 
   return (
     <div className="app">
@@ -1772,6 +1778,7 @@ export default function App() {
                   totalSlides={printContext.slides.length}
                   docTitle={frontmatter.title ?? ''}
                   docDate={frontmatter.date as string ?? ''}
+                  onAllDiagramsReady={onPrintSlideReady.current}
                 />
               </div>
             ))}
@@ -1812,6 +1819,7 @@ export default function App() {
                   totalSlides={pdfExportContext.slides.length}
                   docTitle={frontmatter.title ?? ''}
                   docDate={frontmatter.date as string ?? ''}
+                  onAllDiagramsReady={onPdfSlideReady.current}
                 />
               </div>
             ))}

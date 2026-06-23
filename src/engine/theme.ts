@@ -518,13 +518,15 @@ export function sanitiseThemeOverrides(raw: Record<string, unknown>): Partial<Th
   return result;
 }
 
+export type ThemeParseResult = { ok: true; theme: Theme } | { ok: false; error: string };
+
 /** Parse a custom theme from YAML content (uses the same js-yaml already installed). */
-export function parseThemeYaml(id: string, content: string): Theme | null {
+export function parseThemeYaml(id: string, content: string): ThemeParseResult {
   try {
     const raw = yaml.load(content, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>;
-    return normaliseTheme(id, raw);
-  } catch {
-    return null;
+    return { ok: true, theme: normaliseTheme(id, raw) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 

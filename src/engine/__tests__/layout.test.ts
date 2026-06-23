@@ -111,8 +111,8 @@ describe('no-title layouts', () => {
     expect(detectLayout([bq], 0, false)).toBe('quote');
   });
 
-  it('no title + no elements → title (empty fallback)', () => {
-    expect(detectLayout([], 0, false)).toBe('title');
+  it('no title + no elements → blank', () => {
+    expect(detectLayout([], 0, false)).toBe('blank');
   });
 
   it('no title + paragraph → title-content (not full-bleed)', () => {

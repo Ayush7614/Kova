@@ -116,7 +116,7 @@ export function detectLayout(
       if (bodyElements[0].type === 'image') return 'full-bleed';
       if (bodyElements[0].type === 'blockquote') return 'quote';
     }
-    if (bodyElements.length === 0) return 'title'; // empty slide fallback
+    if (bodyElements.length === 0) return 'blank';
   }
 
   // ── H2 section break ─────────────────────────────────────────────────────

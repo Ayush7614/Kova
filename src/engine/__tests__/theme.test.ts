@@ -112,24 +112,29 @@ colors:
   primary: "#FF0000"
   background: "#FFFFFF"
 `;
-    const theme = parseThemeYaml('my-theme', yaml);
-    expect(theme).not.toBeNull();
-    expect(theme?.name).toBe('My Theme');
-    expect(theme?.colors.primary).toBe('#FF0000');
-    expect(theme?.colors.background).toBe('#FFFFFF');
+    const result = parseThemeYaml('my-theme', yaml);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.theme.name).toBe('My Theme');
+    expect(result.theme.colors.primary).toBe('#FF0000');
+    expect(result.theme.colors.background).toBe('#FFFFFF');
   });
 
   it('inherits unspecified color values from the default theme', () => {
     const yaml = 'name: Partial\ncolors:\n  primary: "#123456"\n';
-    const theme = parseThemeYaml('partial', yaml);
-    expect(theme?.colors.text).toBe(DEFAULT_THEME.colors.text);
-    expect(theme?.colors.accent).toBe(DEFAULT_THEME.colors.accent);
+    const result = parseThemeYaml('partial', yaml);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.theme.colors.text).toBe(DEFAULT_THEME.colors.text);
+    expect(result.theme.colors.accent).toBe(DEFAULT_THEME.colors.accent);
   });
 
   it('inherits font values from the default theme when not specified', () => {
     const yaml = 'name: Partial\n';
-    const theme = parseThemeYaml('partial', yaml);
-    expect(theme?.fonts.body).toBe(DEFAULT_THEME.fonts.body);
+    const result = parseThemeYaml('partial', yaml);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.theme.fonts.body).toBe(DEFAULT_THEME.fonts.body);
   });
 
   it('overrides header and footer settings', () => {
@@ -143,27 +148,35 @@ footer:
   show_slide_number: true
   text: "Slide {slide_number}"
 `;
-    const theme = parseThemeYaml('header-test', yaml);
-    expect(theme?.header.show).toBe(true);
-    expect(theme?.header.text).toBe('{title}');
-    expect(theme?.footer.show_slide_number).toBe(true);
+    const result = parseThemeYaml('header-test', yaml);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.theme.header.show).toBe(true);
+    expect(result.theme.header.text).toBe('{title}');
+    expect(result.theme.footer.show_slide_number).toBe(true);
   });
 
-  it('returns null for invalid YAML', () => {
-    const theme = parseThemeYaml('bad', ': invalid: yaml: {{{');
-    expect(theme).toBeNull();
+  it('returns an error result for invalid YAML', () => {
+    const result = parseThemeYaml('bad', ': invalid: yaml: {{{');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBeTruthy();
   });
 
   it('uses the provided id as theme id', () => {
-    const theme = parseThemeYaml('my-custom-id', 'name: Whatever\n');
-    expect(theme?.id).toBe('my-custom-id');
+    const result = parseThemeYaml('my-custom-id', 'name: Whatever\n');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.theme.id).toBe('my-custom-id');
   });
 
   it('parses layout decoration field', () => {
     const yaml = 'name: Dotted\nlayout:\n  decoration: dots\n  title_align: left\n';
-    const theme = parseThemeYaml('dots-theme', yaml);
-    expect(theme?.layout.decoration).toBe('dots');
-    expect(theme?.layout.title_align).toBe('left');
+    const result = parseThemeYaml('dots-theme', yaml);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.theme.layout.decoration).toBe('dots');
+    expect(result.theme.layout.title_align).toBe('left');
   });
 });
 

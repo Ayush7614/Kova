@@ -689,7 +689,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect || x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return;
 
-        const imagePaths = p.paths.filter((f) => IMAGE_EXT.test(f));
+        const imagePaths = [...new Set(p.paths.filter((f) => IMAGE_EXT.test(f)))];
         if (!imagePaths.length) return;
 
         const view = viewRef.current;

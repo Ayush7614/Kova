@@ -11,7 +11,8 @@ export type LayoutType =
   | 'grid'
   | 'media'
   | 'code'
-  | 'math';
+  | 'math'
+  | 'blank';
 
 export interface ListItem {
   text: string;
