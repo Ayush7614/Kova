@@ -101,9 +101,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Kova ${{ github.ref_name }}'
           releaseBody: |
-            > **Beta release** — core features are stable but rough edges remain. Please report bugs via [Issues](../../issues).
-
-            ## What's changed
+            ## What's new
 
             ### Bug fixes
             - **Fixed data loss in "Save & Close" flow** — when an external-change conflict dialog was open at the same time as the unsaved-changes close dialog, clicking "Save" would silently skip the write and close anyway. Edits are now always saved correctly before the window closes.
@@ -111,18 +109,19 @@ jobs:
             - **Eliminated false-positive "file changed externally" warnings on save** — Kova's own atomic writes are now suppressed at the OS-watcher level before they reach the frontend; only genuine external changes surface a notification.
             - **External changes now detected after every save** — atomic rename replaces the file's inode; Kova now re-registers the file watcher after each save so subsequent external edits are reliably detected.
             - **Autosave no longer races with external-change dialog** — autosave is paused while the conflict dialog is open and resumes cleanly once the user resolves the conflict.
-            - **Various UI and rendering fixes** — theme application errors, duplicate image handling, Mermaid diagram rendering timing, and blank slide layout issues resolved from QA review.
+            - **Various UI and rendering fixes** — theme application errors, duplicate image handling, Mermaid diagram rendering timing, and blank slide layout issues resolved.
+
+            ---
 
             ## Installation
 
-            | Platform | Download | First-launch note |
+            | Platform | Download | Note |
             |---|---|---|
-            | **macOS** (Apple Silicon + Intel) | `.dmg` | Double-click to install — app is signed and notarised |
+            | **macOS** (Apple Silicon + Intel) | `.dmg` | Signed and notarised — double-click to install |
             | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Click **More info → Run anyway** if SmartScreen appears (app is unsigned) |
-            | **Linux (Debian/Ubuntu)** | `.deb` | `sudo apt install ./Kova_Linux.deb` |
-            | **Linux (Fedora/RHEL/openSUSE)** | `.rpm` | `sudo dnf install ./Kova_Linux.rpm` |
-            | **Linux (Arch)** | AUR: `kova-bin` | `yay -S kova-bin` |
-            | **Linux (universal)** | `.AppImage` | `chmod +x Kova_Linux.AppImage && ./Kova_Linux.AppImage` |
+            | **Linux** | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), or `.AppImage` | Install via your package manager, or `chmod +x` the AppImage and run directly |
+
+            > **Beta release** — expect rough edges. Please report bugs via [Issues](../../issues).
           releaseDraft: true    # appears as a draft; publish manually after reviewing the assets
           prerelease: false
           args: ${{ matrix.args }}
