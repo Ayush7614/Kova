@@ -125,6 +125,7 @@ export default function App() {
   const [keybindings, setKeybindings]     = useState<Keybindings>({ path: '', combos: {} });
   const [warnMessage, setWarnMessage]     = useState<string | null>(null);
   const warnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showExternalChangeDialog, setShowExternalChangeDialog] = useState(false);
   const [isRenaming, setIsRenaming]       = useState(false);
   const [renameValue, setRenameValue]     = useState('');
   const [resolvedUiTheme, setResolvedUiTheme] = useState<'dark' | 'light'>('dark');
@@ -241,6 +242,12 @@ export default function App() {
   // sees the current dirty state when it fires synchronously after a watcher event.
   const isDirtyRef = useRef(isDirty);
   isDirtyRef.current = isDirty;
+  const externalChangeDialogRef = useRef(showExternalChangeDialog);
+  externalChangeDialogRef.current = showExternalChangeDialog;
+  // Captures the file path at the moment the external-change dialog is opened,
+  // so the Reload button always reloads the file that triggered the alert even
+  // if the user somehow navigates to a different file before clicking.
+  const externalChangePathRef = useRef<string | null>(null);
   const editorContent = settings.showFrontmatter ? content : editorBody;
 
   // Rewrite relative image srcs to asset:// URLs so Tauri's WebView can load them.
@@ -380,30 +387,29 @@ export default function App() {
     getCurrentWindow().setTitle(isDirty ? `${name} • — Kova` : `${name} — Kova`).catch(() => {});
   }, [filePath, frontmatter.title, isDirty]);
 
-  // File-changed event from Rust watcher → reload (if no unsaved edits)
+  // File-changed event from Rust watcher.
+  // Kova's own atomic writes are suppressed on the Rust side (via the
+  // own_write_suppress_until timestamp in AppState), so every event that
+  // reaches here is a genuine external change and always requires acknowledgement.
   useEffect(() => {
     const unlisten = listen<void>('file-changed', async () => {
       const path = filePathRef.current;
       if (!path) return;
-      // Guard: if the user has unsaved edits, don't silently overwrite them.
-      // Kova's own saves set isDirty=false before the watcher event fires,
-      // so this warning only appears for genuinely external modifications.
       if (isDirtyRef.current) {
-        setWarnMessage('File changed externally. Save or discard your changes to reload.');
-        if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
-        warnTimerRef.current = setTimeout(() => setWarnMessage(null), 6000);
-        return;
-      }
-      try {
-        const newContent: string = await invoke('read_file', { path });
-        setContent(newContent);
-        setIsDirty(false);
-        // Clear any "file changed externally" warning — the reload (triggered by
-        // the user saving, or by a clean external change) resolves the situation.
-        setWarnMessage(null);
-        if (warnTimerRef.current) { clearTimeout(warnTimerRef.current); warnTimerRef.current = null; }
-      } catch (err) {
-        console.error('Failed to reload file:', err);
+        // Unsaved edits — block with a modal; user must choose reload or save-as.
+        externalChangePathRef.current = path;
+        setShowExternalChangeDialog(true);
+      } else {
+        // No unsaved edits — reload silently then surface a dismissable banner.
+        try {
+          const newContent: string = await invoke('read_file', { path });
+          setContent(newContent);
+          setIsDirty(false);
+          externalChangePathRef.current = path;
+          setShowExternalChangeDialog(true);
+        } catch (err) {
+          console.error('Failed to reload file:', err);
+        }
       }
     });
     return () => { unlisten.then((fn) => fn()); };
@@ -924,12 +930,29 @@ export default function App() {
 
   const handleSave = useCallback(async () => {
     if (!filePath) return;
+    // Optimistic: mark clean before the write so that when the OS file-watcher
+    // fires (during the IPC round-trip) isDirtyRef.current is already false and
+    // the event is treated as a silent no-op reload rather than a warning.
+    // React renders this state change before Rust's disk I/O + IPC completes.
+    setIsDirty(false);
     try {
       const toWrite = buildSaveContent();
       await invoke('write_file', { path: filePath, content: toWrite });
       if (toWrite !== content) setContent(toWrite);
-      setIsDirty(false);
-    } catch (err) { console.error('Save failed:', err); }
+      // Re-register the watcher: atomic_write replaces the file's inode via
+      // rename, which causes inotify to drop the watch on the old inode.
+      // Explicitly re-watching after each save ensures external changes are
+      // detected regardless of how the OS / notify crate handles the rename.
+      await invoke('start_watching', { path: filePath }).catch(console.error);
+      // Saving resolves any pending external-change conflict: the user's edits
+      // win. Dismiss the dialog so the confirmCloseAction "Save" path can
+      // proceed with the close, and so Ctrl+S while the dialog is open doesn't
+      // leave a stale conflict prompt on screen.
+      setShowExternalChangeDialog(false);
+    } catch (err) {
+      setIsDirty(true);
+      console.error('Save failed:', err);
+    }
   }, [filePath, content, buildSaveContent]);
 
   const handleSaveAs = useCallback(async (): Promise<string | null> => {
@@ -1215,11 +1238,11 @@ export default function App() {
     void buildMacMenu(stableMenuHandlers, recents);
   }, [recents, stableMenuHandlers]);
 
-  // macOS file association: open files delivered via double-click / "Open With".
-  // Drain any that arrived before mount (launch-with-file), then listen for live
-  // opens. ponytail: opens the first path only — single-window editor, no tabs.
+  // File association: open files delivered via double-click / "Open With".
+  // On macOS, paths arrive via RunEvent::Opened; on Linux/Windows, via CLI arg
+  // buffered in lib.rs setup. Drain on mount, then listen for live macOS opens.
+  // Opens the first path only — single-window editor, no tabs.
   useEffect(() => {
-    if (!isMac) return;
     invoke<string[]>('take_pending_open')
       .then((paths) => { if (paths[0]) handleMarkdownDrop(paths[0]); })
       .catch(() => {});
@@ -1239,10 +1262,14 @@ export default function App() {
   // timer; it then runs uninterrupted every autosaveIntervalSeconds until the
   // next save (isDirty back to false) regardless of further keystrokes.
   useEffect(() => {
-    if (!settings.autosave || !filePath || !isDirty) return;
+    // Suppress autosave while the external-change dialog is open: the user must
+    // explicitly choose to reload or save-as, and silently writing would resolve
+    // the conflict without acknowledgement. The timer is killed when the dialog
+    // opens and restarted (fresh interval) once the user dismisses it.
+    if (!settings.autosave || !filePath || !isDirty || showExternalChangeDialog) return;
     const id = setInterval(() => { handleSaveRef.current(); }, settings.autosaveIntervalSeconds * 1000);
     return () => clearInterval(id);
-  }, [settings.autosave, settings.autosaveIntervalSeconds, filePath, isDirty]);
+  }, [settings.autosave, settings.autosaveIntervalSeconds, filePath, isDirty, showExternalChangeDialog]);
 
   useEffect(() => {
     const sc = (id: string) => getCombo(keybindings.combos, id);
@@ -1662,6 +1689,60 @@ export default function App() {
         }}>
           {warnMessage}
         </div>
+      )}
+
+      {showExternalChangeDialog && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
+            boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
+            padding: '24px 28px', width: 340, maxWidth: '90vw',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+              File changed externally
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>
+              {isDirty
+                ? 'Another application modified this file. Reload to get the latest version, or save your current edits under a new name.'
+                : 'Another application modified this file. The latest version has been loaded.'}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              {isDirty && (
+                <>
+                  <button
+                    className="btn btn-primary"
+                    onClick={async () => {
+                      // Use the path captured when the dialog opened, not the
+                      // current filePathRef — the user may have navigated away.
+                      const path = externalChangePathRef.current;
+                      setShowExternalChangeDialog(false);
+                      if (!path) return;
+                      try {
+                        const newContent: string = await invoke('read_file', { path });
+                        setContent(newContent);
+                        setIsDirty(false);
+                      } catch (err) { console.error('Failed to reload file:', err); }
+                    }}
+                  >Reload</button>
+                  <button
+                    className="btn"
+                    onClick={async () => {
+                      setShowExternalChangeDialog(false);
+                      await handleSaveAs();
+                    }}
+                  >Save As…</button>
+                </>
+              )}
+              {!isDirty && (
+                <button className="btn btn-primary" onClick={() => setShowExternalChangeDialog(false)}>
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {confirmCloseAction && (

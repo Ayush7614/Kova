@@ -40,6 +40,13 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown Document",
+        "description": "Markdown presentation"
+      }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/64x64.png",

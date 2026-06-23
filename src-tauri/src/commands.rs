@@ -1,6 +1,7 @@
 use crate::{file_io, watcher};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, Manager, State};
 
 // --- Wake lock (prevent display sleep during presentations) ---
@@ -431,6 +432,10 @@ pub struct AppState {
     /// `RunEvent::Opened`) before the frontend mounted its listener. Drained
     /// once on startup by `take_pending_open`.
     pub pending_open: Mutex<Vec<String>>,
+    /// Unix-millisecond deadline before which the watcher should suppress
+    /// file-changed events — set by write_file to swallow events caused by
+    /// Kova's own atomic rename rather than a genuine external edit.
+    pub own_write_suppress_until: Arc<AtomicU64>,
 }
 
 /// Drain file paths that macOS delivered before the webview was ready to listen.
@@ -445,7 +450,14 @@ pub fn read_file(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn write_file(path: String, content: String) -> Result<(), String> {
+pub fn write_file(path: String, content: String, state: State<'_, AppState>) -> Result<(), String> {
+    // Stamp a 500 ms suppression window before the rename so the watcher
+    // ignores the inotify/FSEvents events caused by our own atomic write.
+    let until = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64 + 500;
+    state.own_write_suppress_until.store(until, Ordering::Relaxed);
     file_io::write(&path, &content)
 }
 
@@ -463,7 +475,8 @@ pub fn start_watching(
     // Drop previous watcher atomically before creating a new one.
     // Both fields are updated inside the same lock, preventing divergence.
     s.watcher = None;
-    let w = watcher::create(app, path_buf.clone()).map_err(|e| e.to_string())?;
+    let suppress = Arc::clone(&state.own_write_suppress_until);
+    let w = watcher::create(app, path_buf.clone(), suppress).map_err(|e| e.to_string())?;
     s.current_file = Some(path_buf);
     s.watcher = Some(w);
 

@@ -3,8 +3,8 @@ mod file_io;
 mod watcher;
 
 use commands::{AppState, WatchState};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,6 +36,7 @@ pub fn run() {
             watch: Mutex::new(WatchState { current_file: None, watcher: None }),
             exit_confirmed: AtomicBool::new(false),
             pending_open: Mutex::new(Vec::new()),
+            own_write_suppress_until: Arc::new(AtomicU64::new(0)),
         })
         .setup(|app| {
             // macOS: titleBarStyle Overlay still draws the window title text next
@@ -54,8 +55,19 @@ pub fn run() {
                     }
                 }
             }
-            #[cfg(not(target_os = "macos"))]
-            let _ = app;
+            // Linux/Windows: "Open With" passes the file path as a CLI argument.
+        // Buffer it so the frontend can drain via take_pending_open after mount.
+        #[cfg(not(target_os = "macos"))]
+        {
+            let paths: Vec<String> = std::env::args()
+                .skip(1)
+                .filter(|a| !a.starts_with('-') && std::path::Path::new(a).exists())
+                .collect();
+            if !paths.is_empty() {
+                let state = app.state::<AppState>();
+                state.pending_open.lock().unwrap().extend(paths);
+            }
+        }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
