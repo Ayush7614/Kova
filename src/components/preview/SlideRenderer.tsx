@@ -397,9 +397,7 @@ function TitleImageLayout({ slide }: { slide: Slide }) {
   const img = slide.elements.find((e) => e.type === 'image');
   return (
     <div className="sl-title-image">
-      <div className="sl-ti-text">
-        <div className="sl-heading">{slide.title}</div>
-      </div>
+      <div className="sl-heading">{slide.title}</div>
       <div className="sl-ti-img">
         {img && img.type === 'image' && (
           <img src={img.src} alt={img.alt} className="sl-img-fill" />
