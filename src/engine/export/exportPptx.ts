@@ -301,6 +301,7 @@ function addSlide(
   if (hasHead) addHeaderBar(s, t, meta);
   if (hasFoot) addFooterBar(s, t, meta, H);
   if (logoDataUrl) addLogo(s, logoDataUrl, logoAr, t.logo_position, t.logo_opacity, H);
+  if (slide.speakerNotes) s.addNotes(slide.speakerNotes);
 }
 
 // ── Layout renderers ──────────────────────────────────────────────────────────
