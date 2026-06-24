@@ -1240,11 +1240,6 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
     <div className="editor-panel" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div className="panel-header">
         Editor
-        {focusMode && (
-          <span style={{ marginLeft: 'auto', fontSize: 10, color: '#D94F00', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-            Focus Mode
-          </span>
-        )}
       </div>
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} onContextMenu={handleContextMenu} />

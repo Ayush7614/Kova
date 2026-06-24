@@ -1508,6 +1508,19 @@ export default function App() {
           title="Present from slide 1 (Alt+click to start from current slide)"
         >▶ Present</button>
         <button
+          className="wm-btn"
+          onClick={toggleFocusMode}
+          title={`${focusMode ? 'Exit' : 'Enter'} focus mode (${formatCombo(getCombo(keybindings.combos, 'focusMode'))})`}
+          style={{ marginLeft: 4, color: focusMode ? 'var(--accent)' : undefined }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3"/>
+            <path d="M21 8V5a2 2 0 0 0-2-2h-3"/>
+            <path d="M3 16v3a2 2 0 0 0 2 2h3"/>
+            <path d="M16 21h3a2 2 0 0 0 2-2v-3"/>
+          </svg>
+        </button>
+        <button
           className={`wm-btn${showInspector ? ' wm-btn--active' : ''}`}
           onClick={() => setShowInspector((v) => !v)}
           title="Toggle inspector"
