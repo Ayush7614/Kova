@@ -7,56 +7,15 @@ extern "C" {
     fn XInitThreads() -> std::ffi::c_int;
 }
 
+// WebKitGTK C API — already linked transitively through the webkit2gtk dep.
+// Called before any WebView is created (i.e. before kova_lib::run()).
 #[cfg(target_os = "linux")]
 extern "C" {
-    fn dlopen(
-        filename: *const std::os::raw::c_char,
-        flag: std::os::raw::c_int,
-    ) -> *mut std::os::raw::c_void;
-    fn dlsym(
-        handle: *mut std::os::raw::c_void,
-        symbol: *const std::os::raw::c_char,
-    ) -> *mut std::os::raw::c_void;
-    fn dlclose(handle: *mut std::os::raw::c_void) -> std::os::raw::c_int;
-}
-
-// Probes whether EGL can create a default display on the current Wayland session.
-// On compositors whose EGL stack lacks EGL_EXT_platform_wayland (KWin, Mutter,
-// Smithay/niri, etc.), eglGetDisplay(EGL_DEFAULT_DISPLAY) returns EGL_NO_DISPLAY
-// and WebKit's GPU process aborts with EGL_BAD_PARAMETER. Detecting this before
-// WebKit starts lets us fall back to software rendering cleanly.
-#[cfg(target_os = "linux")]
-fn egl_default_display_works() -> bool {
-    use std::ffi::CString;
-    use std::os::raw::c_void;
-
-    type EglGetDisplayFn = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
-
-    let lib = match CString::new("libEGL.so.1") {
-        Ok(s) => s,
-        Err(_) => return true,
-    };
-
-    unsafe {
-        let handle = dlopen(lib.as_ptr(), 1 /* RTLD_LAZY */);
-        if handle.is_null() {
-            return true; // Can't load EGL — let WebKit try normally
-        }
-
-        let sym = CString::new("eglGetDisplay").unwrap();
-        let fn_ptr = dlsym(handle, sym.as_ptr());
-
-        let display_valid = if !fn_ptr.is_null() {
-            let egl_get_display: EglGetDisplayFn = std::mem::transmute(fn_ptr);
-            // EGL_DEFAULT_DISPLAY = NULL; returns EGL_NO_DISPLAY (NULL) on failure
-            !egl_get_display(std::ptr::null_mut()).is_null()
-        } else {
-            true // Symbol not found — let WebKit try normally
-        };
-
-        dlclose(handle);
-        display_valid
-    }
+    fn webkit_web_context_get_default() -> *mut std::os::raw::c_void;
+    fn webkit_web_context_set_sandbox_enabled(
+        context: *mut std::os::raw::c_void,
+        enabled: std::os::raw::c_int,
+    );
 }
 
 fn main() {
@@ -77,18 +36,21 @@ fn main() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 
-    // On Wayland sessions where the EGL stack lacks EGL_EXT_platform_wayland
-    // (KDE Plasma/KWin, GNOME/Mutter, niri/Smithay), WebKit's GPU process
-    // aborts with EGL_BAD_PARAMETER before the window appears. Probe EGL here,
-    // before the webview is created, and fall back to Mesa software rendering
-    // if the default display can't be created. Software rendering works on all
-    // Wayland compositors and is unnoticeable for a presentation app.
+    // When running as an AppImage, WebKitGTK's bubblewrap sandbox cannot
+    // resolve Wayland socket or GPU device paths from the non-standard AppImage
+    // mount location. The GPU subprocess therefore aborts with EGL_BAD_PARAMETER
+    // before the window appears. Disable the sandbox via the WebKit API before
+    // the first WebView is created so subprocesses can reach system resources
+    // normally. gtk::init() is idempotent — Tauri calls it again internally.
     #[cfg(target_os = "linux")]
-    if std::env::var("WAYLAND_DISPLAY").is_ok()
-        && std::env::var("LIBGL_ALWAYS_SOFTWARE").is_err()
-        && !egl_default_display_works()
-    {
-        std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
+    if std::env::var("APPIMAGE").is_ok() {
+        let _ = gtk::init();
+        unsafe {
+            let ctx = webkit_web_context_get_default();
+            if !ctx.is_null() {
+                webkit_web_context_set_sandbox_enabled(ctx, 0);
+            }
+        }
     }
 
     kova_lib::run()
