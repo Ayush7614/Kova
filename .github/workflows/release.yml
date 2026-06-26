@@ -22,9 +22,12 @@ jobs:
             args: --target universal-apple-darwin
             rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-          # Linux — .deb and .rpm packages
+          # Linux — .deb and .rpm packages only
+          # AppImage excluded: WebKitGTK bundled on Ubuntu 22.04 crashes with
+          # EGL_BAD_PARAMETER on non-Ubuntu EGL stacks. Upstream fix in Tauri 2.12:
+          # https://github.com/tauri-apps/tauri/pull/12491
           - platform: ubuntu-22.04
-            args: ''
+            args: '--bundles deb,rpm'
             rust_targets: ''
 
           # Windows 10/11
@@ -122,7 +125,7 @@ jobs:
             |---|---|---|
             | **macOS** (Apple Silicon + Intel) | `.dmg` | Signed and notarised — double-click to install |
             | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Click **More info → Run anyway** if SmartScreen appears (app is unsigned) |
-            | **Linux** | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), or `.AppImage` | Install via your package manager, or `chmod +x` the AppImage and run directly |
+            | **Linux** | `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/RHEL/openSUSE) | Install via your package manager |
 
             > **Beta release** — expect rough edges. Please report bugs via [Issues](../../issues).
           releaseDraft: true    # appears as a draft; publish manually after reviewing the assets
@@ -215,7 +218,7 @@ jobs:
 
           gh release download "$TAG" -R KovaMD/Kova \
             -p "*.dmg" -p "*_en-US.msi" -p "*-setup.exe" \
-            -p "*.deb" -p "*.rpm" -p "*.AppImage" -p "*_x86_64.tar.gz" \
+            -p "*.deb" -p "*.rpm" -p "*_x86_64.tar.gz" \
             -D /tmp/assets --clobber
 
           cp "/tmp/assets/Kova_${VERSION}_universal.dmg"        "/tmp/assets/Kova_macOS.dmg"
@@ -223,7 +226,6 @@ jobs:
           cp "/tmp/assets/Kova_${VERSION}_x64-setup.exe"        "/tmp/assets/Kova_Windows_setup.exe"
           cp "/tmp/assets/Kova_${VERSION}_amd64.deb"            "/tmp/assets/Kova_Linux.deb"
           cp "/tmp/assets/Kova-${VERSION}-1.x86_64.rpm"         "/tmp/assets/Kova_Linux.rpm"
-          cp "/tmp/assets/Kova_${VERSION}_amd64.AppImage"       "/tmp/assets/Kova_Linux.AppImage"
           cp "/tmp/assets/Kova_${VERSION}_x86_64.tar.gz"        "/tmp/assets/Kova_Linux.tar.gz"
 
           gh release upload "$TAG" -R KovaMD/Kova \
@@ -232,7 +234,6 @@ jobs:
             /tmp/assets/Kova_Windows_setup.exe \
             /tmp/assets/Kova_Linux.deb \
             /tmp/assets/Kova_Linux.rpm \
-            /tmp/assets/Kova_Linux.AppImage \
             /tmp/assets/Kova_Linux.tar.gz \
             --clobber
 

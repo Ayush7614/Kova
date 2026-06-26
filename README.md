@@ -1,5 +1,7 @@
 # Kova
 
+> **Note — Linux AppImage temporarily unavailable.** A WebKitGTK bundling incompatibility in the Tauri AppImage builder causes an `EGL_BAD_PARAMETER` crash on non-Ubuntu distributions (Arch, Manjaro, Fedora, Void, etc.). AppImage builds are suspended until the upstream fix lands in [Tauri 2.12](https://github.com/tauri-apps/tauri/pull/12491). In the meantime, `.deb` and `.rpm` packages work correctly on their respective distributions — see [Download](#download) below.
+
 Kova turns plain Markdown into polished slides — with live preview, multiple layouts, theming, and PPTX export — all in a native desktop app.
 
 [![Latest release](https://img.shields.io/github/v/release/KovaMD/Kova?label=release&color=orange)](https://github.com/KovaMD/Kova/releases/latest)
