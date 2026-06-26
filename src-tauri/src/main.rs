@@ -159,24 +159,29 @@ fn main() {
 
     #[cfg(target_os = "linux")]
     if std::env::var("APPIMAGE").is_ok() {
-        // The AppImage bundles WebKitGTK compiled on Ubuntu 22.04. Its
-        // Wayland EGL path (eglGetPlatformDisplayEXT EGL_PLATFORM_WAYLAND_EXT)
-        // fails with EGL_BAD_PARAMETER on non-Ubuntu EGL stacks (Fedora Mesa
-        // 26.x, virgl/vmwgfx VMs, etc.), aborting the WebProcess.
+        // The AppImage bundles WebKitGTK compiled on Ubuntu 22.04. Its EGL
+        // initialisation calls eglGetPlatformDisplayEXT (both Wayland and X11
+        // platforms) and calls CRASH()/abort() if the call returns
+        // EGL_BAD_PARAMETER. On Fedora 44 with virgl/vmwgfx (VM) both
+        // platforms fail — no env var manipulation (GDK_BACKEND, WAYLAND_DISPLAY,
+        // LIBGL_ALWAYS_SOFTWARE) can make the Mesa EGL accept the call, because
+        // the failure is in the platform-level display init, before any GL
+        // renderer is selected.
         //
-        // Two env vars together fix it when XWayland is available:
-        // - GDK_BACKEND=x11  → GTK uses the X11 display backend
-        // - unset WAYLAND_DISPLAY → WebKit's internal platform detection also
-        //   falls back to X11 EGL instead of Wayland EGL (WebKit checks this
-        //   independently of GDK, so GDK_BACKEND alone is not enough)
+        // WEBKIT_DISABLE_COMPOSITING_MODE=1 prevents WebKit from initialising
+        // its GL display at all, so eglGetPlatformDisplayEXT is never called
+        // and the crash does not occur. Software compositing is perfectly
+        // adequate for a presentation app.
         //
-        // Guard on DISPLAY so we don't break pure-Wayland setups without XWayland.
+        // GDK_BACKEND=x11 + unset WAYLAND_DISPLAY are kept as belt-and-
+        // suspenders for GTK's own display backend on Wayland sessions.
+        if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
+            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+        }
         if std::env::var("DISPLAY").is_ok() {
             if std::env::var("GDK_BACKEND").is_err() {
                 std::env::set_var("GDK_BACKEND", "x11");
             }
-            // Only unset if we're actually switching to X11; leave it alone
-            // if the user has forced GDK_BACKEND to something else themselves.
             if std::env::var("GDK_BACKEND").ok().as_deref() == Some("x11") {
                 std::env::remove_var("WAYLAND_DISPLAY");
             }
