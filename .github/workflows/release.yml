@@ -106,16 +106,11 @@ jobs:
           releaseBody: |
             ## What's new
 
-            ### New
-            - **Focus mode button in the toolbar** — focus mode is now accessible directly from the titlebar, between the Present button and the Inspector toggle. The icon glows accent-coloured when active so the current state is always obvious at a glance. The keyboard shortcut (`Ctrl+Shift+F`) still works as before.
-
             ### Bug fixes
-            - **Fixed file open and save on Windows for non-standard paths** — the home-directory sandbox that restricted file access was originally added for Linux Flatpak and should never have applied to Windows or macOS. Users whose files live outside the standard home directory (e.g. `C:\ak\...`) can now open and save files normally. Thanks @a1880 for the report (#10).
-            - **Fixed logo not rendering on Windows** — paths returned by the file dialog use backslashes, which were being URL-encoded rather than converted to forward slashes before being passed to the asset protocol, producing a URL the handler could not resolve. Thanks @a1880 (#12).
-            - **Fixed header and footer being lost when switching themes** — changing the active theme was clearing all overrides including user-configured header and footer text. These values are now preserved across theme switches. Thanks @a1880 (#11).
-            - **Fixed paste failing for large text at the end of the document on Windows** — the paste handler was reading the cursor position after an async clipboard read. On Windows, reading a large clipboard payload is slow enough that the editor state can shift during the wait, making the position invalid. CodeMirror silently rejects out-of-range dispatches. Cursor position is now captured before the async call. Thanks @Sl-Alex (#13).
-            - **Speaker notes now included in PPTX export** — notes written below `???` on a slide were parsed and shown in presenter view but were never written into the exported `.pptx` file. They now appear in PowerPoint's Notes pane. Thanks @Benjoyo (#14).
-            - **Title + Image slide layout now stacks vertically** — title sits above the image rather than side by side.
+            - **Fixed Mermaid sequence diagram lines invisible on light themes** — `signalColor` was inheriting from `primaryTextColor` (white on light themes), making arrows and lines disappear against the slide background. Now always follows the body text colour. Thanks @a1880 (#26).
+            - **Fixed spellcheck splitting words on umlauts and accents** — the word tokeniser used an ASCII-only regex, so characters like ü, é, and ñ caused words to be split mid-token and incorrectly flagged. The regex now uses Unicode `\p{L}` property escapes and matches all letters correctly. Thanks @mf450s (#21).
+            - **Fixed local images not loading on Windows** — paths with backslashes were passed directly to the asset protocol URL, which WebView2 rejects. Separators are now normalised to forward slashes before building the URL. Drag-and-drop path splitting was also fixed to handle mixed separators from Tauri's dialog and file-drop events. Thanks @codingThome (#25).
+            - **Fixed dock icon appearing larger than neighbours on macOS Sonoma** — the icon artwork filled the canvas edge-to-edge with no transparent margin. Apple HIG requires ~10% safe-area padding on each side; without it Sonoma's dock renderer makes the icon appear oversized relative to well-padded neighbours. Icons have been regenerated with a 10% transparent border on all sides. Thanks @Extiward (#18).
 
             ---
 
