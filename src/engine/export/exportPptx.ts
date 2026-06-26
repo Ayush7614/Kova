@@ -31,11 +31,13 @@ function piePaletteFromAccent(accent: string): Record<string, string> {
   return out;
 }
 
-function diagramContrastText(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) > 0.35 ? '#111111' : '#FFFFFF';
+function parseChannels(bare6: string): [number, number, number] {
+  return [parseInt(bare6.slice(0,2),16), parseInt(bare6.slice(2,4),16), parseInt(bare6.slice(4,6),16)];
+}
+
+function diagramContrastText(color: string): string {
+  const [r, g, b] = parseChannels(color.replace('#', '').toUpperCase());
+  return (0.2126 * r/255 + 0.7152 * g/255 + 0.0722 * b/255) > 0.35 ? '#111111' : '#FFFFFF';
 }
 
 function diagramMutedSecondary(primaryHex: string): string {
@@ -671,9 +673,8 @@ function addBlankSlide(s: PS, t: Theme) {
 // ── Academic references ───────────────────────────────────────────────────────
 
 function blendColor(fg: string, bg: string, alpha: number): string {
-  const parse = (c: string) => [parseInt(c.slice(0,2),16), parseInt(c.slice(2,4),16), parseInt(c.slice(4,6),16)];
-  const [fr, fg2, fb] = parse(hex(fg));
-  const [br, bg2, bb] = parse(hex(bg));
+  const [fr, fg2, fb] = parseChannels(hex(fg));
+  const [br, bg2, bb] = parseChannels(hex(bg));
   const r = Math.round(fr * alpha + br * (1 - alpha));
   const g = Math.round(fg2 * alpha + bg2 * (1 - alpha));
   const b = Math.round(fb * alpha + bb * (1 - alpha));
@@ -681,7 +682,7 @@ function blendColor(fg: string, bg: string, alpha: number): string {
 }
 
 function addReferences(s: PS, refs: string[], t: Theme, H: number, hasFoot: boolean) {
-  const REF_H = 0.06 + refs.length * 0.17;
+  const REF_H = Math.min(0.06 + refs.length * 0.17, H * 0.35);
   const bottomPad = hasFoot ? FOOT_H + 0.08 : 0.15;
   const color = blendColor(t.colors.text, t.colors.background, 0.60);
   const runs = refs.map((ref, i) => ({

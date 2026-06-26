@@ -132,7 +132,7 @@ function preprocess(content: string): PreprocessResult {
 
     const ref = t.match(REF_RE);
     if (ref) {
-      references.push(ref[1]);
+      if (ref[1].trim()) references.push(ref[1]);
       continue;
     }
 

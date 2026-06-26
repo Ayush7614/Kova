@@ -41,8 +41,7 @@ interface Props {
 
 // Returns a path to `target` relative to the directory of `docPath`.
 function makeRelativePath(docPath: string, target: string): string {
-  const sep = docPath.includes('\\') ? '\\' : '/';
-  const docParts = docPath.split(sep).slice(0, -1);
+  const docParts = docPath.split(/[/\\]/).slice(0, -1);
   const tgtParts = target.split(/[/\\]/);
   let common = 0;
   while (common < docParts.length && common < tgtParts.length && docParts[common] === tgtParts[common]) common++;
