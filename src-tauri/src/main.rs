@@ -159,22 +159,8 @@ fn main() {
 
     #[cfg(target_os = "linux")]
     if std::env::var("APPIMAGE").is_ok() {
-        // The AppImage bundles WebKitGTK compiled on Ubuntu 22.04. Its EGL
-        // initialisation calls eglGetPlatformDisplayEXT (both Wayland and X11
-        // platforms) and calls CRASH()/abort() if the call returns
-        // EGL_BAD_PARAMETER. On Fedora 44 with virgl/vmwgfx (VM) both
-        // platforms fail — no env var manipulation (GDK_BACKEND, WAYLAND_DISPLAY,
-        // LIBGL_ALWAYS_SOFTWARE) can make the Mesa EGL accept the call, because
-        // the failure is in the platform-level display init, before any GL
-        // renderer is selected.
-        //
-        // WEBKIT_DISABLE_COMPOSITING_MODE=1 prevents WebKit from initialising
-        // its GL display at all, so eglGetPlatformDisplayEXT is never called
-        // and the crash does not occur. Software compositing is perfectly
-        // adequate for a presentation app.
-        //
-        // GDK_BACKEND=x11 + unset WAYLAND_DISPLAY are kept as belt-and-
-        // suspenders for GTK's own display backend on Wayland sessions.
+        eprintln!("[kova] AppImage detected — applying EGL workarounds");
+
         if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
             std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
         }
@@ -187,13 +173,26 @@ fn main() {
             }
         }
 
+        eprintln!("[kova]   WEBKIT_DISABLE_COMPOSITING_MODE = {}",
+            std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref().unwrap_or("(unset)"));
+        eprintln!("[kova]   WEBKIT_DISABLE_DMABUF_RENDERER  = {}",
+            std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref().unwrap_or("(unset)"));
+        eprintln!("[kova]   GDK_BACKEND                     = {}",
+            std::env::var("GDK_BACKEND").as_deref().unwrap_or("(unset)"));
+        eprintln!("[kova]   WAYLAND_DISPLAY                 = {}",
+            std::env::var("WAYLAND_DISPLAY").as_deref().unwrap_or("(unset)"));
+        eprintln!("[kova]   DISPLAY                         = {}",
+            std::env::var("DISPLAY").as_deref().unwrap_or("(unset)"));
+
         // WebKitGTK's bubblewrap sandbox cannot resolve paths correctly when
         // the parent process runs from an AppImage mount point.
         let _ = gtk::init();
         unsafe {
             let ctx = webkit_web_context_get_default();
+            eprintln!("[kova]   webkit_web_context_get_default  = {:?}", ctx);
             if !ctx.is_null() {
                 webkit_web_context_set_sandbox_enabled(ctx, 0);
+                eprintln!("[kova]   sandbox disabled");
             }
         }
     } else {
