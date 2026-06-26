@@ -713,14 +713,16 @@ export default function App() {
 
   const handleThemeSelect = useCallback((id: string) => {
     setActiveThemeId(id);
-    // Preserve header/footer overrides across theme switches — these are
-    // user-configured content values, not theme-specific style choices.
-    // Color/font/logo overrides are intentionally cleared since they were
-    // customising the old theme and likely don't apply to the new one.
+    // Preserve user-configured values across theme switches: header/footer
+    // content and any logo the user explicitly chose. Color/font overrides
+    // are cleared since they were customising the old theme's palette.
     setThemeOverrides((prev) => {
       const preserved: Partial<Theme> = {};
       if (prev.header !== undefined) preserved.header = prev.header;
       if (prev.footer !== undefined) preserved.footer = prev.footer;
+      if ('logo' in prev) preserved.logo = prev.logo;
+      if (prev.logo_position !== undefined) preserved.logo_position = prev.logo_position;
+      if (prev.logo_opacity !== undefined) preserved.logo_opacity = prev.logo_opacity;
       return preserved;
     });
     setContent((prev) => {
