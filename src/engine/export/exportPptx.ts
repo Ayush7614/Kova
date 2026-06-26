@@ -1249,7 +1249,8 @@ function tryAddImage(s: PS, src: string, area: Area, warnings: string[], aspectR
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 function hex(color: string): string {
-  return color.replace('#', '').toUpperCase();
+  const h = color.replace('#', '').toUpperCase();
+  return h.length === 3 ? h[0]+h[0]+h[1]+h[1]+h[2]+h[2] : h;
 }
 
 function firstFont(stack: string): string {
