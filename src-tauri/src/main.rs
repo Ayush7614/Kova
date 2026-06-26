@@ -161,19 +161,15 @@ fn main() {
     if std::env::var("APPIMAGE").is_ok() {
         eprintln!("[kova] AppImage detected — applying EGL workarounds");
 
-        // WEBKIT_DISABLE_COMPOSITING_MODE does NOT prevent EGL init in the
-        // bundled WebKitWebProcess — the process calls eglGetPlatformDisplayEXT
-        // unconditionally before any IPC configuration arrives.
-        //
-        // Both Wayland EGL and X11 EGL return EGL_BAD_PARAMETER on Fedora 44
-        // with virgl/vmwgfx VMs. LIBGL_ALWAYS_SOFTWARE forces Mesa llvmpipe
-        // which handles EGL display init without going through the broken virgl
-        // DRM path.
+        // The bundled WebKitWebProcess calls eglGetPlatformDisplayEXT
+        // unconditionally on startup. On non-Ubuntu EGL stacks this can fail
+        // with EGL_BAD_PARAMETER. LIBGL_ALWAYS_SOFTWARE forces Mesa llvmpipe
+        // which has a more compatible EGL platform implementation.
+        // GDK_BACKEND=x11 + removing WAYLAND_DISPLAY routes both GTK and
+        // WebKit's internal display init through XWayland (X11 EGL) rather
+        // than Wayland EGL, which is less reliable on non-Ubuntu stacks.
         if std::env::var("LIBGL_ALWAYS_SOFTWARE").is_err() {
             std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
-        }
-        if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
-            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
         }
         if std::env::var("DISPLAY").is_ok() {
             if std::env::var("GDK_BACKEND").is_err() {
@@ -186,8 +182,6 @@ fn main() {
 
         eprintln!("[kova]   LIBGL_ALWAYS_SOFTWARE           = {}",
             std::env::var("LIBGL_ALWAYS_SOFTWARE").as_deref().unwrap_or("(unset)"));
-        eprintln!("[kova]   WEBKIT_DISABLE_COMPOSITING_MODE = {}",
-            std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref().unwrap_or("(unset)"));
         eprintln!("[kova]   WEBKIT_DISABLE_DMABUF_RENDERER  = {}",
             std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref().unwrap_or("(unset)"));
         eprintln!("[kova]   GDK_BACKEND                     = {}",
