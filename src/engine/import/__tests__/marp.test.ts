@@ -110,7 +110,7 @@ describe('importMarp', () => {
     const { markdown } = importMarp(deck);
     expect(markdown).toContain('line one');
     expect(markdown).toContain('line two');
-    expect(markdown.match(/^# Slide$/m)).toHaveLength(1);
+    expect(markdown.match(/^# Slide$/gm)).toHaveLength(1);
   });
 
   it('maps size 16:9 to aspect_ratio', () => {
