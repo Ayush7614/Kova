@@ -42,6 +42,12 @@ const TARGETS = [
     file: 'src/version.ts',
     pattern: /^(export const APP_VERSION = ')[^']+(';)/m,
   },
+  {
+    // AUR -bin package; second capture group is the empty line-end. Note:
+    // pkgrel is not reset to 1 here — bump it by hand if rebuilding same pkgver.
+    file: 'packaging/arch/kova-bin/PKGBUILD',
+    pattern: /^(pkgver=)[^\n]+()$/m,
+  },
 ];
 
 let changedCount = 0;
