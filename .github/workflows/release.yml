@@ -221,12 +221,11 @@ jobs:
           ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 /tmp/appimagetool squashfs-root "$APP"
           rm -rf squashfs-root
 
-          # Re-sign with Tauri's minisign key
-          sudo apt-get install -y minisign -qq
-          echo "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d > /tmp/tauri.key
-          file /tmp/tauri.key
-          echo "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | minisign -S -s /tmp/tauri.key -m "$APP" -x "$APP.sig"
-          rm -f /tmp/tauri.key
+          # Re-sign with the Tauri signer CLI (already installed from the build step)
+          cargo tauri signer sign \
+            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
+            "$APP"
 
           # Patch latest.json with the new AppImage signature
           mkdir -p /tmp/lj
