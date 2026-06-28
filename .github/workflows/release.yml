@@ -105,15 +105,18 @@ jobs:
             ## What's new
 
             ### New features
-            - **Academic references** — cite sources with `!ref[Author, Year. Title]`; renders as small bottom-right text on the slide and exports to PPTX.
-            - **3-part header/footer layout** — use `|` as a separator to place content left, centre, and right: `{date} | My Deck | {slide_number}/{total}`. Thanks @vadika (#31).
-            - **Resizable next-slide preview** — drag the divider in presenter mode to resize the upcoming-slide panel.
-            - **Editor zoom and word wrap** — zoom the editor font size and toggle word wrap from the toolbar.
+            - **Markdown tables** — full GFM table support with inline formatting inside cells (requested by @SFZUlm, #48).
+            - **Presenter: slide jump, blank screen, F5 shortcuts** — type a slide number to jump directly; press `B` to blank the screen; `F5` / `Shift+F5` start and exit presentation.
+            - **Presenter: Home / End navigation** — jump to the first or last slide instantly (by @vadika, #47).
+            - **Keyboard slide navigation in editor** — `Alt+↑` / `Alt+↓` move between slides without touching the mouse (by @vadika, #42).
+            - **Slide divider line** — a subtle visual separator between slides in the editor (by @vadika, #41).
 
             ### Bug fixes
-            - **Fixed PPTX export crash and broken PPTX import** — export crash on certain slide content; import now round-trips cleanly.
-            - **Fixed 3-digit hex colours in PPTX export** — shorthand hex values (e.g. `#fff`) were not expanded before channel extraction, producing `NaN` colour values in the output file.
-            - **Fixed logo not preserved when switching themes** — the user-uploaded logo was reset to the theme default on every theme change.
+            - **Fixed panels hidden after relaunch when closed in focus mode** — the collapsed panel sizes were being saved and then restored on next launch, leaving the slide preview and inspector invisible until manually resized.
+            - **Fixed duplicate Windows desktop shortcuts on upgrade** — a legacy per-machine shortcut was created on top of the existing one on each install (reported by @a1880, #39).
+            - **Fixed edge-to-edge icon artwork** — icon rendering was clipped on Windows, Linux, and mobile platforms.
+            - **Fixed `|` segmented header/footer not exporting to PPTX** — the split was applied after variable resolution, so a document title containing `|` (e.g. "Costs | Benefits") was treated as a separator (reported by @a1880, #44).
+            - **Fixed white-on-white Mermaid labels** — `labelTextColor` now follows the slide body text colour.
 
             ---
 
