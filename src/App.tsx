@@ -230,6 +230,16 @@ export default function App() {
     id: 'kova-main',
     panelIds: [...PANEL_IDS],
   });
+  // Don't persist layout while focus mode is active — collapsed panel sizes
+  // would be saved and then restored on next launch, leaving panels invisible.
+  const focusModeRef = useRef(false);
+  focusModeRef.current = focusMode;
+  const guardedOnLayoutChanged = useCallback(
+    (layout: Parameters<typeof onLayoutChanged>[0]) => {
+      if (!focusModeRef.current) onLayoutChanged(layout);
+    },
+    [onLayoutChanged],
+  );
 
   // Panel refs for Focus Mode collapse
   const thumbPanelRef     = usePanelRef();
@@ -1590,7 +1600,7 @@ export default function App() {
           style={{ height: '100%' }}
           id="kova-main"
           defaultLayout={defaultLayout}
-          onLayoutChanged={onLayoutChanged}
+          onLayoutChanged={guardedOnLayoutChanged}
         >
           <Panel id="thumb" panelRef={thumbPanelRef} defaultSize={22} minSize={8} collapsible>
             <ThumbnailPanel
