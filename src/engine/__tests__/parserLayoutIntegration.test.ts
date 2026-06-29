@@ -90,6 +90,7 @@ describe('parser → layout integration', () => {
   });
 
   it('long bullet list triggers overflow two-column layout', () => {
+    // 12 single-line items → estimateLines returns 12, which exceeds OVERFLOW_LINE_THRESHOLD (10)
     const items = Array.from({ length: 12 }, (_, i) => `- Item ${i + 1}`).join('\n');
     const { slides } = parseDocument(doc(['## Slide', '', items].join('\n')));
     expect(slides[0].layout).toBe('two-column');

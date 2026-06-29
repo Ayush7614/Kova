@@ -117,11 +117,13 @@ describe('patchFrontmatter', () => {
     expect(out).toContain('# Slide');
   });
 
-  it('preserves CRLF line endings in the body on patch', () => {
+  it('preserves CRLF line endings in the body on patch (frontmatter is re-serialised as LF)', () => {
     const input = '---\r\ntitle: Old\r\n---\r\n# Slide\r\n';
     const out = patchFrontmatter(input, { title: 'New' });
     expect(out).toMatch(/title: "?New"?/);
     expect(out.endsWith('# Slide\r\n')).toBe(true);
+    // yaml.dump always emits LF; only the body retains the original CRLF endings
+    expect(out.startsWith('---\r\n')).toBe(false);
   });
 
   it('creates frontmatter with multiple keys when none existed', () => {

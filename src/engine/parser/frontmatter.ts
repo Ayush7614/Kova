@@ -26,7 +26,7 @@ export function patchFrontmatter(content: string, patch: Record<string, unknown>
   let body = content;
 
   if (match) {
-    try { existing = (yaml.load(match[1]) as Record<string, unknown>) ?? {}; } catch { /* keep empty */ }
+    try { existing = (yaml.load(match[1], { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>) ?? {}; } catch { /* keep empty */ }
     body = match[2];
   }
 
