@@ -7,6 +7,18 @@ describe('isMarp', () => {
     expect(isMarp('---\ntitle: x\n---\n# Hi')).toBe(false);
     expect(isMarp('# Hi')).toBe(false);
   });
+
+  it('detects marp:true with extra whitespace around the value', () => {
+    expect(isMarp('---\nmarp:  true\n---\n# Hi')).toBe(true);
+  });
+
+  it('does not treat marp: "true" as a Marp deck (quoted YAML boolean)', () => {
+    expect(isMarp('---\nmarp: "true"\n---\n# Hi')).toBe(false);
+  });
+
+  it('returns false when marp: false is present', () => {
+    expect(isMarp('---\nmarp: false\n---\n# Hi')).toBe(false);
+  });
 });
 
 describe('importMarp', () => {
@@ -122,5 +134,27 @@ describe('importMarp', () => {
     const { markdown } = importMarp('---\nmarp: true\nfooter: "Confidential"\n---\n# X');
     expect(markdown).toContain('footer:');
     expect(markdown).toContain('"Confidential"');
+  });
+
+  it('passes through author and numeric date in frontmatter', () => {
+    const { markdown } = importMarp('---\nmarp: true\nauthor: Ada Lovelace\ndate: 2024\n---\n# X');
+    expect(markdown).toContain('author: "Ada Lovelace"');
+    expect(markdown).toContain('date: 2024');
+    expect(markdown).not.toContain('marp: true');
+  });
+
+  it('drops unsupported _class: invert without mapping to a layout', () => {
+    const { markdown, dropped } = importMarp('---\nmarp: true\n---\n<!-- _class: invert -->\n# Hi');
+    expect(dropped).toContain('_class:invert');
+    expect(markdown).not.toContain('<!-- layout:title -->');
+    expect(markdown).not.toContain('_class: invert');
+    expect(markdown).toContain('# Hi');
+  });
+
+  it('imports decks whose frontmatter uses spaced marp: true', () => {
+    const { markdown } = importMarp('---\nmarp:  true\ntitle: Deck\n---\n# Slide');
+    expect(markdown).toContain('title: "Deck"');
+    expect(markdown).toContain('# Slide');
+    expect(markdown).not.toContain('marp:');
   });
 });
