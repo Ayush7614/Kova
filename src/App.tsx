@@ -234,11 +234,26 @@ export default function App() {
   const focusModeRef = useRef(false);
   focusModeRef.current = focusMode;
   const guardedStorage = useMemo<Storage>(() => ({
-    get length()                    { return localStorage.length; },
-    clear()                         { localStorage.clear(); },
-    key(index: number)              { return localStorage.key(index); },
-    getItem(key: string)            { return localStorage.getItem(key); },
-    removeItem(key: string)         { localStorage.removeItem(key); },
+    get length()            { return localStorage.length; },
+    clear()                 { localStorage.clear(); },
+    key(i: number)          { return localStorage.key(i); },
+    removeItem(key: string) { localStorage.removeItem(key); },
+    getItem(key: string) {
+      const val = localStorage.getItem(key);
+      if (val) {
+        try {
+          const parsed = JSON.parse(val) as Record<string, unknown>;
+          // Any panel at size 0 means the layout was saved while collapsed in
+          // focus mode (a previous bug). Discard it so panels restore to their
+          // defaultSize props rather than being invisible on next launch.
+          if (Object.values(parsed).some(v => v === 0)) {
+            localStorage.removeItem(key);
+            return null;
+          }
+        } catch { /* non-JSON key — pass through */ }
+      }
+      return val;
+    },
     setItem(key: string, val: string) {
       if (!focusModeRef.current) localStorage.setItem(key, val);
     },
