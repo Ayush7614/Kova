@@ -224,22 +224,30 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThemeId]);
 
-  // Persist panel layout across sessions and inspector toggle/hide
+  // Persist panel layout across sessions and inspector toggle/hide.
+  // The guard blocks saves while focus mode is active: collapse() fires the
+  // onLayoutChanged callback synchronously (via the library's event emitter)
+  // before React re-renders, so checking a ref inside the callback is too
+  // early. Blocking at setItem — which runs inside the library's 100 ms
+  // debounce — guarantees React has already committed focusModeRef.current.
   const PANEL_IDS = ['thumb', 'editor', 'inspector'] as const;
+  const focusModeRef = useRef(false);
+  focusModeRef.current = focusMode;
+  const guardedStorage = useMemo<Storage>(() => ({
+    get length()                    { return localStorage.length; },
+    clear()                         { localStorage.clear(); },
+    key(index: number)              { return localStorage.key(index); },
+    getItem(key: string)            { return localStorage.getItem(key); },
+    removeItem(key: string)         { localStorage.removeItem(key); },
+    setItem(key: string, val: string) {
+      if (!focusModeRef.current) localStorage.setItem(key, val);
+    },
+  }), []);
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'kova-main',
     panelIds: [...PANEL_IDS],
+    storage: guardedStorage,
   });
-  // Don't persist layout while focus mode is active — collapsed panel sizes
-  // would be saved and then restored on next launch, leaving panels invisible.
-  const focusModeRef = useRef(false);
-  focusModeRef.current = focusMode;
-  const guardedOnLayoutChanged = useCallback(
-    (layout: Parameters<typeof onLayoutChanged>[0]) => {
-      if (!focusModeRef.current) onLayoutChanged(layout);
-    },
-    [onLayoutChanged],
-  );
 
   // Panel refs for Focus Mode collapse
   const thumbPanelRef     = usePanelRef();
@@ -1610,7 +1618,7 @@ export default function App() {
           style={{ height: '100%' }}
           id="kova-main"
           defaultLayout={defaultLayout}
-          onLayoutChanged={guardedOnLayoutChanged}
+          onLayoutChanged={onLayoutChanged}
         >
           <Panel id="thumb" panelRef={thumbPanelRef} defaultSize={22} minSize={8} collapsible>
             <ThumbnailPanel
