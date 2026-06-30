@@ -169,10 +169,19 @@ describe('sanitiseThemeOverrides', () => {
     expect(result.header?.text).toBeUndefined();
   });
 
-  it('drops footer/header text containing template braces (CSS-injection guard)', () => {
+  it('preserves footer/header text containing template variables', () => {
     const result = sanitiseThemeOverrides({
-      footer: { text: 'Page {title}' },
+      footer: { text: '{date} | {title} | {slide_number} / {total}' },
       header: { text: '{title}' },
+    });
+    expect(result.footer?.text).toBe('{date} | {title} | {slide_number} / {total}');
+    expect(result.header?.text).toBe('{title}');
+  });
+
+  it('drops footer/header text containing semicolons', () => {
+    const result = sanitiseThemeOverrides({
+      footer: { text: 'bad; css' },
+      header: { text: 'also; bad' },
     });
     expect(result.footer?.text).toBeUndefined();
     expect(result.header?.text).toBeUndefined();

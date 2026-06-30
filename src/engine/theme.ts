@@ -523,14 +523,14 @@ export function sanitiseThemeOverrides(raw: Record<string, unknown>): Partial<Th
     const h = raw.header as Record<string, unknown>;
     const header: Record<string, unknown> = {};
     if (typeof h.show === 'boolean') header.show = h.show;
-    if (typeof h.text === 'string' && !/[;{}]/.test(h.text)) header.text = h.text;
+    if (typeof h.text === 'string' && !h.text.includes(';')) header.text = h.text;
     if (Object.keys(header).length > 0) result.header = header as unknown as ThemeHeader;
   }
   if (raw.footer && typeof raw.footer === 'object') {
     const f = raw.footer as Record<string, unknown>;
     const footer: Record<string, unknown> = {};
     if (typeof f.show === 'boolean') footer.show = f.show;
-    if (typeof f.text === 'string' && !/[;{}]/.test(f.text)) footer.text = f.text;
+    if (typeof f.text === 'string' && !f.text.includes(';')) footer.text = f.text;
     if (typeof f.show_slide_number === 'boolean') footer.show_slide_number = f.show_slide_number;
     if (Object.keys(footer).length > 0) result.footer = footer as unknown as ThemeFooter;
   }
