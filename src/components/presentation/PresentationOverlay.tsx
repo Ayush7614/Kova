@@ -133,6 +133,11 @@ export function PresentationOverlay({
           break;
         case 'Escape':
           e.preventDefault(); e.stopPropagation(); onExit(); break;
+        default:
+          if (/^\d$/.test(e.key)) {
+            e.preventDefault(); e.stopPropagation();
+            setJumpInput(e.key);
+          }
       }
     };
     window.addEventListener('keydown', handler, true);
