@@ -27,7 +27,7 @@ import { loadLastSession, saveLastSession } from './store/lastSession';
 import { loadRecentFiles, addRecentFile, removeRecentFile, clearRecentFiles } from './store/recentFiles';
 import { buildMacMenu } from './macMenu';
 import type { MacMenuHandlers } from './macMenu';
-import { loadKeybindings, matchShortcut, getCombo, formatCombo } from './engine/keybindings';
+import { loadKeybindings, matchShortcut, getCombo, formatCombo, isMac } from './engine/keybindings';
 import type { Keybindings } from './engine/keybindings';
 
 import { parseDocument } from './engine/parser/markdownToSlides';
@@ -45,9 +45,6 @@ import { parseAspectRatio } from './engine/types';
 import type { Theme } from './engine/theme';
 
 import './styles/global.css';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const isMac = /Mac/i.test((navigator as any).userAgentData?.platform ?? navigator.platform);
 
 // Parent folder of a path (handles both separators); '' if it has none.
 function dirOf(p: string): string {

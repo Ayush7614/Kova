@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { mermaidSvgCache } from './mermaidSvgCache';
 import { svgToPngDataUrl } from './svgToPng';
 import { queuedMermaidRender } from './mermaidRenderQueue';
+import { extToMime } from './imageMime';
 import type { AspectRatio } from '../types';
 import type { Theme } from '../theme';
 
@@ -22,12 +23,6 @@ const PIXEL_RATIO  = 2;
 // all such <img> src attributes to data: URLs via native Tauri commands so the
 // canvas stays untainted during html-to-image capture.
 async function preResolveExternalImages(el: HTMLElement): Promise<void> {
-  function extToMime(ext: string): string {
-    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-    if (ext === 'gif')  return 'image/gif';
-    if (ext === 'webp') return 'image/webp';
-    return 'image/png';
-  }
   const imgs = Array.from(el.querySelectorAll<HTMLImageElement>('img'));
   await Promise.all(imgs.map(async (img) => {
     const src = img.src;

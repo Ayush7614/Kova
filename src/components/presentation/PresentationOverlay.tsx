@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import type { Slide, AspectRatio } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
 import { SlideRenderer } from '../preview/SlideRenderer';
+import { SLIDE_W, formatTime, ScaledSlideBox, LaserDot } from './presentationShared';
 import './PresentationOverlay.css';
 
 interface Props {
@@ -17,17 +18,8 @@ interface Props {
   onExit: () => void;
 }
 
-function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
 const HUD_H   = 40;   // px — HUD bar height
 const NOTE_H  = 160;  // px — speaker notes panel height
-const SLIDE_W = 960;  // virtual slide width (matches ThumbnailPanel)
 
 export function PresentationOverlay({
   slides, currentIndex, theme, docTitle, docDate, aspectRatio = { w: 16, h: 9 }, laserColor = '#ff2020', showTimer = false, onNavigate, onExit,
@@ -209,14 +201,7 @@ export function PresentationOverlay({
         style={{ cursor: laserActive ? 'crosshair' : hudVisible ? 'default' : 'none' }}
       >
         <div ref={frameRef} className="pres-slide-frame" onMouseMove={handleFrameMouseMove}>
-          <div
-            style={{
-              width: SLIDE_W,
-              height: slideH,
-              transform: `scale(${scale})`,
-              transformOrigin: 'top left',
-            }}
-          >
+          <ScaledSlideBox scale={scale} slideH={slideH}>
             <SlideRenderer
               slide={slide}
               theme={theme}
@@ -226,7 +211,7 @@ export function PresentationOverlay({
               docDate={docDate}
               onNavigateTo={handleNavigateTo}
             />
-          </div>
+          </ScaledSlideBox>
           <div
             key={currentIndex}
             style={{
@@ -238,15 +223,7 @@ export function PresentationOverlay({
             }}
           />
           {laserActive && laserPos && (
-            <div
-              className="pres-laser-dot"
-              style={{
-                left: `${laserPos.x * 100}%`,
-                top: `${laserPos.y * 100}%`,
-                background: laserColor,
-                boxShadow: `0 0 6px 2px ${laserColor}b3, 0 0 16px 5px ${laserColor}4d`,
-              }}
-            />
+            <LaserDot x={laserPos.x} y={laserPos.y} color={laserColor} />
           )}
         </div>
       </div>

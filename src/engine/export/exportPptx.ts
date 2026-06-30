@@ -3,33 +3,16 @@ import { invoke } from '@tauri-apps/api/core';
 import { mermaidSvgCache } from './mermaidSvgCache';
 import { svgToPngDataUrl } from './svgToPng';
 import { queuedMermaidRender } from './mermaidRenderQueue';
+import { extToMime } from './imageMime';
 import mermaid from 'mermaid';
 import hljs from 'highlight.js';
 import type { Slide, SlideElement, Frontmatter } from '../types';
 import type { Theme } from '../theme';
-import { resolveTemplate, hexToHsl, hslToHex, defaultChartPalette } from '../theme';
+import { resolveTemplate, hexToHsl, hslToHex, defaultChartPalette, buildCScalePalette, piePaletteFromAccent } from '../theme';
 
 mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'antiscript' });
 
 // ── Mermaid rendering helpers ─────────────────────────────────────────────────
-
-function buildCScalePalette(accent: string): Record<string, string> {
-  const [h, rawS, rawL] = hexToHsl(accent);
-  const s = Math.min(Math.max(rawS, 0.50), 0.80);
-  const l = Math.min(Math.max(rawL, 0.38), 0.58);
-  const out: Record<string, string> = {};
-  for (let i = 0; i < 12; i++) out[`cScale${i}`] = hslToHex(h + i * 30, s, l);
-  return out;
-}
-
-function piePaletteFromAccent(accent: string): Record<string, string> {
-  const [h, rawS, rawL] = hexToHsl(accent);
-  const s = Math.min(Math.max(rawS, 0.55), 0.85);
-  const l = Math.min(Math.max(rawL, 0.28), 0.48);
-  const out: Record<string, string> = {};
-  for (let i = 0; i < 12; i++) out[`pie${i + 1}`] = hslToHex(h + i * 30, s, l);
-  return out;
-}
 
 function parseChannels(bare6: string): [number, number, number] {
   return [parseInt(bare6.slice(0,2),16), parseInt(bare6.slice(2,4),16), parseInt(bare6.slice(4,6),16)];
@@ -121,14 +104,6 @@ interface Area { x: number; y: number; w: number; h: number }
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export interface ExportResult { base64: string; warnings: string[] }
-
-function extToMime(ext: string): string {
-  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-  if (ext === 'gif')  return 'image/gif';
-  if (ext === 'webp') return 'image/webp';
-  if (ext === 'svg')  return 'image/svg+xml';
-  return 'image/png';
-}
 
 async function assetUrlToDataUrl(src: string): Promise<string> {
   try {
