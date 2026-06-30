@@ -1366,7 +1366,7 @@ mod platform_windows {
                     Microsoft::Web::WebView2::Win32::ICoreWebView2_7,
                     PrintToPdfCompletedHandler,
                 };
-                use windows::core::PCWSTR;
+                use windows::core::{Interface, PCWSTR};
 
                 // ICoreWebView2Controller → ICoreWebView2 → ICoreWebView2_7
                 let controller = wv.controller();
