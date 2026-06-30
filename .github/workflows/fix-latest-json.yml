@@ -44,11 +44,10 @@ jobs:
           DMG=$(find /tmp/fix -name "*.dmg" | head -1)
           MSI=$(find /tmp/fix -name "*_en-US.msi" | head -1)
 
-          # Write the private key to a temp file so newlines are preserved
-          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > /tmp/tauri.key
-          tauri signer sign -f /tmp/tauri.key -p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" "$DMG"
-          tauri signer sign -f /tmp/tauri.key -p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" "$MSI"
-          rm -f /tmp/tauri.key
+          # tauri signer sign reads TAURI_SIGNING_PRIVATE_KEY and
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD from the environment automatically.
+          tauri signer sign "$DMG"
+          tauri signer sign "$MSI"
 
           echo "DMG_NAME=$(basename "$DMG")" >> "$GITHUB_ENV"
           echo "MSI_NAME=$(basename "$MSI")" >> "$GITHUB_ENV"
