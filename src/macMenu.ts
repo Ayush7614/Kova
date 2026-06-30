@@ -21,6 +21,7 @@ export interface MacMenuHandlers {
   importMarp: () => void;
   export: () => void;
   exportPdf: () => void;
+  exportHtml: () => void;
   print: () => void;
   present: () => void;
   toggleInspector: () => void;
@@ -78,6 +79,7 @@ export async function buildMacMenu(h: MacMenuHandlers, recents: string[]): Promi
           { item: 'Separator' },
           { text: 'Export PowerPoint (.pptx)', action: () => h.export() },
           { text: 'Export PDF (.pdf)', action: () => h.exportPdf() },
+          { text: 'Export HTML (.html)', action: () => h.exportHtml() },
           { text: 'Print…', accelerator: 'CmdOrCtrl+P', action: () => h.print() },
           { item: 'Separator' },
           { item: 'Quit' },

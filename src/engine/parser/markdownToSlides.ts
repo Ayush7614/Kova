@@ -74,10 +74,10 @@ interface PreprocessResult {
 }
 
 const YOUTUBE_RE      = /^!youtube\[([^\]]*)\]\(([^)]*)\)$/;
-const VIDEO_RE        = /^!video\[([^\]]*)\]\(([^)]*)\)$/;
 const POLL_RE         = /^!poll\[([^\]]*)\]\(([^)]*)\)$/;
 const PROGRESS_RE     = /^!progress\[([^\]]*)\]\((\d+(?:\.\d+)?)\)$/;
 const REF_RE          = /^!ref\[([^\]]*)\]$/;
+const TOC_RE          = /^!toc$/;
 // remark-math v6 only recognises block math when $$ appears on its own line.
 // Normalise single-line $$...$$ → multi-line so it is parsed as a math block.
 const DISPLAY_MATH_RE = /^\$\$(.+)\$\$\s*$/;
@@ -115,14 +115,6 @@ function preprocess(content: string): PreprocessResult {
       continue;
     }
 
-    const vid = t.match(VIDEO_RE);
-    if (vid) {
-      const idx = nextIdx++;
-      placeholders.set(idx, { type: 'video', label: vid[1], src: vid[2] });
-      cleanLines.push(`<!-- kova-el:${idx} -->`);
-      continue;
-    }
-
     const poll = t.match(POLL_RE);
     if (poll) {
       const idx = nextIdx++;
@@ -142,6 +134,13 @@ function preprocess(content: string): PreprocessResult {
     const ref = t.match(REF_RE);
     if (ref) {
       if (ref[1].trim()) references.push(ref[1]);
+      continue;
+    }
+
+    if (TOC_RE.test(t)) {
+      const idx = nextIdx++;
+      placeholders.set(idx, { type: 'toc', entries: [] });
+      cleanLines.push(`<!-- kova-el:${idx} -->`);
       continue;
     }
 

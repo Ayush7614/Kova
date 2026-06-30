@@ -44,6 +44,11 @@ export function PresenterOverlay({
   const nextSlide = slides[currentIndex + 1] ?? null;
   const total     = slides.length;
 
+  const handleNavigateTo = useCallback((slideIndex: number) => {
+    const visibleIdx = slides.findIndex((s) => s.index === slideIndex);
+    if (visibleIdx >= 0) onNavigate(visibleIdx);
+  }, [slides, onNavigate]);
+
   const slideH = Math.round(SLIDE_W * aspectRatio.h / aspectRatio.w);
 
   const [rightW, setRightW] = useState(() => {
@@ -230,6 +235,7 @@ export function PresenterOverlay({
                 totalSlides={total}
                 docTitle={docTitle}
                 docDate={docDate}
+                onNavigateTo={handleNavigateTo}
               />
             </div>
             {laserActive && laserPos && (

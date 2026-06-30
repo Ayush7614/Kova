@@ -36,10 +36,19 @@ tauri-plugin-window-state = "2.4.1"
 # doesn't clear it). Versions match what tauri already pulls in transitively.
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSResponder"] }
+# Native PDF export via WKWebView.createPDFWithConfiguration:completionHandler:
+objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKPDFConfiguration"] }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSError"] }
+block2 = "0.6"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# Native PDF export via ICoreWebView2_7::PrintToPdf. Versions are pinned to what
+# Tauri/wry already pull in transitively so the lockfile doesn't change.
+webview2-com = "0.38"
+windows = { version = "0.61", features = [] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { version = "0.18", features = [] }
 gdk = { version = "0.18", features = [] }
-gdk-pixbuf = { version = "0.18", features = [] }
 gio = "0.18"
 

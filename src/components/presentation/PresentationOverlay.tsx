@@ -33,6 +33,11 @@ export function PresentationOverlay({
   slides, currentIndex, theme, docTitle, docDate, aspectRatio = { w: 16, h: 9 }, laserColor = '#ff2020', showTimer = false, onNavigate, onExit,
 }: Props) {
   const slide = slides[currentIndex];
+
+  const handleNavigateTo = useCallback((slideIndex: number) => {
+    const visibleIdx = slides.findIndex((s) => s.index === slideIndex);
+    if (visibleIdx >= 0) onNavigate(visibleIdx);
+  }, [slides, onNavigate]);
   const total = slides.length;
 
   const [showNotes, setShowNotes] = useState(false);
@@ -128,12 +133,6 @@ export function PresentationOverlay({
           break;
         case 'Escape':
           e.preventDefault(); e.stopPropagation(); onExit(); break;
-        default:
-          // Type a digit to open the slide-jump input (then Enter to go).
-          if (/^[0-9]$/.test(e.key)) {
-            e.preventDefault(); e.stopPropagation();
-            setJumpInput(e.key);
-          }
       }
     };
     window.addEventListener('keydown', handler, true);
@@ -220,6 +219,7 @@ export function PresentationOverlay({
               totalSlides={total}
               docTitle={docTitle}
               docDate={docDate}
+              onNavigateTo={handleNavigateTo}
             />
           </div>
           <div

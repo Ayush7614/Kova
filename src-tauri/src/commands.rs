@@ -659,7 +659,7 @@ pub fn read_file_b64(path: String) -> Result<String, String> {
         .map(|e| e.to_ascii_lowercase());
     let allowed = matches!(
         ext.as_deref(),
-        Some("png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "avif" | "tiff" | "ico"
+        Some("png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "avif" | "tif" | "tiff" | "ico"
             | "pptx")
     );
     if !allowed {
@@ -1158,3 +1158,273 @@ fn sort_dedup_fonts(mut fonts: Vec<String>) -> Vec<String> {
     fonts.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
     fonts
 }
+
+// ── Native PDF export ────────────────────────────────────────────────────────
+
+/// Render a self-contained HTML document to a PDF file using the platform's
+/// Returns Ok if native PDF export is available on this platform; returns
+/// Err("not yet implemented") on platforms where only the JS raster fallback
+/// is used. Callers should check this before building the HTML document to
+/// avoid sending a large payload over IPC unnecessarily.
+#[tauri::command]
+pub fn check_native_pdf() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    return Err("not yet implemented".into());
+    #[cfg(not(target_os = "linux"))]
+    Ok(())
+}
+
+/// native WebView print API (WKWebView on macOS, WebView2 on Windows).
+/// The HTML must be fully self-contained (all fonts and images embedded as
+/// data: URIs) so the hidden render window needs no network or asset:// access.
+#[tauri::command]
+pub async fn export_pdf_native(
+    app: AppHandle,
+    html_content: String,
+    output_path: String,
+    width_mm: f64,
+    height_mm: f64,
+) -> Result<(), String> {
+    use tauri::Manager;
+
+    // Write HTML to a temp file so the hidden WebviewWindow can navigate to it.
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("app cache dir: {e}"))?;
+    std::fs::create_dir_all(&cache_dir).ok();
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let html_path = cache_dir.join(format!("kova-print-{ts}.html"));
+    std::fs::write(&html_path, html_content.as_bytes())
+        .map_err(|e| format!("write temp html: {e}"))?;
+
+    let html_path_str = html_path.to_str().ok_or("html_path is non-UTF-8")?.to_string();
+
+    // Linux: no native PDF backend — fall through to the raster path in JS.
+    #[cfg(target_os = "linux")]
+    {
+        let _ = (width_mm, height_mm, html_path_str, output_path);
+        let _ = std::fs::remove_file(&html_path);
+        return Err("not yet implemented".into());
+    }
+
+    // macOS / Windows: load the HTML in a hidden WebviewWindow and use the
+    // platform's native WebView printing API.
+    #[cfg(not(target_os = "linux"))]
+    {
+        // Produce a valid file:// URL.
+        // On Windows: C:\foo\bar.html → file:///C:/foo/bar.html (triple slash required)
+        // On Unix:    /path/bar.html  → file:///path/bar.html
+        let raw_path = html_path_str.replace('\\', "/");
+        let file_url = if raw_path.starts_with('/') {
+            format!("file://{raw_path}")
+        } else {
+            format!("file:///{raw_path}")
+        };
+        let url = file_url
+            .parse::<tauri::Url>()
+            .map_err(|e| format!("url parse: {e}"))?;
+
+        let label = format!("kova-print-{ts}");
+
+        // Create an invisible window for off-screen PDF rendering.
+        // Register on_page_load on the builder so we know when the document is ready.
+        let (load_tx, load_rx) = std::sync::mpsc::sync_channel::<()>(1);
+        let load_tx2 = load_tx.clone();
+        let window = tauri::WebviewWindowBuilder::new(
+            &app,
+            &label,
+            tauri::WebviewUrl::External(url),
+        )
+        .visible(false)
+        .decorations(false)
+        .inner_size(960.0, 540.0)
+        .on_page_load(move |_win, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                let _ = load_tx2.send(());
+            }
+        })
+        .build()
+        .map_err(|e| format!("create print window: {e}"))?;
+        drop(load_tx);
+
+        tauri::async_runtime::spawn_blocking(move || {
+            load_rx
+                .recv_timeout(std::time::Duration::from_secs(30))
+                .ok();
+        })
+        .await
+        .ok();
+
+        // Give fonts and lazy-rendered content a moment to settle.
+        tauri::async_runtime::spawn_blocking(|| {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        })
+        .await
+        .ok();
+
+        #[cfg(target_os = "macos")]
+        let result = platform_macos::generate_pdf(&window, &output_path).await;
+
+        #[cfg(target_os = "windows")]
+        let result =
+            platform_windows::generate_pdf(&window, &output_path, width_mm, height_mm).await;
+
+        let _ = window.destroy();
+        let _ = std::fs::remove_file(&html_path);
+
+        result
+    }
+}
+
+// ── macOS: WKWebView.createPDFWithConfiguration:completionHandler: ────────────
+
+#[cfg(target_os = "macos")]
+mod platform_macos {
+    use tauri::WebviewWindow;
+
+    pub async fn generate_pdf(window: &WebviewWindow, output_path: &str) -> Result<(), String> {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Result<Vec<u8>, String>>(1);
+        let output = output_path.to_string();
+
+        window
+            .with_webview(move |wv| {
+                use block2::RcBlock;
+                use objc2::{msg_send, runtime::AnyObject};
+
+                // wv.inner() is the raw WKWebView id pointer.
+                let webview = wv.inner() as *mut AnyObject;
+
+                // Allocate a WKPDFConfiguration with default settings.
+                let config: *mut AnyObject = unsafe {
+                    let cls = objc2::runtime::AnyClass::get(c"WKPDFConfiguration")
+                        .expect("WKPDFConfiguration");
+                    msg_send![cls, new]
+                };
+
+                let tx2 = tx.clone();
+                let block =
+                    RcBlock::new(move |data: *mut AnyObject, error: *mut AnyObject| {
+                        if !error.is_null() || data.is_null() {
+                            let _ = tx2.send(Err("WKWebView PDF creation failed".into()));
+                            return;
+                        }
+                        let bytes: Vec<u8> = unsafe {
+                            let len: usize = msg_send![data, length];
+                            let ptr: *const u8 = msg_send![data, bytes];
+                            std::slice::from_raw_parts(ptr, len).to_vec()
+                        };
+                        let _ = tx2.send(Ok(bytes));
+                    });
+
+                unsafe {
+                    let _: () = msg_send![
+                        webview,
+                        createPDFWithConfiguration: config
+                        completionHandler: &*block
+                    ];
+                    // config was +1 from `new`; balance it now that the call has retained it.
+                    let _: () = msg_send![config, release];
+                }
+            })
+            .map_err(|e| format!("with_webview: {e}"))?;
+
+        let bytes = tauri::async_runtime::spawn_blocking(move || {
+            rx.recv_timeout(std::time::Duration::from_secs(60))
+                .map_err(|_| "PDF generation timed out".to_string())
+                .and_then(|r| r)
+        })
+        .await
+        .map_err(|e| format!("{e}"))??;
+
+        std::fs::write(&output, &bytes).map_err(|e| format!("write PDF: {e}"))
+    }
+}
+
+// ── Windows: WebView2 ICoreWebView2_7::PrintToPdf ────────────────────────────
+
+#[cfg(target_os = "windows")]
+mod platform_windows {
+    use tauri::WebviewWindow;
+
+    pub async fn generate_pdf(
+        window: &WebviewWindow,
+        output_path: &str,
+        _width_mm: f64,
+        _height_mm: f64,
+    ) -> Result<(), String> {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
+        let output = output_path.to_string();
+
+        window
+            .with_webview(move |wv| {
+                use webview2_com::{
+                    Microsoft::Web::WebView2::Win32::ICoreWebView2_7,
+                    PrintToPdfCompletedHandler,
+                };
+                use windows::core::PCWSTR;
+
+                // ICoreWebView2Controller → ICoreWebView2 → ICoreWebView2_7
+                let controller = wv.controller();
+                let webview = match unsafe { controller.CoreWebView2() } {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        let _ = tx.send(Err(format!("CoreWebView2(): {e}")));
+                        return;
+                    }
+                };
+                let webview7 = match webview.cast::<ICoreWebView2_7>() {
+                    Ok(wv7) => wv7,
+                    Err(e) => {
+                        let _ = tx.send(Err(format!("cast to ICoreWebView2_7: {e}")));
+                        return;
+                    }
+                };
+
+                // Encode file path as NUL-terminated UTF-16.
+                let path_wide: Vec<u16> =
+                    output.encode_utf16().chain(std::iter::once(0)).collect();
+
+                let handler =
+                    PrintToPdfCompletedHandler::create(Box::new(move |err, is_successful| {
+                        if let Err(e) = err {
+                            let _ = tx.send(Err(format!("PrintToPdf error: {e}")));
+                        } else if !is_successful {
+                            let _ = tx.send(Err(
+                                "PrintToPdf completed but reported failure".into(),
+                            ));
+                        } else {
+                            let _ = tx.send(Ok(()));
+                        }
+                        Ok(())
+                    }));
+
+                // PrintToPdf copies the path string synchronously, so path_wide
+                // only needs to live until this call returns.
+                if let Err(e) = unsafe {
+                    webview7.PrintToPdf(PCWSTR(path_wide.as_ptr()), None, &handler)
+                } {
+                    let _ = tx.send(Err(format!("PrintToPdf call failed: {e}")));
+                }
+                drop(path_wide);
+            })
+            .map_err(|e| format!("with_webview: {e}"))?;
+
+        tauri::async_runtime::spawn_blocking(move || {
+            rx.recv_timeout(std::time::Duration::from_secs(60))
+                .map_err(|_| "PrintToPdf timed out".to_string())
+                .and_then(|r| r)
+        })
+        .await
+        .map_err(|e| format!("{e}"))?
+    }
+}
+
+// ── Linux: no native PDF backend ──────────────────────────────────────────────
+//
+// The export_pdf_native command returns "not yet implemented" on Linux so
+// App.tsx falls back to the PNG raster path via jsPDF.

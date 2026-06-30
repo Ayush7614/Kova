@@ -36,6 +36,7 @@ import { fetchUpdate } from './engine/updater';
 import { normalizePath } from './engine/resolvePath';
 import { exportToPptx } from './engine/export/exportPptx';
 import { exportToPdf, printPresentation } from './engine/export/exportPdf';
+import { exportPdfNative, buildPrintDocument } from './engine/export/exportPdfNative';
 import { SlideRenderer } from './components/preview/SlideRenderer';
 import { BUILT_IN_THEMES, DEFAULT_THEME, parseThemeYaml, sanitiseThemeOverrides, type ThemeParseResult } from './engine/theme';
 import { registerBundledFonts, registerCachedFont } from './engine/bundledFonts';
@@ -54,20 +55,48 @@ function dirOf(p: string): string {
   return i >= 0 ? p.slice(0, i) : '';
 }
 
-function resolveImageSrc(src: string, docDir: string): string {
+function decodePathComponent(src: string): string {
+  try { return decodeURIComponent(src); } catch { return src; }
+}
+
+function mimeFromImagePath(path: string): string {
+  const ext = path.replace(/[?#].*$/, '').replace(/\\/g, '/').split('.').pop()?.toLowerCase();
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'svg') return 'image/svg+xml';
+  if (ext === 'gif') return 'image/gif';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'bmp') return 'image/bmp';
+  if (ext === 'avif') return 'image/avif';
+  if (ext === 'ico') return 'image/x-icon';
+  if (ext === 'tif' || ext === 'tiff') return 'image/tiff';
+  return 'image/png';
+}
+
+// Returns the resolved absolute local path for a src that points to a local
+// image file, or null if the src is a web URL, data URL, or non-image.
+function localPathFromImageSrc(src: string, docDir: string): string | null {
+  if (/^(https?|data|asset|tauri):\/\//i.test(src)) return null;
+  const p = decodePathComponent(src);
+  if (!/\.(avif|bmp|gif|ico|jpe?g|png|svg|tiff?|webp)(?:[?#].*)?$/i.test(p)) return null;
+  if (p.startsWith('/') || /^[A-Za-z]:[/\\]/.test(p)) return p.replace(/[?#].*$/, '');
+  if (!docDir) return null;
+  return normalizePath(docDir, p).replace(/[?#].*$/, '');
+}
+
+// localImageUrls maps absolute local paths → data: URLs loaded via read_file_b64.
+// Falls back to convertFileSrc (asset://) while the async load is in flight.
+function resolveImageSrc(src: string, docDir: string, localImageUrls: Map<string, string>): string {
+  const localPath = localPathFromImageSrc(src, docDir);
+  if (localPath) return localImageUrls.get(localPath) ?? convertFileSrc(localPath.replace(/\\/g, '/'));
   if (/^(https?|data|asset|tauri):\/\//i.test(src)) return src;
-  // Decode any percent-encoding written by the editor (e.g. %20 for spaces).
-  let p = src;
-  try { p = decodeURIComponent(src); } catch { /* malformed — use as-is */ }
-  // Already absolute — convert directly, no docDir needed.
+  const p = decodePathComponent(src);
   if (p.startsWith('/') || /^[A-Za-z]:[/\\]/.test(p)) return convertFileSrc(p.replace(/\\/g, '/'));
-  // Relative path — only resolvable when we know the document location.
   if (!docDir) return p;
   return convertFileSrc(normalizePath(docDir, p).replace(/\\/g, '/'));
 }
 
-function resolveHtmlSrcs(html: string, docDir: string): string {
-  return html.replace(/src="([^"]*)"/g, (_, src) => `src="${resolveImageSrc(src, docDir)}"`);
+function resolveHtmlSrcs(html: string, docDir: string, localImageUrls: Map<string, string>): string {
+  return html.replace(/src="([^"]*)"/g, (_, src) => `src="${resolveImageSrc(src, docDir, localImageUrls)}"`);
 }
 
 function makeStarter() {
@@ -307,8 +336,61 @@ export default function App() {
   const externalChangePathRef = useRef<string | null>(null);
   const editorContent = settings.showFrontmatter ? content : editorBody;
 
-  // Rewrite relative image srcs to asset:// URLs so Tauri's WebView can load them.
-  // Always runs — absolute paths need convertFileSrc even when no file is open.
+  const docDir = useMemo(() => {
+    const lastSlash = filePath
+      ? Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
+      : -1;
+    return lastSlash >= 0 ? filePath!.substring(0, lastSlash) : importDir;
+  }, [filePath, importDir]);
+
+  // Load all local images as base64 data URLs via IPC. convertFileSrc / the
+  // asset:// protocol is unreliable on Windows/WebView2, so we bypass it
+  // entirely for local image files — the same approach already used for logos.
+  const [localImageUrls, setLocalImageUrls] = useState<Map<string, string>>(() => new Map());
+
+  useEffect(() => {
+    const paths = new Set<string>();
+
+    function collectHtml(html: string) {
+      for (const match of html.matchAll(/src="([^"]*)"/g)) {
+        const p = localPathFromImageSrc(match[1], docDir);
+        if (p) paths.add(p);
+      }
+    }
+    function collectItem(item: ListItem) {
+      collectHtml(item.html);
+      item.children.forEach(collectItem);
+    }
+    for (const slide of rawSlides) {
+      for (const el of slide.elements) {
+        if (el.type === 'image') {
+          const p = localPathFromImageSrc(el.src, docDir);
+          if (p) paths.add(p);
+        } else if (el.type === 'paragraph') {
+          collectHtml(el.html);
+        } else if (el.type === 'list') {
+          el.items.forEach(collectItem);
+        }
+      }
+    }
+
+    if (paths.size === 0) { setLocalImageUrls(new Map()); return; }
+
+    let cancelled = false;
+    Promise.all(Array.from(paths).map(async (path) => {
+      try {
+        const b64 = await invoke<string>('read_file_b64', { path });
+        return [path, `data:${mimeFromImagePath(path)};base64,${b64}`] as [string, string];
+      } catch (e) { console.error('[Kova] read_file_b64 failed for', path, e); return null; }
+    })).then((entries) => {
+      if (!cancelled) setLocalImageUrls(new Map(entries.filter((e): e is [string, string] => e !== null)));
+    });
+
+    return () => { cancelled = true; };
+  }, [rawSlides, docDir]);
+
+  // Rewrite image srcs to data: URLs (or asset:// while loading) so Tauri's
+  // WebView can load them reliably on all platforms, including Windows/WebView2.
   //
   // resolvedSlidesCacheRef keys by the *input* Slide object's identity:
   // parseDocument (markdownToSlides.ts) already reuses the previous Slide
@@ -319,43 +401,56 @@ export default function App() {
   // user isn't currently editing. WeakMap so entries for slides that no
   // longer exist (deleted, or shifted out of cache by an insertion) are
   // garbage-collected rather than accumulating for the life of the session.
-  const resolvedSlidesCacheRef = useRef<{ docDir: string; cache: WeakMap<Slide, Slide> }>({ docDir: '', cache: new WeakMap() });
+  const resolvedSlidesCacheRef = useRef<{ docDir: string; localImageUrls: Map<string, string>; cache: WeakMap<Slide, Slide> }>({
+    docDir: '',
+    localImageUrls: new Map(),
+    cache: new WeakMap(),
+  });
 
   const slides = useMemo<Slide[]>(() => {
-    const lastSlash = filePath
-      ? Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
-      : -1;
-    const docDir = lastSlash >= 0 ? filePath!.substring(0, lastSlash) : importDir;
-
     function resolveItem(item: ListItem): ListItem {
-      return { ...item, html: resolveHtmlSrcs(item.html, docDir), children: item.children.map(resolveItem) };
+      return { ...item, html: resolveHtmlSrcs(item.html, docDir, localImageUrls), children: item.children.map(resolveItem) };
     }
 
     let cacheHolder = resolvedSlidesCacheRef.current;
-    if (cacheHolder.docDir !== docDir) {
-      // docDir changed (file opened/saved-as/renamed) — every resolved src
-      // would be wrong now, so start fresh rather than risk a stale hit.
-      cacheHolder = { docDir, cache: new WeakMap() };
+    if (cacheHolder.docDir !== docDir || cacheHolder.localImageUrls !== localImageUrls) {
+      // docDir or image cache changed — every resolved src would be wrong, start fresh.
+      cacheHolder = { docDir, localImageUrls, cache: new WeakMap() };
       resolvedSlidesCacheRef.current = cacheHolder;
     }
     const { cache } = cacheHolder;
 
+    // Pre-compute TOC entries from all non-hidden, titled slides. Derived from
+    // rawSlides (titles are identical in raw vs resolved) so it's always current.
+    // TOC slides are excluded from the WeakMap cache below because their resolved
+    // content depends on other slides' titles, not just their own raw text.
+    // Exclude the first non-hidden H1 slide (the cover/title slide) from the TOC.
+    // Subsequent H1 hero slides within the deck are included.
+    const coverIndex = rawSlides.find((s) => !s.hidden && s.titleLevel === 1)?.index ?? -1;
+    const tocEntries = rawSlides
+      .filter((s) => !s.hidden && s.title && s.index !== coverIndex)
+      .map((s) => ({ title: s.title, index: s.index }));
+
     return rawSlides.map((slide) => {
-      const cached = cache.get(slide);
-      if (cached) return cached;
+      const hasToc = slide.elements.some((e) => e.type === 'toc');
+      if (!hasToc) {
+        const cached = cache.get(slide);
+        if (cached) return cached;
+      }
       const resolved: Slide = {
         ...slide,
         elements: slide.elements.map((el) => {
-          if (el.type === 'image' || el.type === 'video') return { ...el, src: resolveImageSrc(el.src, docDir) };
-          if (el.type === 'paragraph') return { ...el, html: resolveHtmlSrcs(el.html, docDir) };
+          if (el.type === 'image')     return { ...el, src: resolveImageSrc(el.src, docDir, localImageUrls) };
+          if (el.type === 'paragraph') return { ...el, html: resolveHtmlSrcs(el.html, docDir, localImageUrls) };
           if (el.type === 'list')      return { ...el, items: el.items.map(resolveItem) };
+          if (el.type === 'toc')       return { ...el, entries: tocEntries.filter((e) => e.index !== slide.index) };
           return el;
         }),
       };
-      cache.set(slide, resolved);
+      if (!hasToc) cache.set(slide, resolved);
       return resolved;
     });
-  }, [rawSlides, filePath, importDir]);
+  }, [rawSlides, docDir, localImageUrls]);
 
   // Compute a safe index in the same render as slides so children never receive
   // an out-of-bounds value during the frame before the clamp useEffect fires.
@@ -1071,11 +1166,24 @@ export default function App() {
   // Called by each SlideRenderer when all its Mermaid diagrams have rendered.
   const onPdfSlideReady = useRef(() => {
     pdfSlideReadyCount.current += 1;
-    if (pdfSlideReadyCount.current >= pdfSlideReadyTotal.current) void pdfExportRunnerRef.current?.();
+    if (pdfSlideReadyCount.current >= pdfSlideReadyTotal.current) {
+      const fn = pdfExportRunnerRef.current;
+      pdfExportRunnerRef.current = null;
+      // Defer to a task (not a microtask) so React StrictMode's simulated
+      // unmount+remount cycle completes before we read element dimensions.
+      // Without this, StrictMode detaches the off-screen slide elements between
+      // the runner firing and captureSlide reading offsetWidth, producing a
+      // 0×0 canvas and a blank PDF.
+      if (fn) setTimeout(() => void fn(), 0);
+    }
   });
   const onPrintSlideReady = useRef(() => {
     printSlideReadyCount.current += 1;
-    if (printSlideReadyCount.current >= printSlideReadyTotal.current) void printExportRunnerRef.current?.();
+    if (printSlideReadyCount.current >= printSlideReadyTotal.current) {
+      const fn = printExportRunnerRef.current;
+      printExportRunnerRef.current = null;
+      if (fn) setTimeout(() => void fn(), 0);
+    }
   });
 
   const handleExportPdf = useCallback(async () => {
@@ -1089,6 +1197,13 @@ export default function App() {
     });
     if (!target) return;
     const savePath = target.toLowerCase().endsWith('.pdf') ? target : `${target}.pdf`;
+    // Determine native vs raster BEFORE mounting off-screen slides so the runner
+    // body contains no intermediate async IPC calls between element capture and
+    // exportToPdf — any await between the two gives React a chance to flush a
+    // pending update and unmount the slides, producing 0-width elements.
+    let useNative = false;
+    try { await invoke('check_native_pdf'); useNative = true; } catch { /* Linux or not supported */ }
+
     const visSlides = [...visibleSlides];
     pdfSlideRefs.current.clear();
     pdfSlideReadyCount.current = 0;
@@ -1100,13 +1215,19 @@ export default function App() {
             { length: visSlides.length },
             (_, i) => pdfSlideRefs.current.get(i),
           ).filter((el): el is HTMLElement => Boolean(el));
-          const { base64, warnings } = await exportToPdf(elements, activeTheme, aspectRatio);
-          await invoke('write_file_bytes', { path: savePath, data: base64 });
-          if (warnings.length > 0) {
-            window.alert(`PDF export complete with ${warnings.length} warning(s):\n\n${warnings.join('\n')}`);
+
+          if (useNative) {
+            await exportPdfNative(elements, aspectRatio, savePath);
+          } else {
+            const { base64, warnings } = await exportToPdf(elements, activeTheme, aspectRatio);
+            await invoke('write_file_bytes', { path: savePath, data: base64 });
+            if (warnings.length > 0) {
+              window.alert(`PDF export complete with ${warnings.length} warning(s):\n\n${warnings.join('\n')}`);
+            }
           }
         } catch (err) {
           console.error('PDF export failed:', err);
+          window.alert(`PDF export failed:\n${String(err)}`);
         } finally {
           setPdfExportContext(null);
           pdfSlideRefs.current.clear();
@@ -1117,6 +1238,45 @@ export default function App() {
       setPdfExportContext({ slides: visSlides, savePath });
     });
   }, [visibleSlides, filePath, activeTheme, aspectRatio]);
+
+  const handleExportHtml = useCallback(async () => {
+    if (visibleSlides.length === 0) return;
+    const defaultPath = filePath
+      ? filePath.replace(/\.(md|markdown)$/i, '.html')
+      : 'presentation.html';
+    const target = await save({
+      filters: [{ name: 'HTML', extensions: ['html'] }],
+      defaultPath,
+    });
+    if (!target) return;
+    const savePath = target.toLowerCase().endsWith('.html') ? target : `${target}.html`;
+    const visSlides = [...visibleSlides];
+    pdfSlideRefs.current.clear();
+    pdfSlideReadyCount.current = 0;
+    pdfSlideReadyTotal.current = visSlides.length;
+    await new Promise<void>(resolve => {
+      pdfExportRunnerRef.current = async () => {
+        try {
+          const elements = Array.from(
+            { length: visSlides.length },
+            (_, i) => pdfSlideRefs.current.get(i),
+          ).filter((el): el is HTMLElement => Boolean(el));
+
+          const html = await buildPrintDocument(elements, aspectRatio);
+          await invoke('write_file', { path: savePath, content: html });
+        } catch (err) {
+          console.error('HTML export failed:', err);
+          window.alert(`HTML export failed:\n${String(err)}`);
+        } finally {
+          setPdfExportContext(null);
+          pdfSlideRefs.current.clear();
+          pdfExportRunnerRef.current = null;
+          resolve();
+        }
+      };
+      setPdfExportContext({ slides: visSlides, savePath });
+    });
+  }, [visibleSlides, filePath, aspectRatio]);
 
   const handlePrint = useCallback(async () => {
     if (visibleSlides.length === 0) return;
@@ -1288,6 +1448,7 @@ export default function App() {
     importMarp: handleImportMarp,
     export: handleExport,
     exportPdf: handleExportPdf,
+    exportHtml: handleExportHtml,
     print: handlePrint,
     present: () => { void handlePresentEnter(); },
     toggleInspector: () => setShowInspector((v) => !v),
@@ -1305,6 +1466,7 @@ export default function App() {
     importMarp: () => menuHandlersRef.current.importMarp(),
     export: () => menuHandlersRef.current.export(),
     exportPdf: () => menuHandlersRef.current.exportPdf(),
+    exportHtml: () => menuHandlersRef.current.exportHtml(),
     print: () => menuHandlersRef.current.print(),
     present: () => menuHandlersRef.current.present(),
     toggleInspector: () => menuHandlersRef.current.toggleInspector(),
@@ -1487,6 +1649,9 @@ export default function App() {
               </button>
               <button className="btn-group-menu-item" disabled={slides.length === 0 || pdfExportContext !== null} onClick={() => { setFileMenuOpen(false); handleExportPdf(); }}>
                 {pdfExportContext ? 'Exporting PDF…' : 'Export PDF (.pdf)'}
+              </button>
+              <button className="btn-group-menu-item" disabled={slides.length === 0 || pdfExportContext !== null} onClick={() => { setFileMenuOpen(false); handleExportHtml(); }}>
+                {pdfExportContext ? 'Exporting…' : 'Export HTML (.html)'}
               </button>
               <button className="btn-group-menu-item" disabled={slides.length === 0 || pdfExportContext !== null || printContext !== null} onClick={() => { setFileMenuOpen(false); handlePrint(); }}>
                 {printContext ? 'Preparing Print…' : 'Print…'}

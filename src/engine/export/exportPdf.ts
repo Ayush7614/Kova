@@ -12,7 +12,7 @@ export interface PdfExportResult {
   warnings: string[];
 }
 
-const PDF_W_MM  = 254;
+const PDF_W_MM     = 254;
 const JPEG_QUALITY = 0.95;
 const PIXEL_RATIO  = 2;
 

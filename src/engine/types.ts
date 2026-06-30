@@ -30,10 +30,10 @@ export type SlideElement =
   | { type: 'blockquote'; text: string; attribution?: string }
   | { type: 'table'; headers: string[]; rows: string[][]; align?: ('left' | 'right' | 'center' | null)[] }
   | { type: 'youtube';  label: string; url: string }
-  | { type: 'video';    label: string; src: string }
   | { type: 'poll';     label: string; url: string }
   | { type: 'progress'; label: string; value: number }
-  | { type: 'column-break' };
+  | { type: 'column-break' }
+  | { type: 'toc'; entries: Array<{ title: string; index: number }> };
 
 export interface Slide {
   index: number;

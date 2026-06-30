@@ -99,7 +99,7 @@ function OverflowPane({ className, elements }: { className: string; elements: Sl
 }
 
 // Context passed to child components so they can adapt for thumbnail vs full rendering
-interface SlideCtxValue { isThumbnail: boolean; textColor: string; mermaidInit: string; onDiagramReady?: () => void }
+interface SlideCtxValue { isThumbnail: boolean; textColor: string; mermaidInit: string; onDiagramReady?: () => void; onNavigateTo?: (slideIndex: number) => void }
 const SlideCtx = createContext<SlideCtxValue>({ isThumbnail: false, textColor: '#1a1a1a', mermaidInit: '' });
 
 // Strips any `securityLevel` key from a user-supplied `%%{init: {...}}%%` pragma
@@ -253,9 +253,10 @@ interface Props {
   scale?: number;
   isThumbnail?: boolean;
   onAllDiagramsReady?: () => void;
+  onNavigateTo?: (slideIndex: number) => void;
 }
 
-export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, totalSlides, docTitle = '', docDate = '', scale = 1, isThumbnail: isThumbnailProp, onAllDiagramsReady }: Props) {
+export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, totalSlides, docTitle = '', docDate = '', scale = 1, isThumbnail: isThumbnailProp, onAllDiagramsReady, onNavigateTo }: Props) {
   const vars = themeToVars(theme);
 
   // Signal export-readiness when all Mermaid diagrams on this slide have rendered.
@@ -286,8 +287,8 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
   const showFloatingLogo = theme.logo && !logoInHeader && !logoInFooter;
 
   const ctxValue = useMemo<SlideCtxValue>(
-    () => ({ isThumbnail: isThumbnailProp ?? scale !== 1, textColor: theme.colors.text, mermaidInit: buildMermaidInit(theme), onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined }),
-    [isThumbnailProp, scale, theme, onAllDiagramsReady, onDiagramReady],
+    () => ({ isThumbnail: isThumbnailProp ?? scale !== 1, textColor: theme.colors.text, mermaidInit: buildMermaidInit(theme), onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined, onNavigateTo }),
+    [isThumbnailProp, scale, theme, onAllDiagramsReady, onDiagramReady, onNavigateTo],
   );
 
   return (
@@ -601,14 +602,12 @@ function GridLayout({ slide }: { slide: Slide }) {
 
 function MediaLayout({ slide }: { slide: Slide }) {
   const yt = slide.elements.find((e) => e.type === 'youtube');
-  const vid = slide.elements.find((e) => e.type === 'video');
   const poll = slide.elements.find((e) => e.type === 'poll');
   return (
     <div className="sl-media">
       {slide.title && <div className="sl-heading sl-media__title">{slide.title}</div>}
       <div className="sl-media__body">
         {yt && yt.type === 'youtube' && <YoutubeEmbed embed={yt} />}
-        {vid && vid.type === 'video' && <VideoEmbed embed={vid} />}
         {poll && poll.type === 'poll' && <PollEmbed embed={poll} />}
       </div>
     </div>
@@ -736,9 +735,6 @@ function ElementNode({ el }: { el: SlideElement }) {
     case 'youtube':
       return <YoutubeEmbed embed={el} />;
 
-    case 'video':
-      return <VideoEmbed embed={el} />;
-
     case 'poll':
       return <PollEmbed embed={el} />;
 
@@ -747,6 +743,9 @@ function ElementNode({ el }: { el: SlideElement }) {
 
     case 'column-break':
       return null;
+
+    case 'toc':
+      return <TocElement el={el} />;
 
     case 'mermaid':
       return <MermaidDiagram value={el.value} />;
@@ -769,6 +768,32 @@ function ListItemNode({ item }: { item: ListItem }) {
         </ul>
       )}
     </li>
+  );
+}
+
+// ── Table of contents ─────────────────────────────────────────────────────────
+
+function TocElement({ el }: { el: Extract<SlideElement, { type: 'toc' }> }) {
+  const { isThumbnail, onNavigateTo } = useContext(SlideCtx);
+  const interactive = !isThumbnail && !!onNavigateTo;
+
+  if (el.entries.length === 0) {
+    return <p className="sl-para" style={{ opacity: 0.5, fontStyle: 'italic' }}>No titled slides found</p>;
+  }
+  return (
+    <ol className="sl-list">
+      {el.entries.map((entry, i) => (
+        <li key={i}>
+          {interactive ? (
+            <button className="sl-toc-link" onClick={(e) => { e.stopPropagation(); onNavigateTo!(entry.index); }}>
+              {entry.title}
+            </button>
+          ) : (
+            <span>{entry.title}</span>
+          )}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -796,17 +821,6 @@ function YoutubeEmbed({ embed }: { embed: Extract<SlideElement, { type: 'youtube
       }
       <div className="sl-youtube__label">{embed.label}</div>
       {!isThumbnail && <div className="sl-youtube__open-hint">Click to open in browser</div>}
-    </div>
-  );
-}
-
-function VideoEmbed({ embed }: { embed: Extract<SlideElement, { type: 'video' }> }) {
-  const { isThumbnail } = useContext(SlideCtx);
-  return (
-    // stopPropagation so the player's controls don't trigger slide navigation.
-    <div className="sl-video" onClick={(e) => e.stopPropagation()}>
-      <video className="sl-video__player" src={embed.src} controls={!isThumbnail} preload="metadata" playsInline />
-      {embed.label && <div className="sl-video__label">{embed.label}</div>}
     </div>
   );
 }
@@ -922,22 +936,31 @@ function MermaidDiagram({ value }: { value: string }) {
   const [svg, setSvg] = useState('');
   const [mermaidError, setMermaidError] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  // Stores the signalReady fn to call after the SVG DOM commit. Using a ref
+  // lets useLayoutEffect (which fires post-commit) consume it safely even if
+  // the effect cleanup has already run (cleanup nulls it to prevent double-fire).
+  const pendingSignalRef = useRef<(() => void) | null>(null);
 
   // After Mermaid renders, expand the viewBox to the actual bounding box of all
   // drawn content. Mermaid sometimes declares a viewBox that doesn't include the
   // legend, causing it to be clipped. getBBox() measures what is really there.
+  // Also fires the deferred signalReady so that export runners see the SVG in
+  // the DOM before they call cloneNode / html-to-image capture.
   useLayoutEffect(() => {
     const svgEl = containerRef.current?.querySelector('svg');
-    if (!svgEl) return;
-    try {
-      const { x, y, width, height } = svgEl.getBBox();
-      if (width > 0 && height > 0) {
-        const pad = 8;
-        svgEl.setAttribute('viewBox', `${x - pad} ${y - pad} ${width + pad * 2} ${height + pad * 2}`);
+    if (svgEl) {
+      try {
+        const { x, y, width, height } = svgEl.getBBox();
+        if (width > 0 && height > 0) {
+          const pad = 8;
+          svgEl.setAttribute('viewBox', `${x - pad} ${y - pad} ${width + pad * 2} ${height + pad * 2}`);
+        }
+      } catch {
+        // getBBox unavailable (detached node, non-rendered context, etc.)
       }
-    } catch {
-      // getBBox unavailable (detached node, non-rendered context, etc.)
     }
+    const fn = pendingSignalRef.current;
+    if (fn) { pendingSignalRef.current = null; fn(); }
   }, [svg]);
 
   useEffect(() => {
@@ -969,7 +992,9 @@ function MermaidDiagram({ value }: { value: string }) {
             return `<svg${a}>`;
           });
           setSvg(scaled);
-          signalReady();
+          // Defer signalReady to useLayoutEffect so the export runner sees the
+          // SVG in the DOM before it calls cloneNode/toPng.
+          pendingSignalRef.current = signalReady;
         }
       })
       .catch((err: unknown) => {
@@ -982,7 +1007,7 @@ function MermaidDiagram({ value }: { value: string }) {
     // If this render is cancelled mid-flight (e.g. theme change during export),
     // signal ready so the export count still advances; the replacement render
     // will also signal when it completes.
-    return () => { cancelled = true; signalReady(); };
+    return () => { cancelled = true; pendingSignalRef.current = null; signalReady(); };
   }, [baseId, value, mermaidInit]);
 
   if (!svg) {
