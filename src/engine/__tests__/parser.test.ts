@@ -462,6 +462,12 @@ describe('column breaks', () => {
     const { slides } = parseDocument(doc('## Slide\n\nLeft\n\n|||\n\nRight\n'));
     expect(slides[0].layout).toBe('two-column');
   });
+
+  it('preserves order of content and multiple column-breaks', () => {
+    const { slides } = parseDocument(doc('## Slide\n\nA\n\n|||\n\nB\n\n|||\n\nC\n'));
+    const types = slides[0].elements.map((e) => e.type);
+    expect(types).toEqual(['paragraph', 'column-break', 'paragraph', 'column-break', 'paragraph']);
+  });
 });
 
 // ── Speaker notes ─────────────────────────────────────────────────────────────
