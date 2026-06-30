@@ -69,6 +69,26 @@ describe('matchShortcut', () => {
     const e = mockEvent({ ctrlKey: true, altKey: true, key: 's' });
     expect(matchShortcut(e, 'ctrl+s')).toBe(false);
   });
+
+  it('matches a modifier-less single-key combo', () => {
+    const e = mockEvent({ key: 'a' });
+    expect(matchShortcut(e, 'a')).toBe(true);
+  });
+
+  it('matches a modifier-less combo case-insensitively', () => {
+    const e = mockEvent({ key: 'A' });
+    expect(matchShortcut(e, 'a')).toBe(true);
+  });
+
+  it('rejects a modifier-less combo when ctrl is held', () => {
+    const e = mockEvent({ ctrlKey: true, key: 'a' });
+    expect(matchShortcut(e, 'a')).toBe(false);
+  });
+
+  it('rejects a modifier-less combo when shift is held', () => {
+    const e = mockEvent({ shiftKey: true, key: 'a' });
+    expect(matchShortcut(e, 'a')).toBe(false);
+  });
 });
 
 // ── formatCombo ───────────────────────────────────────────────────────────────
