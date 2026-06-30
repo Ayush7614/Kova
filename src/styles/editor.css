@@ -17,7 +17,7 @@
 }
 
 .editor-panel .cm-content {
-  padding: 0 24px;
+  padding: 0 24px 40vh;
   max-width: 720px;
   margin: 0 auto;
 }

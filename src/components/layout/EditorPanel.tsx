@@ -645,7 +645,10 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
         }
       }
 
-      view.dispatch({ selection: EditorSelection.cursor(pos), scrollIntoView: true });
+      view.dispatch({
+        selection: EditorSelection.cursor(pos),
+        effects: EditorView.scrollIntoView(pos, { y: 'start', yMargin: 4 }),
+      });
       view.focus();
     },
   }), []);
