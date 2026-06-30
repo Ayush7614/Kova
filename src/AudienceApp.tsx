@@ -3,6 +3,7 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { emit, emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { SlideRenderer } from './components/preview/SlideRenderer';
+import { SLIDE_W, ScaledSlideBox, LaserDot } from './components/presentation/presentationShared';
 import type { Slide, AspectRatio } from './engine/types';
 import type { Theme } from './engine/theme';
 import { registerBundledFonts, registerCachedFont } from './engine/bundledFonts';
@@ -16,8 +17,6 @@ export interface PresentInitPayload {
   docTitle?: string;
   docDate?: string;
 }
-
-const SLIDE_W = 960;
 
 export function AudienceApp() {
   const [initData, setInitData]         = useState<PresentInitPayload | null>(null);
@@ -160,14 +159,7 @@ export function AudienceApp() {
         <div ref={frameRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
           {slide && (
             <>
-              <div
-                style={{
-                  width: SLIDE_W,
-                  height: slideH,
-                  transform: `scale(${scale})`,
-                  transformOrigin: 'top left',
-                }}
-              >
+              <ScaledSlideBox scale={scale} slideH={slideH}>
                 <SlideRenderer
                   slide={slide}
                   theme={theme}
@@ -176,7 +168,7 @@ export function AudienceApp() {
                   docTitle={docTitle}
                   docDate={docDate}
                 />
-              </div>
+              </ScaledSlideBox>
               <div
                 key={currentIndex}
                 style={{
@@ -188,15 +180,7 @@ export function AudienceApp() {
                 }}
               />
               {laser && (
-                <div
-                  className="pres-laser-dot"
-                  style={{
-                    left: `${laser.x * 100}%`,
-                    top: `${laser.y * 100}%`,
-                    background: laser.color,
-                    boxShadow: `0 0 6px 2px ${laser.color}b3, 0 0 16px 5px ${laser.color}4d`,
-                  }}
-                />
+                <LaserDot x={laser.x} y={laser.y} color={laser.color} />
               )}
             </>
           )}

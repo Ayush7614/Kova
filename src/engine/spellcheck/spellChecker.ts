@@ -34,11 +34,6 @@ export const LANGUAGE_OPTIONS: { code: SpellCheckLanguage; label: string }[] = [
   { code: 'uk_UA', label: 'Українська'       },
 ];
 
-// Keep for backwards-compat with SettingsModal import
-export const LANGUAGE_LABELS: Record<SpellCheckLanguage, string> = Object.fromEntries(
-  LANGUAGE_OPTIONS.map(({ code, label }) => [code, label]),
-) as Record<SpellCheckLanguage, string>;
-
 // ── OS language auto-detection ────────────────────────────────────────────────
 
 const PRIMARY_MAP: Partial<Record<string, SpellCheckLanguage>> = {
@@ -53,7 +48,7 @@ export function detectOsLanguage(): SpellCheckLanguage {
   const osLang = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
   // Normalise "en-US" → "en_US" and try exact match
   const normalised = osLang.replace(/-/g, '_') as SpellCheckLanguage;
-  if (LANGUAGE_LABELS[normalised]) return normalised;
+  if (LANGUAGE_OPTIONS.some((o) => o.code === normalised)) return normalised;
   // Fall back on primary subtag
   const primary = osLang.split('-')[0].toLowerCase();
   return PRIMARY_MAP[primary] ?? 'en_US';

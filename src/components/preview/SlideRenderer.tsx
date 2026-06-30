@@ -8,7 +8,7 @@ import QRCode from 'react-qr-code';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Slide, SlideElement, ListItem } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
-import { themeToVars, resolveTemplate, DEFAULT_THEME, hexToHsl, hslToHex, defaultChartPalette, isLightHex } from '../../engine/theme';
+import { themeToVars, resolveTemplate, DEFAULT_THEME, hexToHsl, hslToHex, defaultChartPalette, isLightHex, buildCScalePalette, piePaletteFromAccent } from '../../engine/theme';
 import './SlideRenderer.css';
 import { mermaidSvgCache } from '../../engine/export/mermaidSvgCache';
 import { queuedMermaidRender } from '../../engine/export/mermaidRenderQueue';
@@ -123,28 +123,6 @@ function sanitizeMermaidSource(source: string): string {
 }
 
 // ── Diagram colour palette builders ──────────────────────────────────────────
-
-function buildCScalePalette(accentHex: string): Record<string, string> {
-  const [h, rawS, rawL] = hexToHsl(accentHex);
-  const s = Math.min(Math.max(rawS, 0.50), 0.80);
-  const l = Math.min(Math.max(rawL, 0.38), 0.58);
-  const out: Record<string, string> = {};
-  for (let i = 0; i < 12; i++) {
-    out[`cScale${i}`] = hslToHex(h + i * 30, s, l);
-  }
-  return out;
-}
-
-function piePaletteFromAccent(accentHex: string): Record<string, string> {
-  const [h, rawS, rawL] = hexToHsl(accentHex);
-  const s = Math.min(Math.max(rawS, 0.55), 0.85);
-  const l = Math.min(Math.max(rawL, 0.28), 0.48);
-  const out: Record<string, string> = {};
-  for (let i = 0; i < 12; i++) {
-    out[`pie${i + 1}`] = hslToHex(h + i * 30, s, l);
-  }
-  return out;
-}
 
 function paletteToMermaidVars(colors: string[]): { pie: Record<string, string>; cScale: Record<string, string>; xy: string } {
   const pie: Record<string, string> = {};

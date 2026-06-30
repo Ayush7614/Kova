@@ -361,6 +361,26 @@ export function defaultChartPalette(accentHex: string, count = 8): string[] {
   return Array.from({ length: count }, (_, i) => hslToHex(h + i * (360 / count), s, l));
 }
 
+/** Mermaid cScale0..11 spun from an accent hue, clamped to a legible S/L band. */
+export function buildCScalePalette(accent: string): Record<string, string> {
+  const [h, rawS, rawL] = hexToHsl(accent);
+  const s = Math.min(Math.max(rawS, 0.50), 0.80);
+  const l = Math.min(Math.max(rawL, 0.38), 0.58);
+  const out: Record<string, string> = {};
+  for (let i = 0; i < 12; i++) out[`cScale${i}`] = hslToHex(h + i * 30, s, l);
+  return out;
+}
+
+/** Mermaid pie1..12 spun from an accent hue, clamped to a legible S/L band. */
+export function piePaletteFromAccent(accent: string): Record<string, string> {
+  const [h, rawS, rawL] = hexToHsl(accent);
+  const s = Math.min(Math.max(rawS, 0.55), 0.85);
+  const l = Math.min(Math.max(rawL, 0.28), 0.48);
+  const out: Record<string, string> = {};
+  for (let i = 0; i < 12; i++) out[`pie${i + 1}`] = hslToHex(h + i * 30, s, l);
+  return out;
+}
+
 // ── CSS variable mapping ──────────────────────────────────────────────────────
 
 function decorationVars(d: ThemeLayout['decoration']): Record<string, string> {
@@ -400,11 +420,7 @@ function titleAlignVars(align: ThemeLayout['title_align']): Record<string, strin
 
 /** Returns true when the hex color has a lightness above 0.55 (perceptually light). */
 export function isLightHex(hex: string): boolean {
-  if (!hex.startsWith('#') || hex.length < 6) return false;
-  try {
-    const [, , l] = hexToHsl(hex);
-    return l > 0.55;
-  } catch { return false; }
+  return hexToHsl(hex)[2] > 0.55; // hexToHsl returns [0,0,0] on malformed input
 }
 
 /** Returns an inline-style object that sets all --sl-* CSS custom properties. */

@@ -4,6 +4,7 @@ import type { Slide, AspectRatio } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
 import type { NotesFontSize } from '../../store/settings';
 import { SlideRenderer } from '../preview/SlideRenderer';
+import { SLIDE_W, formatTime, ScaledSlideBox, LaserDot } from './presentationShared';
 import './PresenterOverlay.css';
 
 interface Props {
@@ -25,16 +26,7 @@ const HUD_H           = 56;  // px
 const RIGHT_W_DEFAULT = 280; // px
 const RIGHT_W_MIN     = 180; // px
 const RIGHT_W_MAX     = 600; // px
-const SLIDE_W         = 960; // virtual slide width — matches PresentationOverlay / AudienceApp
 const STORAGE_KEY     = 'kova:presenter-right-w';
-
-function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
 
 export function PresenterOverlay({
   slides, currentIndex, theme, docTitle, docDate, aspectRatio,
@@ -222,12 +214,7 @@ export function PresenterOverlay({
             onMouseMove={handleCurrentFrameMouseMove}
             style={{ cursor: laserActive ? 'crosshair' : undefined }}
           >
-            <div style={{
-              width: SLIDE_W,
-              height: slideH,
-              transform: `scale(${currentScale})`,
-              transformOrigin: 'top left',
-            }}>
+            <ScaledSlideBox scale={currentScale} slideH={slideH}>
               <SlideRenderer
                 slide={slide}
                 theme={theme}
@@ -237,17 +224,9 @@ export function PresenterOverlay({
                 docDate={docDate}
                 onNavigateTo={handleNavigateTo}
               />
-            </div>
+            </ScaledSlideBox>
             {laserActive && laserPos && (
-              <div
-                className="pres-laser-dot"
-                style={{
-                  left: `${laserPos.x * 100}%`,
-                  top: `${laserPos.y * 100}%`,
-                  background: laserColor,
-                  boxShadow: `0 0 6px 2px ${laserColor}b3, 0 0 16px 5px ${laserColor}4d`,
-                }}
-              />
+              <LaserDot x={laserPos.x} y={laserPos.y} color={laserColor} />
             )}
             {blankMode && (
               <div style={{
@@ -278,12 +257,7 @@ export function PresenterOverlay({
               </div>
               {nextSlide && (
                 <div className="pres-presenter__next-frame" ref={nextFrameRef}>
-                  <div style={{
-                    width: SLIDE_W,
-                    height: slideH,
-                    transform: `scale(${nextScale})`,
-                    transformOrigin: 'top left',
-                  }}>
+                  <ScaledSlideBox scale={nextScale} slideH={slideH}>
                     <SlideRenderer
                       slide={nextSlide}
                       theme={theme}
@@ -292,7 +266,7 @@ export function PresenterOverlay({
                       docTitle={docTitle}
                       docDate={docDate}
                     />
-                  </div>
+                  </ScaledSlideBox>
                 </div>
               )}
             </div>

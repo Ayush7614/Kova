@@ -167,11 +167,6 @@ function lineIsWrapped(text: string, before: string, after: string): boolean {
   return true;
 }
 
-// Convenience wrapper for the symmetric star-marker case (bold/italic).
-function selectionIsWrappedInMarker(selText: string, marker: string): boolean {
-  return lineIsWrapped(selText, marker, marker);
-}
-
 function countStarsAround(state: EditorState, from: number, to: number): [number, number] {
   let n = 0;
   while (from - n > 0 && state.sliceDoc(from - n - 1, from - n) === '*') n++;
@@ -312,7 +307,7 @@ function makeWrapCommand(before: string, after: string, placeholder: string) {
           });
         } else {
           const selText = state.sliceDoc(from, to);
-          if (selectionIsWrappedInMarker(selText, before)) {
+          if (lineIsWrapped(selText, before, before)) {
             // Selection is already wrapped in this marker — toggle off
             view.dispatch({
               changes: [
