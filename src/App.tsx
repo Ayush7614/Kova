@@ -42,7 +42,7 @@ import { BUILT_IN_THEMES, DEFAULT_THEME, parseThemeYaml, sanitiseThemeOverrides,
 import { registerBundledFonts, registerCachedFont } from './engine/bundledFonts';
 import type { Slide, Frontmatter, ListItem } from './engine/types';
 import { parseAspectRatio } from './engine/types';
-import { extToMime } from './engine/export/imageMime';
+import { imageMime } from './engine/export/imageMime';
 import type { Theme } from './engine/theme';
 
 import './styles/global.css';
@@ -57,18 +57,6 @@ function decodePathComponent(src: string): string {
   try { return decodeURIComponent(src); } catch { return src; }
 }
 
-function mimeFromImagePath(path: string): string {
-  const ext = path.replace(/[?#].*$/, '').replace(/\\/g, '/').split('.').pop()?.toLowerCase();
-  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-  if (ext === 'svg') return 'image/svg+xml';
-  if (ext === 'gif') return 'image/gif';
-  if (ext === 'webp') return 'image/webp';
-  if (ext === 'bmp') return 'image/bmp';
-  if (ext === 'avif') return 'image/avif';
-  if (ext === 'ico') return 'image/x-icon';
-  if (ext === 'tif' || ext === 'tiff') return 'image/tiff';
-  return 'image/png';
-}
 
 // Returns the resolved absolute local path for a src that points to a local
 // image file, or null if the src is a web URL, data URL, or non-image.
@@ -217,8 +205,7 @@ export default function App() {
     const raw = rawLogoSrc;
     if (!raw) { setResolvedLogoUrl(undefined); return; }
     if (/^(https?:|data:)/i.test(raw)) { setResolvedLogoUrl(raw); return; }
-    const ext  = raw.replace(/\\/g, '/').split('.').pop()?.toLowerCase() ?? 'png';
-    const mime = extToMime(ext);
+    const mime = imageMime(raw);
     invoke<string>('read_file_b64', { path: raw })
       .then((b64) => setResolvedLogoUrl(`data:${mime};base64,${b64}`))
       .catch(() => setResolvedLogoUrl(undefined));
@@ -374,7 +361,7 @@ export default function App() {
     Promise.all(Array.from(paths).map(async (path) => {
       try {
         const b64 = await invoke<string>('read_file_b64', { path });
-        return [path, `data:${mimeFromImagePath(path)};base64,${b64}`] as [string, string];
+        return [path, `data:${imageMime(path)};base64,${b64}`] as [string, string];
       } catch (e) { console.error('[Kova] read_file_b64 failed for', path, e); return null; }
     })).then((entries) => {
       if (!cancelled) setLocalImageUrls(new Map(entries.filter((e): e is [string, string] => e !== null)));

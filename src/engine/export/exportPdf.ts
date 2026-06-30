@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { mermaidSvgCache } from './mermaidSvgCache';
 import { svgToPngDataUrl } from './svgToPng';
 import { queuedMermaidRender } from './mermaidRenderQueue';
-import { extToMime } from './imageMime';
+import { imageMime } from './imageMime';
 import type { AspectRatio } from '../types';
 import type { Theme } from '../theme';
 
@@ -32,7 +32,7 @@ async function preResolveExternalImages(el: HTMLElement): Promise<void> {
         const path = decodeURIComponent(src.replace(/^asset:\/\/[^/]*/, ''));
         const ext  = path.split('.').pop()?.toLowerCase() ?? 'png';
         const b64  = await invoke<string>('read_file_b64', { path });
-        dataUrl = `data:${extToMime(ext)};base64,${b64}`;
+        dataUrl = `data:${imageMime(ext)};base64,${b64}`;
       } else if (src.startsWith('http://') || src.startsWith('https://')) {
         const [b64, mime] = await invoke<[string, string]>('fetch_url_b64', { url: src });
         dataUrl = `data:${mime};base64,${b64}`;

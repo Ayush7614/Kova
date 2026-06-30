@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { mermaidSvgCache } from './mermaidSvgCache';
 import { svgToPngDataUrl } from './svgToPng';
 import { queuedMermaidRender } from './mermaidRenderQueue';
-import { extToMime } from './imageMime';
+import { imageMime } from './imageMime';
 import mermaid from 'mermaid';
 import hljs from 'highlight.js';
 import type { Slide, SlideElement, Frontmatter } from '../types';
@@ -114,7 +114,7 @@ async function assetUrlToDataUrl(src: string): Promise<string> {
       const path = decodeURIComponent(src.replace(/^asset:\/\/[^/]*/, ''));
       const ext  = path.split('.').pop()?.toLowerCase() ?? 'png';
       const b64  = await invoke<string>('read_file_b64', { path });
-      return `data:${extToMime(ext)};base64,${b64}`;
+      return `data:${imageMime(ext)};base64,${b64}`;
     }
     const res = await fetch(src);
     const blob = await res.blob();

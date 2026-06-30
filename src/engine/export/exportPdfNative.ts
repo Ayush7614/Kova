@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { AspectRatio } from '../types';
 import { mermaidSvgCache } from './mermaidSvgCache';
+import { imageMime } from './imageMime';
 
 // At 96 CSS DPI: 254mm = 960px exactly. Slides are rendered off-screen at 960px
 // wide, so this page size maps one-to-one with no scaling required.
@@ -166,7 +167,7 @@ async function resolveImages(el: HTMLElement): Promise<void> {
       if (src.startsWith('asset://')) {
         const path = decodeURIComponent(src.replace(/^asset:\/\/[^/]*/, ''));
         const b64  = await invoke<string>('read_file_b64', { path });
-        dataUrl = `data:${extToImageMime(path)};base64,${b64}`;
+        dataUrl = `data:${imageMime(path)};base64,${b64}`;
       } else if (src.startsWith('https://') || src.startsWith('http://')) {
         const [b64, mime] = await invoke<[string, string]>('fetch_url_b64', { url: src });
         dataUrl = `data:${mime};base64,${b64}`;
@@ -257,15 +258,6 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
-}
-
-function extToImageMime(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase() ?? '';
-  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-  if (ext === 'gif')  return 'image/gif';
-  if (ext === 'webp') return 'image/webp';
-  if (ext === 'svg')  return 'image/svg+xml';
-  return 'image/png';
 }
 
 function extToFontMime(path: string): string {
