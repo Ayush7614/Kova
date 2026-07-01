@@ -571,6 +571,7 @@ export default function App() {
         setShowExternalChangeDialog(true);
       } else {
         // No unsaved edits — reload silently then surface a dismissable banner.
+        syncThemeFromContent(newContent);
         setContent(newContent);
         setIsDirty(false);
         diskContentRef.current = newContent;
@@ -902,25 +903,34 @@ export default function App() {
     });
   }, []);
 
-  // Shared post-load sequence: apply theme, content, and watcher for a file that
-  // has already been read (or generated) and saved to disk.
-  const applyFileContent = useCallback(async (text: string, path: string) => {
+  // Restore theme + theme_overrides from a document's frontmatter. Overrides
+  // (footer/header/logo/etc.) apply on top of whichever theme is active and
+  // must be restored regardless of whether an explicit `theme:` key is
+  // present — discarding them here caused saved footer/header customisations
+  // on the default theme to silently revert on reopen (#55).
+  const syncThemeFromContent = useCallback((text: string) => {
     const { frontmatter: fm } = extractFrontmatter(text);
     if (typeof fm.theme === 'string') {
       const found = allThemesRef.current.find((t) => t.id === fm.theme);
       if (found) {
         setActiveThemeId(found.id);
         setMissingThemeId(null);
-        setThemeOverrides(sanitiseThemeOverrides(fm.theme_overrides as Record<string, unknown> ?? {}));
       } else {
         setMissingThemeId(fm.theme);
         setThemeOverrides({});
+        return;
       }
     } else {
       setActiveThemeId(DEFAULT_THEME.id);
       setMissingThemeId(null);
-      setThemeOverrides({});
     }
+    setThemeOverrides(sanitiseThemeOverrides(fm.theme_overrides as Record<string, unknown> ?? {}));
+  }, []);
+
+  // Shared post-load sequence: apply theme, content, and watcher for a file that
+  // has already been read (or generated) and saved to disk.
+  const applyFileContent = useCallback(async (text: string, path: string) => {
+    syncThemeFromContent(text);
     setFilePath(path);
     setContent(text);
     setIsDirty(false);
@@ -930,7 +940,7 @@ export default function App() {
     setMarpPrompt(isMarp(text) ? { text, dir: dirOf(path) } : null);
     setImportDir('');
     setMarpLoss(null);
-  }, []);
+  }, [syncThemeFromContent]);
 
   // Startup restore — only when the user has opted in via Settings. Best-effort:
   // a deleted/moved/unreadable file just leaves the app at its normal blank
@@ -2010,6 +2020,7 @@ export default function App() {
                       if (!path) return;
                       try {
                         const newContent: string = await invoke('read_file', { path });
+                        syncThemeFromContent(newContent);
                         setContent(newContent);
                         setIsDirty(false);
                         diskContentRef.current = newContent;
