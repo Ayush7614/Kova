@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { AspectRatio } from '../types';
 import { mermaidSvgCache } from './mermaidSvgCache';
 import { imageMime } from './imageMime';
+import { videoMime } from './videoMime';
 import { type PdfExportOpts, planPage, SLIDE_PX_W } from './pdfLayout';
 
 export type { PdfExportOpts };
@@ -46,9 +47,9 @@ export async function buildPrintDocument(
     ? getComputedStyle(slideFrame).getPropertyValue('--sl-bg').trim()
     : '';
 
-  // 1. Clone elements and resolve all image URLs to data URIs in place.
+  // 1. Clone elements and resolve all image/video URLs to data URIs in place.
   const clones = slideElements.map((el) => el.cloneNode(true) as HTMLElement);
-  await Promise.all(clones.map(resolveImages));
+  await Promise.all(clones.map((el) => Promise.all([resolveImages(el), resolveVideos(el)])));
   // Belt-and-suspenders: if a Mermaid container is still a placeholder (SVG
   // not yet committed to the DOM when we cloned), inject from the render cache.
   clones.forEach(injectMermaidFallbacks);
@@ -256,6 +257,29 @@ async function resolveImages(el: HTMLElement): Promise<void> {
       }
     } catch { /* leave original src */ }
     if (dataUrl) img.src = dataUrl;
+  }));
+}
+
+async function resolveVideos(el: HTMLElement): Promise<void> {
+  const vids = Array.from(el.querySelectorAll<HTMLVideoElement>('video'));
+  await Promise.all(vids.map(async (vid) => {
+    const src = vid.getAttribute('src') ?? '';
+    let dataUrl: string | null = null;
+    try {
+      if (src.startsWith('asset://')) {
+        const path = decodeURIComponent(src.replace(/^asset:\/\/[^/]*/, ''));
+        const b64  = await invoke<string>('read_file_b64', { path });
+        dataUrl = `data:${videoMime(path)};base64,${b64}`;
+      } else if (src.startsWith('https://') || src.startsWith('http://')) {
+        const [b64, mime] = await invoke<[string, string]>('fetch_url_b64', { url: src });
+        dataUrl = `data:${mime};base64,${b64}`;
+      } else if (src.startsWith('tauri://') || src.startsWith('/')) {
+        const fetchUrl = src.startsWith('/') ? `tauri://localhost${src}` : src;
+        const res = await fetch(fetchUrl);
+        if (res.ok) dataUrl = await blobToDataUrl(await res.blob());
+      }
+    } catch { /* leave original src */ }
+    if (dataUrl) vid.src = dataUrl;
   }));
 }
 
