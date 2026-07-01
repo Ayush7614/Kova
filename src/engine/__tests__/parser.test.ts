@@ -404,6 +404,30 @@ describe('custom syntax pre-processor', () => {
   });
 });
 
+// ── Table of contents (!toc) ────────────────────────────────────────────────
+
+describe('!toc table of contents', () => {
+  it('parses a standalone !toc line as a toc element', () => {
+    const { slides } = parseDocument(doc('## Agenda\n\n!toc\n'));
+    const toc = slides[0].elements.find((e) => e.type === 'toc');
+    expect(toc?.type === 'toc' && toc.entries).toEqual([]);
+  });
+
+  it('does not parse !toc inside a code fence', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n```\n!toc\n```\n'));
+    expect(slides[0].elements.some((e) => e.type === 'toc')).toBe(false);
+    const code = slides[0].elements.find((e) => e.type === 'code');
+    expect(code?.type === 'code' && code.value).toContain('!toc');
+  });
+
+  it('treats a malformed !toc variant as plain text', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n!toc[Agenda]\n'));
+    expect(slides[0].elements.some((e) => e.type === 'toc')).toBe(false);
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.text).toContain('!toc');
+  });
+});
+
 // ── Academic references (!ref) ────────────────────────────────────────────────
 
 describe('!ref academic references', () => {
