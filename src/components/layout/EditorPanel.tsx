@@ -1250,6 +1250,11 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
           { type: 'item', label: 'Math/LaTeX Block', action: () => doInsert('$$\nE = mc^2\n$$', 3) },
           { type: 'item', label: 'Speaker Notes',   action: () => doInsert('\n\n???\n\n', 7) },
           { type: 'item', label: 'Reference',       action: () => doInsert('!ref[]', 5) },
+          {
+            type: 'item',
+            label: 'Table of Contents',
+            action: () => doInsert('## Agenda\n\n!toc\n', 3),
+          },
         ],
       },
       { type: 'divider' },
@@ -1340,6 +1345,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
             <span style={{ fontSize: 28, opacity: 0.3 }}>📄</span>
             <span>{mod}+N — new presentation</span>
             <span>{mod}+O — open file</span>
+            <span>Right-click → Insert → Table of Contents</span>
           </div>
         )}
       </div>
