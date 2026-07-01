@@ -558,6 +558,7 @@ export default function App() {
 
       if (isDirtyRef.current) {
         // Unsaved edits — block with a modal; user must choose reload or save-as.
+        diskContentRef.current = newContent;
         externalChangePathRef.current = path;
         setShowExternalChangeDialog(true);
       } else {
