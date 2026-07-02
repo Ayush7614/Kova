@@ -1421,6 +1421,15 @@ export default function App() {
     warnTimerRef.current = setTimeout(() => setWarnMessage(null), 6000);
   }, []);
 
+  const handleCopySlideMarkdown = useCallback((index: number) => {
+    const slide = slides[index];
+    if (!slide) return;
+    void navigator.clipboard.writeText(slide.raw.trim()).catch((err) => {
+      console.error('Copy slide markdown failed:', err);
+      handleWarn('Could not copy to clipboard');
+    });
+  }, [slides, handleWarn]);
+
   const handleSettingsChange = useCallback((s: AppSettings) => {
     setSettings(s);
     saveSettings(s);
@@ -1847,6 +1856,7 @@ export default function App() {
               currentIndex={safeSlideIndex}
               onSelect={handleThumbnailSelect}
               onReorder={handleSlideReorder}
+              onCopyMarkdown={handleCopySlideMarkdown}
               onToggleHidden={handleToggleHidden}
               theme={activeTheme}
               docTitle={frontmatter.title}
