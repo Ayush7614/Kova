@@ -31,6 +31,7 @@ import { loadKeybindings, matchShortcut, getCombo, formatCombo, isMac } from './
 import type { Keybindings } from './engine/keybindings';
 
 import { parseDocument } from './engine/parser/markdownToSlides';
+import { collectDeckReferences, buildBibliographySlideMarkdown } from './engine/bibliography';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
 import { fetchUpdate } from './engine/updater';
 import { normalizePath } from './engine/resolvePath';
@@ -1421,6 +1422,26 @@ export default function App() {
     warnTimerRef.current = setTimeout(() => setWarnMessage(null), 6000);
   }, []);
 
+  const handleInsertBibliography = useCallback(() => {
+    const refs = collectDeckReferences(slides);
+    if (refs.length === 0) {
+      handleWarn('No references found — add !ref[…] citations to your slides first.');
+      return;
+    }
+    const slideBody = buildBibliographySlideMarkdown(refs);
+    const newIndex = slides.length;
+    setContent((prev) => {
+      const fmMatch = prev.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+      const fmBlock = fmMatch ? fmMatch[0] : '';
+      const body = prev.slice(fmBlock.length).trimEnd();
+      const sep = body.length > 0 ? '\n\n---\n\n' : '';
+      return fmBlock + body + sep + slideBody + '\n';
+    });
+    setIsDirty(true);
+    setCurrentSlideIndex(newIndex);
+    setTimeout(() => editorRef.current?.scrollToSlide(newIndex), 50);
+  }, [slides, handleWarn]);
+
   const handleSettingsChange = useCallback((s: AppSettings) => {
     setSettings(s);
     saveSettings(s);
@@ -1865,6 +1886,7 @@ export default function App() {
               onCursorSlide={setCurrentSlideIndex}
               onWarn={handleWarn}
               onSaveAs={handleSaveAs}
+              onInsertBibliography={handleInsertBibliography}
               focusMode={focusMode}
               filePath={filePath}
               uiTheme={resolvedUiTheme}

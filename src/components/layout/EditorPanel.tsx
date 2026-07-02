@@ -32,6 +32,7 @@ interface Props {
   onCursorSlide?: (index: number) => void;
   onWarn?: (msg: string) => void;
   onSaveAs?: () => Promise<string | null>;
+  onInsertBibliography?: () => void;
   focusMode?: boolean;
   filePath?: string | null;
   uiTheme?: 'dark' | 'light';
@@ -528,7 +529,7 @@ interface ContextMenuState { x: number; y: number; hasSelection: boolean; clickP
 interface ConfirmState { title: string; message: string; okLabel: string; resolve: (ok: boolean) => void }
 
 export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
-  { content, onChange, onCursorSlide, onWarn, onSaveAs, focusMode = false, filePath, uiTheme = 'dark', editorFontFamily = DEFAULT_FONT_FAMILY, wordWrap = true, spellCheckEnabled = false, spellCheckLanguage = 'en_US' }: Props,
+  { content, onChange, onCursorSlide, onWarn, onSaveAs, onInsertBibliography, focusMode = false, filePath, uiTheme = 'dark', editorFontFamily = DEFAULT_FONT_FAMILY, wordWrap = true, spellCheckEnabled = false, spellCheckLanguage = 'en_US' }: Props,
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -538,6 +539,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
   const onCursorSlideRef = useRef(onCursorSlide);
   const onWarnRef = useRef(onWarn);
   const onSaveAsRef = useRef(onSaveAs);
+  const onInsertBibliographyRef = useRef(onInsertBibliography);
   const filePathRef = useRef(filePath);
   const uiThemeRef = useRef(uiTheme);
   const spellCheckEnabledRef = useRef(spellCheckEnabled);
@@ -554,6 +556,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
   useEffect(() => { onCursorSlideRef.current = onCursorSlide; }, [onCursorSlide]);
   useEffect(() => { onWarnRef.current = onWarn; }, [onWarn]);
   useEffect(() => { onSaveAsRef.current = onSaveAs; }, [onSaveAs]);
+  useEffect(() => { onInsertBibliographyRef.current = onInsertBibliography; }, [onInsertBibliography]);
   useEffect(() => { filePathRef.current = filePath; }, [filePath]);
   useEffect(() => { uiThemeRef.current = uiTheme; }, [uiTheme]);
   useEffect(() => { spellCheckEnabledRef.current = spellCheckEnabled; }, [spellCheckEnabled]);
@@ -1251,6 +1254,11 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
           { type: 'item', label: 'Math/LaTeX Block', action: () => doInsert('$$\nE = mc^2\n$$', 3) },
           { type: 'item', label: 'Speaker Notes',   action: () => doInsert('\n\n???\n\n', 7) },
           { type: 'item', label: 'Reference',       action: () => doInsert('!ref[]', 5) },
+          {
+            type: 'item',
+            label: 'Bibliography slide',
+            action: () => onInsertBibliographyRef.current?.(),
+          },
           {
             type: 'item',
             label: 'Table of Contents',
