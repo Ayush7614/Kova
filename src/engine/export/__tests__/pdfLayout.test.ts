@@ -7,6 +7,7 @@ describe('pdfLayout', () => {
   it('picks grid columns per sheet size', () => {
     expect(nupCols(1)).toBe(1);
     expect(nupCols(2)).toBe(2);
+    expect(nupCols(3)).toBe(2);
     expect(nupCols(4)).toBe(2);
     expect(nupCols(6)).toBe(3);
   });
@@ -38,6 +39,13 @@ describe('pdfLayout', () => {
     expect(p.rows).toBe(2);
     expect(960 * p.slideScale).toBeLessThanOrEqual(p.cellWpx + 0.01);
     expect(p.slideNativeHpx * p.slideScale).toBeLessThanOrEqual(p.cellHpx + 0.01);
+  });
+
+  it('lays out 3-up as a 2×2 grid with two columns', () => {
+    const p = planPage(AR, { perPage: 3 });
+    expect(p.mode).toBe('nup');
+    expect(p.cols).toBe(2);
+    expect(p.rows).toBe(2);
   });
 
   it('reserves a notes band below the slide', () => {

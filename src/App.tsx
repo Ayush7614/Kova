@@ -2060,7 +2060,7 @@ export default function App() {
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-label)', marginBottom: 8 }}>Slides per page</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-              {[1, 2, 4, 6].map((n) => (
+              {[1, 2, 3, 4, 6].map((n) => (
                 <button
                   key={n}
                   className={pdfPerPage === n ? 'btn btn-primary' : 'btn'}

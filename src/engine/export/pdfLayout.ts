@@ -6,7 +6,7 @@ import type { AspectRatio } from '../types';
 export type PaperSize = 'a4' | 'letter';
 
 export interface PdfExportOpts {
-  perPage?: number;                 // slides per page: 1 (default), 2, 4, 6
+  perPage?: number;                 // slides per page: 1 (default), 2, 3, 4, 6
   notes?: (string | undefined)[];   // speaker notes per slide; enables handout at 1-up
   paper?: PaperSize;                // default 'a4'
   fullBleed?: boolean;              // page = slide size, no margins (HTML export)
