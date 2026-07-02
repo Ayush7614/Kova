@@ -149,6 +149,7 @@ export default function App() {
   const [resolvedUiTheme, setResolvedUiTheme] = useState<'dark' | 'light'>('dark');
   const [fileMenuOpen, setFileMenuOpen]       = useState(false);
   const [importSubmenuOpen, setImportSubmenuOpen] = useState(false);
+  const [recentSubmenuOpen, setRecentSubmenuOpen] = useState(false);
   const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
   const fileMenuRef = useRef<HTMLDivElement>(null);
   const [editMenuOpen, setEditMenuOpen]       = useState(false);
@@ -1634,6 +1635,44 @@ export default function App() {
               <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setFileMenuOpen(false); handleOpenFile(); }}>
                 Open <span>{formatCombo(getCombo(keybindings.combos, 'openFile'))}</span>
               </button>
+              <div style={{ position: 'relative' }} onMouseEnter={() => setRecentSubmenuOpen(true)} onMouseLeave={() => setRecentSubmenuOpen(false)}>
+                <button
+                  className="btn-group-menu-item btn-group-menu-item--shortcut"
+                  aria-haspopup="true"
+                  aria-expanded={recentSubmenuOpen}
+                  onClick={() => setRecentSubmenuOpen((p) => !p)}
+                  onKeyDown={(e) => { if (e.key === 'ArrowRight' || e.key === 'Enter') setRecentSubmenuOpen(true); }}
+                >
+                  Open Recent <span>›</span>
+                </button>
+                {recentSubmenuOpen && (
+                  <div className="btn-group-menu btn-group-menu--sub">
+                    {recents.length === 0 ? (
+                      <button className="btn-group-menu-item" disabled>No Recent Files</button>
+                    ) : (
+                      <>
+                        {recents.map((p) => (
+                          <button
+                            key={p}
+                            className="btn-group-menu-item"
+                            title={p}
+                            onClick={() => { setFileMenuOpen(false); handleMarkdownDrop(p); }}
+                          >
+                            {p.split(/[\\/]/).pop() || p}
+                          </button>
+                        ))}
+                        <div className="btn-group-menu-separator" />
+                        <button
+                          className="btn-group-menu-item"
+                          onClick={() => { setFileMenuOpen(false); clearRecentFiles(); setRecents([]); }}
+                        >
+                          Clear Menu
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
               <div style={{ position: 'relative' }} onMouseEnter={() => setImportSubmenuOpen(true)} onMouseLeave={() => setImportSubmenuOpen(false)}>
                 <button
                   className="btn-group-menu-item btn-group-menu-item--shortcut"

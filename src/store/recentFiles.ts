@@ -1,5 +1,6 @@
-// Most-recently-opened file paths, newest first. Feeds the macOS native
-// "File ▸ Open Recent" submenu. App-managed state, not a user preference.
+// Most-recently-opened file paths, newest first. Feeds the File ▸ Open Recent
+// submenu (macOS native menu + Windows/Linux in-window menu). App-managed
+// state, not a user preference.
 
 const KEY = 'kova:recentFiles';
 const MAX = 10;
