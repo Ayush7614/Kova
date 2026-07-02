@@ -1253,6 +1253,16 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
           { type: 'item', label: 'Reference',       action: () => doInsert('!ref[]', 5) },
           {
             type: 'item',
+            label: 'YouTube Video',
+            action: () => doInsert('\n!youtube[My Video](https://youtu.be/VIDEO_ID)\n', 10),
+          },
+          {
+            type: 'item',
+            label: 'Poll (Poll Everywhere)',
+            action: () => doInsert('\n!poll[Vote here](https://pollev.com/your-poll)\n', 7),
+          },
+          {
+            type: 'item',
             label: 'Table of Contents',
             action: () => doInsert('## Agenda\n\n!toc\n', 3),
           },
