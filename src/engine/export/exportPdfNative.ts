@@ -3,6 +3,7 @@ import type { AspectRatio } from '../types';
 import { mermaidSvgCache } from './mermaidSvgCache';
 import { imageMime } from './imageMime';
 import { videoMime } from './videoMime';
+import { audioMime } from './audioMime';
 import { type PdfExportOpts, planPage, SLIDE_PX_W } from './pdfLayout';
 
 export type { PdfExportOpts };
@@ -49,7 +50,7 @@ export async function buildPrintDocument(
 
   // 1. Clone elements and resolve all image/video URLs to data URIs in place.
   const clones = slideElements.map((el) => el.cloneNode(true) as HTMLElement);
-  await Promise.all(clones.map((el) => Promise.all([resolveImages(el), resolveVideos(el)])));
+  await Promise.all(clones.map((el) => Promise.all([resolveImages(el), resolveVideos(el), resolveAudios(el)])));
   // Belt-and-suspenders: if a Mermaid container is still a placeholder (SVG
   // not yet committed to the DOM when we cloned), inject from the render cache.
   clones.forEach(injectMermaidFallbacks);
@@ -280,6 +281,29 @@ async function resolveVideos(el: HTMLElement): Promise<void> {
       }
     } catch { /* leave original src */ }
     if (dataUrl) vid.src = dataUrl;
+  }));
+}
+
+async function resolveAudios(el: HTMLElement): Promise<void> {
+  const auds = Array.from(el.querySelectorAll<HTMLAudioElement>('audio'));
+  await Promise.all(auds.map(async (aud) => {
+    const src = aud.getAttribute('src') ?? '';
+    let dataUrl: string | null = null;
+    try {
+      if (src.startsWith('asset://')) {
+        const path = decodeURIComponent(src.replace(/^asset:\/\/[^/]*/, ''));
+        const b64  = await invoke<string>('read_file_b64', { path });
+        dataUrl = `data:${audioMime(path)};base64,${b64}`;
+      } else if (src.startsWith('https://') || src.startsWith('http://')) {
+        const [b64, mime] = await invoke<[string, string]>('fetch_url_b64', { url: src });
+        dataUrl = `data:${mime};base64,${b64}`;
+      } else if (src.startsWith('tauri://') || src.startsWith('/')) {
+        const fetchUrl = src.startsWith('/') ? `tauri://localhost${src}` : src;
+        const res = await fetch(fetchUrl);
+        if (res.ok) dataUrl = await blobToDataUrl(await res.blob());
+      }
+    } catch { /* leave original src */ }
+    if (dataUrl) aud.src = dataUrl;
   }));
 }
 

@@ -530,6 +530,7 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
   const bodyH = ch - hh - 0.1;
   const yt    = slide.elements.find((e) => e.type === 'youtube');
   const vid   = slide.elements.find((e) => e.type === 'video');
+  const aud   = slide.elements.find((e) => e.type === 'audio');
   const poll  = slide.elements.find((e) => e.type === 'poll');
 
   // ponytail: PPTX can't embed local video without bundling the file — emit a
@@ -539,6 +540,18 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
       { text: '▶ ', options: { fontSize: 30, bold: true } },
       { text: vid.label || 'Video', options: { fontSize: 20, breakLine: true } },
       { text: vid.src, options: { fontSize: 11, color: hex(t.colors.accent) } },
+    ], {
+      x: M, y: bodyY, w: W - M * 2, h: bodyH,
+      color: hex(t.colors.text), fontFace: firstFont(t.fonts.body),
+      align: 'center', valign: 'middle', wrap: true,
+    });
+  }
+
+  if (aud && aud.type === 'audio') {
+    s.addText([
+      { text: '♪ ', options: { fontSize: 30, bold: true } },
+      { text: aud.label || 'Audio', options: { fontSize: 20, breakLine: true } },
+      { text: aud.src, options: { fontSize: 11, color: hex(t.colors.accent) } },
     ], {
       x: M, y: bodyY, w: W - M * 2, h: bodyH,
       color: hex(t.colors.text), fontFace: firstFont(t.fonts.body),

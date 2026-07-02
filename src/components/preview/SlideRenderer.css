@@ -423,6 +423,9 @@
    so the box height stays definite instead of growing to the video. */
 .sl-video__player { flex: 1; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); background: #000; }
 .sl-video__label { font-size: clamp(9px, 2cqi, 16px); font-weight: 600; color: var(--sl-text); text-align: center; font-family: var(--sl-font-body); }
+.sl-audio { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2%; width: 100%; height: 100%; min-height: 0; }
+.sl-audio__player { width: min(100%, 480px); max-width: 100%; border-radius: 4px; }
+.sl-audio__label { font-size: clamp(9px, 2cqi, 16px); font-weight: 600; color: var(--sl-text); text-align: center; font-family: var(--sl-font-body); }
 
 .sl-poll { display: flex; flex-direction: column; align-items: center; gap: 3%; padding: 4%; background: color-mix(in srgb, var(--sl-accent) 10%, var(--sl-bg)); border: 2px solid var(--sl-accent); border-radius: 8px; width: 75%; }
 .sl-poll__icon { font-size: clamp(20px, 5cqi, 44px); }

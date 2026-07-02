@@ -352,6 +352,13 @@ describe('custom syntax pre-processor', () => {
     expect(vid?.type === 'video' && vid.src).toBe('media/demo.mp4');
   });
 
+  it('parses !audio', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n!audio[Intro](media/theme.mp3)\n'));
+    const aud = slides[0].elements.find((e) => e.type === 'audio');
+    expect(aud?.type === 'audio' && aud.label).toBe('Intro');
+    expect(aud?.type === 'audio' && aud.src).toBe('media/theme.mp3');
+  });
+
   it('parses !poll', () => {
     const { slides } = parseDocument(doc('## Slide\n\n!poll[Vote here](https://pollev.com/xyz)\n'));
     const poll = slides[0].elements.find((e) => e.type === 'poll');

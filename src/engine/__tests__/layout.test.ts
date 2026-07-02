@@ -12,6 +12,7 @@ const mermaid: SlideElement = { type: 'mermaid', value: 'pie title T\n"A":1' };
 const bq:      SlideElement = { type: 'blockquote', text: 'Quote' };
 const table:   SlideElement = { type: 'table', headers: ['A', 'B'], rows: [['1', '2']] };
 const youtube: SlideElement = { type: 'youtube', label: 'Vid', url: 'https://youtu.be/abc' };
+const audio:   SlideElement = { type: 'audio', label: 'Track', src: 'theme.mp3' };
 const poll:    SlideElement = { type: 'poll', label: 'Vote', url: 'https://poll.io' };
 const progress: SlideElement = { type: 'progress', label: 'Done', value: 75 };
 const colBreak: SlideElement = { type: 'column-break' };
@@ -57,6 +58,10 @@ describe('media layout', () => {
 
   it('poll element → media', () => {
     expect(detectLayout([poll], 2, true)).toBe('media');
+  });
+
+  it('audio element → media', () => {
+    expect(detectLayout([audio], 2, true)).toBe('media');
   });
 
   it('youtube + poll together → media', () => {

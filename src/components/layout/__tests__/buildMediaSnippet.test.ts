@@ -21,8 +21,12 @@ describe('buildMediaSnippet', () => {
     expect(await buildMediaSnippet('/docs/my clip.mov', '/docs/talk.md', warn)).toBe('!video[my clip](my%20clip.mov)');
   });
 
-  it('treats .ogv as video but not .ogg', async () => {
+  it('treats .ogv as video but .ogg as audio', async () => {
     expect(await buildMediaSnippet('/docs/video.ogv', '/docs/talk.md', warn)).toBe('!video[video](video.ogv)');
-    expect(await buildMediaSnippet('/docs/audio.ogg', '/docs/talk.md', warn)).toBe('![audio](audio.ogg)');
+    expect(await buildMediaSnippet('/docs/audio.ogg', '/docs/talk.md', warn)).toBe('!audio[audio](audio.ogg)');
+  });
+
+  it('emits !audio[..] for mp3 next to the doc', async () => {
+    expect(await buildMediaSnippet('/docs/theme.mp3', '/docs/talk.md', warn)).toBe('!audio[theme](theme.mp3)');
   });
 });

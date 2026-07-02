@@ -92,7 +92,7 @@ export function detectLayout(
 
   // ── Highest-priority special types ───────────────────────────────────────
 
-  if (has('youtube') || has('poll') || has('video')) return 'media';
+  if (has('youtube') || has('poll') || has('video') || has('audio')) return 'media';
   if (has('column-break')) return 'two-column';
 
   // ── Code-only ────────────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ export type SlideElement =
   | { type: 'table'; headers: string[]; rows: string[][]; align?: ('left' | 'right' | 'center' | null)[] }
   | { type: 'youtube';  label: string; url: string }
   | { type: 'video';    label: string; src: string }
+  | { type: 'audio';    label: string; src: string }
   | { type: 'poll';     label: string; url: string }
   | { type: 'progress'; label: string; value: number }
   | { type: 'column-break' }

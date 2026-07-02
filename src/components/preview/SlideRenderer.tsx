@@ -581,6 +581,7 @@ function GridLayout({ slide }: { slide: Slide }) {
 function MediaLayout({ slide }: { slide: Slide }) {
   const yt = slide.elements.find((e) => e.type === 'youtube');
   const vid = slide.elements.find((e) => e.type === 'video');
+  const aud = slide.elements.find((e) => e.type === 'audio');
   const poll = slide.elements.find((e) => e.type === 'poll');
   return (
     <div className="sl-media">
@@ -588,6 +589,7 @@ function MediaLayout({ slide }: { slide: Slide }) {
       <div className="sl-media__body">
         {yt && yt.type === 'youtube' && <YoutubeEmbed embed={yt} />}
         {vid && vid.type === 'video' && <VideoEmbed embed={vid} />}
+        {aud && aud.type === 'audio' && <AudioEmbed embed={aud} />}
         {poll && poll.type === 'poll' && <PollEmbed embed={poll} />}
       </div>
     </div>
@@ -718,6 +720,9 @@ function ElementNode({ el }: { el: SlideElement }) {
     case 'video':
       return <VideoEmbed embed={el} />;
 
+    case 'audio':
+      return <AudioEmbed embed={el} />;
+
     case 'poll':
       return <PollEmbed embed={el} />;
 
@@ -815,6 +820,16 @@ function VideoEmbed({ embed }: { embed: Extract<SlideElement, { type: 'video' }>
     <div className="sl-video" onClick={(e) => e.stopPropagation()}>
       <video className="sl-video__player" src={embed.src} controls={!isThumbnail} preload="metadata" playsInline />
       {embed.label && <div className="sl-video__label">{embed.label}</div>}
+    </div>
+  );
+}
+
+function AudioEmbed({ embed }: { embed: Extract<SlideElement, { type: 'audio' }> }) {
+  const { isThumbnail } = useContext(SlideCtx);
+  return (
+    <div className="sl-audio" onClick={(e) => e.stopPropagation()}>
+      <audio className="sl-audio__player" src={embed.src} controls={!isThumbnail} preload="metadata" />
+      {embed.label && <div className="sl-audio__label">{embed.label}</div>}
     </div>
   );
 }

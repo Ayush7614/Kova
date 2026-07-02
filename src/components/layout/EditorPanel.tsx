@@ -59,7 +59,8 @@ function encodeMarkdownPath(p: string): string {
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|svg|webp|bmp|ico|avif|tiff?)$/i;
 const VIDEO_EXT = /\.(mp4|webm|ogv|mov|m4v|mkv)$/i;
-const MEDIA_EXT = new RegExp(`${IMAGE_EXT.source}|${VIDEO_EXT.source}`, 'i');
+const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac|flac)$/i;
+const MEDIA_EXT = new RegExp(`${IMAGE_EXT.source}|${VIDEO_EXT.source}|${AUDIO_EXT.source}`, 'i');
 
 export async function buildMediaSnippet(abs: string, docPath: string, warn: (m: string) => void): Promise<string | null> {
   const label  = abs.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') ?? 'media';
@@ -80,7 +81,9 @@ export async function buildMediaSnippet(abs: string, docPath: string, warn: (m: 
     }
   }
   const enc = encodeMarkdownPath(rel);
-  return VIDEO_EXT.test(abs) ? `!video[${label}](${enc})` : `![${label}](${enc})`;
+  if (VIDEO_EXT.test(abs)) return `!video[${label}](${enc})`;
+  if (AUDIO_EXT.test(abs)) return `!audio[${label}](${enc})`;
+  return `![${label}](${enc})`;
 }
 
 
@@ -1234,7 +1237,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
 
               const selected = await openFileDialog({
                 multiple: false,
-                filters: [{ name: 'Media', extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'avif', 'tiff', 'mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv'] }],
+                filters: [{ name: 'Media', extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'avif', 'tiff', 'mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv', 'mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'] }],
               });
               if (!selected) return;
 

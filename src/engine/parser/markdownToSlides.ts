@@ -75,6 +75,7 @@ interface PreprocessResult {
 
 const YOUTUBE_RE      = /^!youtube\[([^\]]*)\]\(([^)]*)\)$/;
 const VIDEO_RE        = /^!video\[([^\]]*)\]\(([^)]*)\)$/;
+const AUDIO_RE        = /^!audio\[([^\]]*)\]\(([^)]*)\)$/;
 const POLL_RE         = /^!poll\[([^\]]*)\]\(([^)]*)\)$/;
 const PROGRESS_RE     = /^!progress\[([^\]]*)\]\((\d+(?:\.\d+)?)\)$/;
 const REF_RE          = /^!ref\[([^\]]*)\]$/;
@@ -120,6 +121,14 @@ function preprocess(content: string): PreprocessResult {
     if (vid) {
       const idx = nextIdx++;
       placeholders.set(idx, { type: 'video', label: vid[1], src: vid[2] });
+      cleanLines.push(`<!-- kova-el:${idx} -->`);
+      continue;
+    }
+
+    const aud = t.match(AUDIO_RE);
+    if (aud) {
+      const idx = nextIdx++;
+      placeholders.set(idx, { type: 'audio', label: aud[1], src: aud[2] });
       cleanLines.push(`<!-- kova-el:${idx} -->`);
       continue;
     }
