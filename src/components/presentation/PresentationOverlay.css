@@ -114,6 +114,10 @@
   text-align: center;
 }
 
+.pres-hud__timer--warning {
+  color: #ff4444;
+}
+
 .pres-hud__btn {
   background: none;
   border: 1px solid #333;

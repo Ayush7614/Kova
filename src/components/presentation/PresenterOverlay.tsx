@@ -4,7 +4,7 @@ import type { Slide, AspectRatio } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
 import type { NotesFontSize } from '../../store/settings';
 import { SlideRenderer } from '../preview/SlideRenderer';
-import { SLIDE_W, formatTime, ScaledSlideBox, LaserDot } from './presentationShared';
+import { SLIDE_W, timerDisplay, ScaledSlideBox, LaserDot } from './presentationShared';
 import './PresenterOverlay.css';
 
 interface Props {
@@ -16,6 +16,7 @@ interface Props {
   aspectRatio: AspectRatio;
   showNextSlide: boolean;
   showTimer: boolean;
+  countdownMinutes?: number;
   notesFontSize: NotesFontSize;
   laserColor?: string;
   onNavigate: (index: number) => void;
@@ -30,7 +31,7 @@ const STORAGE_KEY     = 'kova:presenter-right-w';
 
 export function PresenterOverlay({
   slides, currentIndex, theme, docTitle, docDate, aspectRatio,
-  showNextSlide, showTimer, notesFontSize, laserColor = '#ff2020', onNavigate, onExit,
+  showNextSlide, showTimer, countdownMinutes = 0, notesFontSize, laserColor = '#ff2020', onNavigate, onExit,
 }: Props) {
   const slide     = slides[currentIndex];
   const nextSlide = slides[currentIndex + 1] ?? null;
@@ -357,14 +358,20 @@ export function PresenterOverlay({
           >›</button>
         </div>
 
-        {showTimer && (
-          <>
-            <div className="pres-presenter__hud-divider" />
-            <span className="pres-presenter__timer" title="Elapsed time">
-              {formatTime(elapsed)}
-            </span>
-          </>
-        )}
+        {showTimer && (() => {
+          const timer = timerDisplay(elapsed, countdownMinutes);
+          return (
+            <>
+              <div className="pres-presenter__hud-divider" />
+              <span
+                className={`pres-presenter__timer${timer.warning ? ' pres-presenter__timer--warning' : ''}`}
+                title={countdownMinutes > 0 ? 'Time remaining' : 'Elapsed time'}
+              >
+                {timer.text}
+              </span>
+            </>
+          );
+        })()}
 
         <div className="pres-presenter__hud-divider" />
 

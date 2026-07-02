@@ -2,6 +2,8 @@ import { detectOsLanguage } from '../engine/spellcheck/spellChecker';
 
 export type PresentationMode  = 'auto' | 'single' | 'dual' | 'mirror';
 export type NotesFontSize     = 'sm' | 'md' | 'lg';
+export type PresenterCountdownMinutes = 0 | 5 | 10 | 15;
+export const PRESENTER_COUNTDOWN_OPTIONS = [0, 5, 10, 15] as const satisfies readonly PresenterCountdownMinutes[];
 export type StartupBehavior   = 'blank' | 'reopenLast';
 
 export const LASER_COLOR_OPTIONS = [
@@ -43,6 +45,7 @@ export interface AppSettings {
   presentationMode: PresentationMode;
   presenterShowNextSlide: boolean;
   presenterShowTimer: boolean;
+  presenterCountdownMinutes: PresenterCountdownMinutes;
   presenterNotesFontSize: NotesFontSize;
   laserColor: LaserColor;
   // Editor
@@ -73,6 +76,7 @@ function buildDefaults(): AppSettings {
     presentationMode: 'auto',
     presenterShowNextSlide: true,
     presenterShowTimer: true,
+    presenterCountdownMinutes: 0,
     presenterNotesFontSize: 'md',
     laserColor: '#ff2020',
     showFrontmatter: false,

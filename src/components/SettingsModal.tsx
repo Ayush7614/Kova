@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import type { AppSettings, PresentationMode, NotesFontSize, LaserColor, StartupBehavior } from '../store/settings';
-import { EDITOR_FONT_OPTIONS, LASER_COLOR_OPTIONS } from '../store/settings';
+import type { AppSettings, PresentationMode, NotesFontSize, PresenterCountdownMinutes, LaserColor, StartupBehavior } from '../store/settings';
+import { EDITOR_FONT_OPTIONS, LASER_COLOR_OPTIONS, PRESENTER_COUNTDOWN_OPTIONS } from '../store/settings';
 import type { Theme } from '../engine/theme';
 import { isFontAvailable } from '../engine/fontDetect';
 import { fetchUpdate, canSelfUpdate, restartApp } from '../engine/updater';
@@ -650,6 +650,25 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, s
             </div>
           }
         />
+
+        <div style={{ padding: '6px 0 10px' }}>
+          <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>Countdown timer</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.5 }}>
+            When set, the presentation HUD counts down instead of elapsed time. Turns red in the final minute.
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {PRESENTER_COUNTDOWN_OPTIONS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => set('presenterCountdownMinutes', value as PresenterCountdownMinutes)}
+                style={groupBtnStyle(settings.presenterCountdownMinutes === value)}
+              >
+                {value === 0 ? 'Off' : `${value} min`}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {settings.presentationMode === 'dual' && (
           <>

@@ -12,6 +12,15 @@ export function formatTime(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
+/** Elapsed clock, or countdown with a warning flag in the final minute. */
+export function timerDisplay(elapsed: number, countdownMinutes: number): { text: string; warning: boolean } {
+  if (countdownMinutes <= 0) {
+    return { text: formatTime(elapsed), warning: false };
+  }
+  const remaining = Math.max(0, countdownMinutes * 60 - elapsed);
+  return { text: formatTime(remaining), warning: remaining <= 60 };
+}
+
 // The 960px virtual slide scaled to fill its measured frame.
 export function ScaledSlideBox({ scale, slideH, children }: { scale: number; slideH: number; children: ReactNode }) {
   return (

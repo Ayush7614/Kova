@@ -209,6 +209,10 @@
   text-align: center;
 }
 
+.pres-presenter__timer--warning {
+  color: #ff4444;
+}
+
 .pres-presenter__btn {
   background: none;
   border: 1px solid #2a2a2a;

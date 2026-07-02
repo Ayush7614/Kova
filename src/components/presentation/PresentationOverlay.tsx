@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import type { Slide, AspectRatio } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
 import { SlideRenderer } from '../preview/SlideRenderer';
-import { SLIDE_W, formatTime, ScaledSlideBox, LaserDot } from './presentationShared';
+import { SLIDE_W, timerDisplay, ScaledSlideBox, LaserDot } from './presentationShared';
 import './PresentationOverlay.css';
 
 interface Props {
@@ -14,6 +14,7 @@ interface Props {
   aspectRatio?: AspectRatio;
   laserColor?: string;
   showTimer?: boolean;
+  countdownMinutes?: number;
   onNavigate: (index: number) => void;
   onExit: () => void;
 }
@@ -22,7 +23,7 @@ const HUD_H   = 40;   // px — HUD bar height
 const NOTE_H  = 160;  // px — speaker notes panel height
 
 export function PresentationOverlay({
-  slides, currentIndex, theme, docTitle, docDate, aspectRatio = { w: 16, h: 9 }, laserColor = '#ff2020', showTimer = false, onNavigate, onExit,
+  slides, currentIndex, theme, docTitle, docDate, aspectRatio = { w: 16, h: 9 }, laserColor = '#ff2020', showTimer = false, countdownMinutes = 0, onNavigate, onExit,
 }: Props) {
   const slide = slides[currentIndex];
 
@@ -291,9 +292,17 @@ export function PresentationOverlay({
           title="Next (→ / Space)"
         >›</button>
 
-        {showTimer && (
-          <span className="pres-hud__timer" title="Elapsed time">{formatTime(elapsed)}</span>
-        )}
+        {showTimer && (() => {
+          const timer = timerDisplay(elapsed, countdownMinutes);
+          return (
+            <span
+              className={`pres-hud__timer${timer.warning ? ' pres-hud__timer--warning' : ''}`}
+              title={countdownMinutes > 0 ? 'Time remaining' : 'Elapsed time'}
+            >
+              {timer.text}
+            </span>
+          );
+        })()}
 
         {hasNotes && (
           <button
