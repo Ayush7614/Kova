@@ -37,6 +37,7 @@ import { normalizePath } from './engine/resolvePath';
 import { exportToPptx } from './engine/export/exportPptx';
 import { exportToPdf, printPresentation } from './engine/export/exportPdf';
 import { exportPdfNative, buildPrintDocument, type PdfExportOpts } from './engine/export/exportPdfNative';
+import { buildSpeakerNotesMarkdown } from './engine/export/speakerNotesExport';
 import { SlideRenderer } from './components/preview/SlideRenderer';
 import { BUILT_IN_THEMES, DEFAULT_THEME, parseThemeYaml, sanitiseThemeOverrides, type ThemeParseResult } from './engine/theme';
 import { registerBundledFonts, registerCachedFont } from './engine/bundledFonts';
@@ -1303,6 +1304,30 @@ export default function App() {
     });
   }, [visibleSlides, filePath, aspectRatio]);
 
+  const handleExportSpeakerNotes = useCallback(async () => {
+    if (visibleSlides.length === 0) return;
+    const notesSlides = visibleSlides.filter((s) => s.speakerNotes.trim());
+    if (notesSlides.length === 0) {
+      setWarnMessage('No speaker notes in this deck');
+      return;
+    }
+    const defaultPath = filePath
+      ? filePath.replace(/\.(md|markdown)$/i, '-notes.md')
+      : 'speaker-notes.md';
+    const target = await save({
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+      defaultPath,
+    });
+    if (!target) return;
+    const savePath = target.toLowerCase().endsWith('.md') ? target : `${target}.md`;
+    try {
+      await invoke('write_file', { path: savePath, content: buildSpeakerNotesMarkdown(notesSlides) });
+    } catch (err) {
+      console.error('Speaker notes export failed:', err);
+      window.alert(`Speaker notes export failed:\n${String(err)}`);
+    }
+  }, [visibleSlides, filePath]);
+
   const handlePrint = useCallback(async () => {
     if (visibleSlides.length === 0) return;
     const visSlides = [...visibleSlides];
@@ -1474,6 +1499,7 @@ export default function App() {
     export: handleExport,
     exportPdf: () => { setPdfPerPage(1); setPdfNotesOn(false); setPdfOptionsOpen(true); },
     exportHtml: handleExportHtml,
+    exportSpeakerNotes: () => { void handleExportSpeakerNotes(); },
     print: handlePrint,
     present: () => { void handlePresentEnter(); },
     toggleInspector: () => setShowInspector((v) => !v),
@@ -1492,6 +1518,7 @@ export default function App() {
     export: () => menuHandlersRef.current.export(),
     exportPdf: () => menuHandlersRef.current.exportPdf(),
     exportHtml: () => menuHandlersRef.current.exportHtml(),
+    exportSpeakerNotes: () => menuHandlersRef.current.exportSpeakerNotes(),
     print: () => menuHandlersRef.current.print(),
     present: () => menuHandlersRef.current.present(),
     toggleInspector: () => menuHandlersRef.current.toggleInspector(),
@@ -1690,6 +1717,13 @@ export default function App() {
                     </button>
                     <button className="btn-group-menu-item" disabled={slides.length === 0 || pdfExportContext !== null} onClick={() => { setFileMenuOpen(false); handleExportHtml(); }}>
                       {pdfExportContext ? 'Exporting…' : 'HTML (.html)'}
+                    </button>
+                    <button
+                      className="btn-group-menu-item"
+                      disabled={slides.length === 0 || !visibleSlides.some((s) => s.speakerNotes.trim())}
+                      onClick={() => { setFileMenuOpen(false); void handleExportSpeakerNotes(); }}
+                    >
+                      Speaker notes (.md)
                     </button>
                   </div>
                 )}

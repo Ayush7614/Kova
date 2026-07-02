@@ -22,6 +22,7 @@ export interface MacMenuHandlers {
   export: () => void;
   exportPdf: () => void;
   exportHtml: () => void;
+  exportSpeakerNotes: () => void;
   print: () => void;
   present: () => void;
   toggleInspector: () => void;
@@ -83,6 +84,7 @@ export async function buildMacMenu(h: MacMenuHandlers, recents: string[]): Promi
               { text: 'PowerPoint (.pptx)', action: () => h.export() },
               { text: 'PDF (.pdf)', action: () => h.exportPdf() },
               { text: 'HTML (.html)', action: () => h.exportHtml() },
+              { text: 'Speaker notes (.md)', action: () => h.exportSpeakerNotes() },
             ],
           }),
           { text: 'Print…', accelerator: 'CmdOrCtrl+P', action: () => h.print() },
