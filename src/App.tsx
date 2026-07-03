@@ -2211,7 +2211,10 @@ export default function App() {
                     await invoke('stop_watching').catch(() => {});
                     const text: string = await invoke('read_file', { path });
                     await applyFileContent(text, path);
-                  } catch (err) { console.error('Drop open failed:', err); }
+                  } catch (err) {
+                    console.error('Drop open failed:', err);
+                    setRecents(removeRecentFile(path));
+                  }
                 }}
               >Open</button>
             </div>
