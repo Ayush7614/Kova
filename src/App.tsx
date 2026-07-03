@@ -24,7 +24,7 @@ import { MissingThemeBanner } from './components/MissingThemeBanner';
 import { loadSettings, saveSettings, EDITOR_FONT_OPTIONS } from './store/settings';
 import type { AppSettings } from './store/settings';
 import { loadLastSession, saveLastSession } from './store/lastSession';
-import { loadRecentFiles, addRecentFile, removeRecentFile, clearRecentFiles } from './store/recentFiles';
+import { loadRecentFiles, addRecentFile, removeRecentFile, clearRecentFiles, recentFileBasename, recentFileMenuLabel } from './store/recentFiles';
 import { buildMacMenu } from './macMenu';
 import type { MacMenuHandlers } from './macMenu';
 import { loadKeybindings, matchShortcut, getCombo, formatCombo, isMac } from './engine/keybindings';
@@ -1554,7 +1554,12 @@ export default function App() {
 
   // Close menus when the user clicks outside them.
   useEffect(() => {
-    if (!fileMenuOpen) return;
+    if (!fileMenuOpen) {
+      setImportSubmenuOpen(false);
+      setExportSubmenuOpen(false);
+      setRecentSubmenuOpen(false);
+      return;
+    }
     const onDown = (e: MouseEvent) => {
       if (fileMenuRef.current && !fileMenuRef.current.contains(e.target as Node)) {
         setFileMenuOpen(false);
@@ -1656,15 +1661,15 @@ export default function App() {
                             key={p}
                             className="btn-group-menu-item"
                             title={p}
-                            onClick={() => { setFileMenuOpen(false); handleMarkdownDrop(p); }}
+                            onClick={() => { setFileMenuOpen(false); menuHandlersRef.current.openRecent(p); }}
                           >
-                            {p.split(/[\\/]/).pop() || p}
+                            {recentFileMenuLabel(p, recents)}
                           </button>
                         ))}
                         <div className="btn-group-menu-separator" />
                         <button
                           className="btn-group-menu-item"
-                          onClick={() => { setFileMenuOpen(false); clearRecentFiles(); setRecents([]); }}
+                          onClick={() => { setFileMenuOpen(false); menuHandlersRef.current.clearRecent(); }}
                         >
                           Clear Menu
                         </button>
@@ -2198,7 +2203,7 @@ export default function App() {
               Open file
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>
-              Opening <strong>{dropConfirmPath.split(/[\\/]/).pop()}</strong> will replace the current document.
+              Opening <strong>{recentFileBasename(dropConfirmPath)}</strong> will replace the current document.
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button className="btn" onClick={() => setDropConfirmPath(null)}>Cancel</button>
