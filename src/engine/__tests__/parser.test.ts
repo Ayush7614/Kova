@@ -654,3 +654,42 @@ These are speaker notes for the results slide.
     expect(bars).toHaveLength(2);
   });
 });
+
+// ── Marp-style slide backgrounds (![bg]) ─────────────────────────────────────
+
+describe('![bg] slide backgrounds', () => {
+  it('image-only ![bg] → full-bleed layout', () => {
+    const { slides } = parseDocument(doc('![bg](hero.jpg)'));
+    expect(slides[0].layout).toBe('full-bleed');
+    expect(slides[0].elements).toEqual([{ type: 'image', src: 'hero.jpg', alt: '' }]);
+    expect(slides[0].backgroundImage).toBeUndefined();
+  });
+
+  it('![bg left] + title → split with image first', () => {
+    const { slides } = parseDocument(doc('![bg left](side.jpg)\n\n## Title\n\n- one'));
+    expect(slides[0].layout).toBe('split');
+    expect(slides[0].elements[0]).toEqual({ type: 'image', src: 'side.jpg', alt: '' });
+    expect(slides[0].backgroundImage).toBeUndefined();
+  });
+
+  it('![bg right] + content → split with image last', () => {
+    const { slides } = parseDocument(doc('## Title\n\n- one\n\n![bg right](side.jpg)'));
+    expect(slides[0].layout).toBe('split');
+    const last = slides[0].elements[slides[0].elements.length - 1];
+    expect(last).toEqual({ type: 'image', src: 'side.jpg', alt: '' });
+  });
+
+  it('![bg] with body content → backgroundImage overlay', () => {
+    const { slides } = parseDocument(doc('![bg](backdrop.jpg)\n\n## Welcome\n\nHello world'));
+    expect(slides[0].backgroundImage).toEqual({ src: 'backdrop.jpg', size: 'cover' });
+    expect(slides[0].elements.some((e) => e.type === 'image')).toBe(false);
+    expect(slides[0].layout).toBe('title-content');
+  });
+
+  it('does not treat ![bg] inside a code fence as a background', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n```\n![bg](x.jpg)\n```\n'));
+    expect(slides[0].backgroundImage).toBeUndefined();
+    const code = slides[0].elements.find((e) => e.type === 'code');
+    expect(code?.type === 'code' && code.value).toContain('![bg]');
+  });
+});

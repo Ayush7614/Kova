@@ -443,7 +443,14 @@ export default function App() {
       const layout = hasToc && !slide.layoutOverride
         ? detectLayout(resolvedElements, slide.titleLevel, !!slide.title)
         : slide.layout;
-      const resolved: Slide = { ...slide, elements: resolvedElements, layout };
+      const resolved: Slide = {
+        ...slide,
+        elements: resolvedElements,
+        layout,
+        backgroundImage: slide.backgroundImage
+          ? { ...slide.backgroundImage, src: resolveImageSrc(slide.backgroundImage.src, docDir, localImageUrls) }
+          : undefined,
+      };
       if (!hasToc) cache.set(slide, resolved);
       return resolved;
     });

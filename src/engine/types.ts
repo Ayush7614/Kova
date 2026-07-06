@@ -47,6 +47,8 @@ export interface Slide {
   layout: LayoutType;
   layoutOverride?: LayoutType;
   hidden: boolean;        // skipped in presentation + export; set via <!-- hidden --> marker
+  /** Marp-style `![bg](…)` — full-slide background behind content (not split-column). */
+  backgroundImage?: { src: string; size: 'cover' | 'contain' };
 }
 
 export interface AspectRatio { w: number; h: number }

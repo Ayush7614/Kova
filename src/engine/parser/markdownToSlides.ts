@@ -10,6 +10,7 @@ import type { Slide, SlideElement, ListItem, LayoutType, Frontmatter, ParsedDocu
 import { detectLayout } from '../layout/autoLayout';
 import { extractFrontmatter } from './frontmatter';
 import { extractSpeakerNotes } from './speakerNotes';
+import { extractBgImage } from './bgImage';
 
 const processor = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
 
@@ -43,26 +44,42 @@ export function parseDocument(rawContent: string): ParsedDocument {
 // ── Per-slide parser ─────────────────────────────────────────────────────────
 
 function parseSlide(raw: string, index: number): Slide {
+  const { body: rawWithoutBg, bg: bgImage } = extractBgImage(raw);
+
   // Extract layout override from HTML comment before anything else
-  const layoutOverrideMatch = raw.match(/<!--\s*layout:\s*(\S+)\s*-->/);
+  const layoutOverrideMatch = rawWithoutBg.match(/<!--\s*layout:\s*(\S+)\s*-->/);
   const layoutOverride = layoutOverrideMatch
     ? (layoutOverrideMatch[1] as LayoutType)
     : undefined;
 
-  const hidden = /<!--\s*hidden\s*-->/.test(raw);
+  const hidden = /<!--\s*hidden\s*-->/.test(rawWithoutBg);
 
   // Preprocess before speaker-notes extraction so ??? inside custom URLs is not
   // misinterpreted as speaker-note markers. Custom elements become inline HTML
   // comment placeholders so remark preserves their position in the element list.
-  const { cleanContent, placeholders, references } = preprocess(raw);
+  const { cleanContent, placeholders, references } = preprocess(rawWithoutBg);
   const { content, notes } = extractSpeakerNotes(cleanContent);
 
   const tree = processor.parse(content) as Root;
-  const { title, titleLevel, elements } = convertRoot(tree, placeholders);
+  let { title, titleLevel, elements } = convertRoot(tree, placeholders);
 
-  const layout = layoutOverride ?? detectLayout(elements, titleLevel, !!title);
+  let layout = layoutOverride ?? detectLayout(elements, titleLevel, !!title);
+  let backgroundImage: Slide['backgroundImage'];
 
-  return { index, raw, title, titleLevel, elements, speakerNotes: notes, references, layout, layoutOverride, hidden };
+  if (bgImage) {
+    const imgEl: SlideElement = { type: 'image', src: bgImage.src, alt: '' };
+    if (bgImage.side) {
+      layout = layoutOverride ?? 'split';
+      elements = bgImage.side === 'left' ? [imgEl, ...elements] : [...elements, imgEl];
+    } else if (!title && elements.length === 0) {
+      layout = layoutOverride ?? 'full-bleed';
+      elements = [imgEl];
+    } else {
+      backgroundImage = { src: bgImage.src, size: bgImage.size };
+    }
+  }
+
+  return { index, raw, title, titleLevel, elements, speakerNotes: notes, references, layout, layoutOverride, hidden, backgroundImage };
 }
 
 // ── Custom syntax pre-processor ──────────────────────────────────────────────

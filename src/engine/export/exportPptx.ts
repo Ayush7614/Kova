@@ -227,6 +227,10 @@ function addSlide(
     });
   }
 
+  if (slide.backgroundImage) {
+    tryAddImage(s, slide.backgroundImage.src, { x: 0, y: 0, w: W, h: H }, warnings);
+  }
+
   switch (slide.layout) {
     case 'title':         addTitleSlide(s, slide, t, cy, ch); break;
     case 'section':       addSectionSlide(s, slide, t, cy, ch); break;

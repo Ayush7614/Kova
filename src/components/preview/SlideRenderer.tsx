@@ -305,7 +305,15 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
       )}
 
       {/* Main content area */}
-      <div className="sl-content-area">
+      <div
+        className="sl-content-area"
+        style={slide.backgroundImage ? {
+          backgroundImage: `url("${slide.backgroundImage.src}")`,
+          backgroundSize: slide.backgroundImage.size,
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        } : undefined}
+      >
         <SlideLayout slide={slide} />
         {slide.references.length > 0 && (
           <div className="sl-references">
