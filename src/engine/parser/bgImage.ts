@@ -1,5 +1,5 @@
 /** Marp-compatible slide background image line: `![bg left:40%](path.jpg)`. */
-const BG_LINE = /^!\[bg([^\]]*)\]\(\s*([^)\s]+)[^)]*\)\s*$/;
+const BG_LINE = /^!\[bg([^\]]*)\]\(\s*([^)]+?)\s*\)\s*$/;
 
 export interface ParsedBgImage {
   src: string;
@@ -18,7 +18,7 @@ export function parseBgLine(line: string): ParsedBgImage | null {
     : undefined;
   const size = /\b(contain|fit)\b/.test(mods) ? 'contain' as const : 'cover' as const;
 
-  return { src: m[2], side, size };
+  return { src: m[2].trim(), side, size };
 }
 
 /** Strip standalone `![bg…](…)` lines from slide raw text (first wins). */

@@ -686,6 +686,12 @@ describe('![bg] slide backgrounds', () => {
     expect(slides[0].layout).toBe('title-content');
   });
 
+  it('![bg] with layout override → full-bleed wins over section', () => {
+    const { slides } = parseDocument(doc('<!-- layout:section -->\n\n![bg](hero.jpg)'));
+    expect(slides[0].layout).toBe('full-bleed');
+    expect(slides[0].elements[0]).toEqual({ type: 'image', src: 'hero.jpg', alt: '' });
+  });
+
   it('does not treat ![bg] inside a code fence as a background', () => {
     const { slides } = parseDocument(doc('## Slide\n\n```\n![bg](x.jpg)\n```\n'));
     expect(slides[0].backgroundImage).toBeUndefined();

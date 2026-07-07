@@ -354,6 +354,10 @@ export default function App() {
       item.children.forEach(collectItem);
     }
     for (const slide of rawSlides) {
+      if (slide.backgroundImage) {
+        const p = localPathFromImageSrc(slide.backgroundImage.src, docDir);
+        if (p) paths.add(p);
+      }
       for (const el of slide.elements) {
         if (el.type === 'image') {
           const p = localPathFromImageSrc(el.src, docDir);

@@ -22,6 +22,10 @@ describe('parseBgLine', () => {
     expect(parseBgLine('![bg fit](a.jpg)')?.size).toBe('contain');
   });
 
+  it('parses paths containing spaces', () => {
+    expect(parseBgLine('![bg](my photo.jpg)')?.src).toBe('my photo.jpg');
+  });
+
   it('returns null for regular images', () => {
     expect(parseBgLine('![](plain.jpg)')).toBeNull();
     expect(parseBgLine('![alt](plain.jpg)')).toBeNull();

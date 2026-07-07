@@ -69,10 +69,11 @@ function parseSlide(raw: string, index: number): Slide {
   if (bgImage) {
     const imgEl: SlideElement = { type: 'image', src: bgImage.src, alt: '' };
     if (bgImage.side) {
-      layout = layoutOverride ?? 'split';
+      // bg split takes precedence — section/blank overrides would drop the image.
+      layout = 'split';
       elements = bgImage.side === 'left' ? [imgEl, ...elements] : [...elements, imgEl];
     } else if (!title && elements.length === 0) {
-      layout = layoutOverride ?? 'full-bleed';
+      layout = 'full-bleed';
       elements = [imgEl];
     } else {
       backgroundImage = { src: bgImage.src, size: bgImage.size };

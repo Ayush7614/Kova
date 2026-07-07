@@ -103,6 +103,12 @@ async function fetchUrlToDataUrl(url: string): Promise<string> {
   }
 }
 
+async function resolveImageSrcForExport(src: string): Promise<string> {
+  if (src.startsWith('asset://') || src.startsWith('tauri://')) return assetUrlToDataUrl(src);
+  if (src.startsWith('http://') || src.startsWith('https://')) return fetchUrlToDataUrl(src);
+  return src;
+}
+
 // Mermaid uses global DOM state and cannot handle concurrent render() calls —
 // running slides in parallel causes the second Mermaid render to hang forever.
 // Process everything sequentially so Mermaid renders one at a time.
@@ -131,7 +137,17 @@ async function resolveSlideImages(slides: Slide[], theme: Theme, warnings: strin
         elements.push(el);
       }
     }
-    resolved.push({ ...slide, elements });
+    let backgroundImage = slide.backgroundImage;
+    if (backgroundImage) {
+      const src = await resolveImageSrcForExport(backgroundImage.src);
+      let aspectRatio: number | undefined;
+      if (backgroundImage.size === 'contain' && src.startsWith('data:')) {
+        const ar = await getImageAspectRatio(src);
+        if (ar != null && isFinite(ar)) aspectRatio = ar;
+      }
+      backgroundImage = { ...backgroundImage, src, aspectRatio };
+    }
+    resolved.push({ ...slide, elements, backgroundImage });
   }
   return resolved;
 }
@@ -228,7 +244,8 @@ function addSlide(
   }
 
   if (slide.backgroundImage) {
-    tryAddImage(s, slide.backgroundImage.src, { x: 0, y: 0, w: W, h: H }, warnings);
+    const ar = slide.backgroundImage.size === 'contain' ? slide.backgroundImage.aspectRatio : undefined;
+    tryAddImage(s, slide.backgroundImage.src, { x: 0, y: 0, w: W, h: H }, warnings, ar);
   }
 
   switch (slide.layout) {
