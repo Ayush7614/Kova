@@ -18,6 +18,28 @@ interface Props {
 
 const MENU_WIDTH = 205;
 
+// WebKitGTK reports window.innerWidth/innerHeight in a coordinate space that
+// doesn't match getBoundingClientRect() once `html { zoom }` (Settings ->
+// Appearance UI scale) is combined with OS-level display scaling (see the
+// vw/vh comment in global.css for the same underlying class of bug). Measure
+// the viewport via getBoundingClientRect on body instead, so it stays in the
+// same coordinate space as the element rects we compare it against.
+function getViewportSize() {
+  const r = document.body.getBoundingClientRect();
+  return { width: r.width, height: r.height };
+}
+
+// WebKitGTK re-applies the ambient `html { zoom }` (Settings -> Appearance
+// UI scale) to a `position: fixed` element's own left/top, offsetting it
+// from the real cursor position proportional to the scale factor. cx/cy
+// below are computed in true screen-pixel space (matching mouse-event
+// coordinates); dividing by the scale here cancels that re-application out.
+function getUiScale(): number {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--ui-scale').trim();
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 export function EditorContextMenu({ x, y, onClose, entries, onPanelEnter, onPanelLeave }: Props) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
@@ -27,7 +49,16 @@ export function EditorContextMenu({ x, y, onClose, entries, onPanelEnter, onPane
   const [submenuPos, setSubmenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const isRoot = !onPanelEnter;
 
-  const cx = Math.min(x, window.innerWidth - MENU_WIDTH - 8);
+  // MENU_WIDTH, offsetTop/offsetHeight etc. are *local* CSS-px quantities
+  // that the ambient `zoom` visually magnifies on screen; x/y/cx/cy are
+  // *real* screen-px (matching mouse-event coordinates and the panel's
+  // corrected left/top below). Scale local quantities by uiScale before
+  // combining them with cx/cy, or the two unit spaces get added together.
+  const uiScale = getUiScale();
+  const scaledMenuWidth = MENU_WIDTH * uiScale;
+  const scaledGap = 8 * uiScale;
+
+  const cx = Math.min(x, getViewportSize().width - scaledMenuWidth - scaledGap);
   const [cy, setCy] = useState(y);
 
   // Indices into `entries` that are keyboard-navigable (non-disabled items and submenus).
@@ -41,10 +72,10 @@ export function EditorContextMenu({ x, y, onClose, entries, onPanelEnter, onPane
 
   useLayoutEffect(() => {
     if (ref.current) {
-      const h = ref.current.offsetHeight;
-      setCy(Math.min(y, window.innerHeight - h - 8));
+      const h = ref.current.offsetHeight * uiScale;
+      setCy(Math.min(y, getViewportSize().height - h - scaledGap));
     }
-  }, [y]);
+  }, [y, uiScale, scaledGap]);
 
   useEffect(() => {
     if (!isRoot) return;
@@ -69,10 +100,20 @@ export function EditorContextMenu({ x, y, onClose, entries, onPanelEnter, onPane
 
   function openSubmenu(i: number, el: HTMLDivElement) {
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    const rect = el.getBoundingClientRect();
-    const spaceRight = window.innerWidth - rect.right;
-    const subX = spaceRight >= MENU_WIDTH + 4 ? rect.right + 2 : rect.left - MENU_WIDTH - 2;
-    setSubmenuPos({ x: subX, y: rect.top });
+    // Anchor off the panel's own already-correct position (cx/cy) plus the
+    // row's offset *within* the panel, instead of el.getBoundingClientRect().
+    // WebKitGTK returns bogus rects for elements nested inside a
+    // `position: fixed` ancestor that itself sits under a `zoom`-scaled
+    // ancestor (Settings -> Appearance UI scale); offsetTop never goes
+    // through that fixed-to-viewport conversion, so it stays reliable.
+    const rowTop = cy + el.offsetTop * uiScale;
+    const panelRight = cx + scaledMenuWidth;
+    const spaceRight = getViewportSize().width - panelRight;
+    const gap = 2 * uiScale;
+    const subX = spaceRight >= scaledMenuWidth + scaledGap / 2
+      ? panelRight + gap
+      : cx - scaledMenuWidth - gap;
+    setSubmenuPos({ x: subX, y: rowTop });
     setOpenSubmenuIdx(i);
   }
 
@@ -86,8 +127,8 @@ export function EditorContextMenu({ x, y, onClose, entries, onPanelEnter, onPane
 
   const panelStyle: React.CSSProperties = {
     position: 'fixed',
-    left: cx,
-    top: cy,
+    left: cx / uiScale,
+    top: cy / uiScale,
     background: 'var(--bg-elevated)',
     border: '1px solid var(--border-alt)',
     borderRadius: 6,
