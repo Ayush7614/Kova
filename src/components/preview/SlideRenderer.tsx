@@ -4,7 +4,7 @@ import 'highlight.js/styles/github-dark.css';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import mermaid from 'mermaid';
-import QRCode from 'react-qr-code';
+import { QRCode } from 'react-qr-code';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Slide, SlideElement, ListItem } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
