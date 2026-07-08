@@ -137,6 +137,13 @@ const en = {
   },
   editor: {
     contextMenuAriaLabel: 'Context menu',
+    findDialogTitle: 'Find',
+    findModeText: 'Text',
+    findModeSlide: 'Slide #',
+    findPlaceholderText: 'Find in document…',
+    findPlaceholderSlide: 'Go to slide (1–{{total}})…',
+    findNext: 'Next',
+    findPrevious: 'Previous',
     newPresentationHint: '{{mod}}+N — new presentation',
     openFileHint: '{{mod}}+O — open file',
     tocHint: 'Right-click → Insert → Table of Contents',

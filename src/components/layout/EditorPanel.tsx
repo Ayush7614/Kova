@@ -33,6 +33,7 @@ interface Props {
   onCursorSlide?: (index: number) => void;
   onWarn?: (msg: string) => void;
   onSaveAs?: () => Promise<string | null>;
+  onRequestFind?: () => void;
   focusMode?: boolean;
   filePath?: string | null;
   uiTheme?: 'dark' | 'light';
@@ -523,17 +524,42 @@ export type FormatCmd =
 export interface EditorHandle {
   runFormat: (cmd: FormatCmd) => void;
   scrollToSlide: (index: number) => void;
+  findNext: (query: string, dir?: 1 | -1) => void;
   undo: () => void;
   redo: () => void;
   selectAll: () => void;
   focus: () => void;
 }
 
+export function findNextRange(doc: string, query: string, start: number, dir: 1 | -1 = 1): { from: number; to: number } | null {
+  const q = query.trim();
+  if (!q) return null;
+
+  const hay = doc.toLowerCase();
+  const needle = q.toLowerCase();
+
+  const boundedStart = Math.max(0, Math.min(start, hay.length));
+  let idx: number;
+  if (dir === 1) {
+    idx = hay.indexOf(needle, boundedStart);
+  } else {
+    idx = boundedStart === 0 ? -1 : hay.lastIndexOf(needle, Math.min(hay.length - 1, boundedStart - 1));
+  }
+
+  // Wrap.
+  if (idx === -1) {
+    idx = dir === 1 ? hay.indexOf(needle, 0) : hay.lastIndexOf(needle);
+  }
+  if (idx === -1) return null;
+
+  return { from: idx, to: idx + needle.length };
+}
+
 interface ContextMenuState { x: number; y: number; hasSelection: boolean; clickPos: number | null }
 interface ConfirmState { title: string; message: string; okLabel: string; resolve: (ok: boolean) => void }
 
 export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
-  { content, onChange, onCursorSlide, onWarn, onSaveAs, focusMode = false, filePath, uiTheme = 'dark', editorFontFamily = DEFAULT_FONT_FAMILY, wordWrap = true, spellCheckEnabled = false, spellCheckLanguage = 'en_US' }: Props,
+  { content, onChange, onCursorSlide, onWarn, onSaveAs, onRequestFind, focusMode = false, filePath, uiTheme = 'dark', editorFontFamily = DEFAULT_FONT_FAMILY, wordWrap = true, spellCheckEnabled = false, spellCheckLanguage = 'en_US' }: Props,
   ref,
 ) {
   const t = useT();
@@ -544,6 +570,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
   const onCursorSlideRef = useRef(onCursorSlide);
   const onWarnRef = useRef(onWarn);
   const onSaveAsRef = useRef(onSaveAs);
+  const onRequestFindRef = useRef(onRequestFind);
   const filePathRef = useRef(filePath);
   const uiThemeRef = useRef(uiTheme);
   const spellCheckEnabledRef = useRef(spellCheckEnabled);
@@ -560,6 +587,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
   useEffect(() => { onCursorSlideRef.current = onCursorSlide; }, [onCursorSlide]);
   useEffect(() => { onWarnRef.current = onWarn; }, [onWarn]);
   useEffect(() => { onSaveAsRef.current = onSaveAs; }, [onSaveAs]);
+  useEffect(() => { onRequestFindRef.current = onRequestFind; }, [onRequestFind]);
   useEffect(() => { filePathRef.current = filePath; }, [filePath]);
   useEffect(() => { uiThemeRef.current = uiTheme; }, [uiTheme]);
   useEffect(() => { spellCheckEnabledRef.current = spellCheckEnabled; }, [spellCheckEnabled]);
@@ -652,6 +680,25 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
       });
       view.focus();
     },
+
+    findNext(query: string, dir: 1 | -1 = 1) {
+      const view = viewRef.current;
+      if (!view) return;
+
+      const doc = view.state.doc.toString();
+      const sel = view.state.selection.main;
+      const start = dir === 1 ? sel.to : sel.from;
+
+      const range = findNextRange(doc, query, start, dir);
+      if (!range) return;
+
+      const { from, to } = range;
+      view.dispatch({
+        selection: EditorSelection.range(from, to),
+        effects: EditorView.scrollIntoView(from, { y: 'center', yMargin: 12 }),
+      });
+      view.focus();
+    },
   }), []);
 
   // Create editor once
@@ -685,6 +732,14 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
         markdown({ codeLanguages: languages }),
         Prec.high(keymap.of([
           indentWithTab,
+          {
+            key: 'Mod-f',
+            run: () => {
+              onRequestFindRef.current?.();
+              return true;
+            },
+            preventDefault: true,
+          },
           { key: 'Mod-b',       run: makeWrapCommand('**',  '**',   'bold text') },
           { key: 'Mod-i',       run: makeWrapCommand('*',   '*',    'italic text') },
           { key: 'Mod-u',       run: makeWrapCommand('<u>', '</u>', 'underlined text') },
