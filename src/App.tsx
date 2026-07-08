@@ -1881,6 +1881,10 @@ export default function App() {
               <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setEditMenuOpen(false); editorRef.current?.selectAll(); }}>
                 {t('app.menuSelectAll')} <span>{formatCombo('ctrl+a')}</span>
               </button>
+              <div className="btn-group-menu-separator" />
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setEditMenuOpen(false); openFindDialog(); }}>
+                {t('editor.findDialogTitle')} <span>{formatCombo('ctrl+f')}</span>
+              </button>
             </div>
           )}
         </div>}
@@ -2075,6 +2079,14 @@ export default function App() {
             role="dialog"
             aria-label={t('editor.findDialogTitle')}
             onMouseDown={(e) => e.stopPropagation()}
+            tabIndex={-1}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setFindOpen(false);
+                editorRef.current?.focus();
+              }
+            }}
             style={{
               position: 'fixed',
               left: '50%',
@@ -2094,10 +2106,10 @@ export default function App() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div style={{ fontWeight: 600 }}>{t('editor.findDialogTitle')}</div>
               <button
+                className="btn"
                 onClick={() => { setFindOpen(false); editorRef.current?.focus(); }}
-                style={{ border: 'none', background: 'transparent', color: 'var(--text-dim)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
                 aria-label={t('common.close')}
-              >×</button>
+              >{t('common.close')}</button>
             </div>
 
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8 }}>
@@ -2146,22 +2158,22 @@ export default function App() {
               {findMode === 'text' ? (
                 <>
                   <button
+                    className="btn"
                     onClick={() => runFind(-1)}
-                    style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-panel)', color: 'var(--text-primary)', cursor: 'pointer' }}
                   >
                     {t('editor.findPrevious')}
                   </button>
                   <button
+                    className="btn btn--primary"
                     onClick={() => runFind(1)}
-                    style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-panel)', color: 'var(--text-primary)', cursor: 'pointer' }}
                   >
                     {t('editor.findNext')}
                   </button>
                 </>
               ) : (
                 <button
+                  className="btn btn--primary"
                   onClick={() => runFind(1)}
-                  style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-panel)', color: 'var(--text-primary)', cursor: 'pointer' }}
                 >
                   {t('common.ok')}
                 </button>
