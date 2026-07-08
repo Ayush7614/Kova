@@ -7,7 +7,7 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, usePanelRef, useDefaultLayout } from 'react-resizable-panels';
 
 import { ThumbnailPanel } from './components/layout/ThumbnailPanel';
-import { EditorPanel } from './components/layout/EditorPanel';
+import { EditorPanel, resolveImagePathForMarkdown } from './components/layout/EditorPanel';
 import type { EditorHandle, FormatCmd } from './components/layout/EditorPanel';
 import { InspectorPanel } from './components/layout/InspectorPanel';
 import { StatusBar } from './components/layout/StatusBar';
@@ -33,7 +33,7 @@ import { I18nProvider, useLocaleTranslator } from './i18n';
 
 import { parseDocument } from './engine/parser/markdownToSlides';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
-import { parseBgLine } from './engine/parser/bgImage';
+import { parseBgLine, formatBgLine } from './engine/parser/bgImage';
 import { fetchUpdate } from './engine/updater';
 import { normalizePath } from './engine/resolvePath';
 import { exportToPptx } from './engine/export/exportPptx';
@@ -1485,9 +1485,14 @@ export default function App() {
     setIsDirty(true);
   }, []);
 
+  const handleWarn = useCallback((msg: string) => {
+    setWarnMessage(msg);
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    warnTimerRef.current = setTimeout(() => setWarnMessage(null), 6000);
+  }, []);
+
   function setSlideBackgroundInRaw(raw: string, src: string | null): string {
     // Keep formatting stable: only touch bg lines; keep other lines byte-identical.
-    const BG_LINE = /^!\[bg([^\]]*)\]\(\s*([^)]+?)\s*\)\s*$/;
     const lines = raw.split('\n');
     const out: string[] = [];
     let inFence = false;
@@ -1504,10 +1509,8 @@ export default function App() {
         const parsed = parseBgLine(t);
         if (parsed) {
           if (src && !handled) {
-            const m = t.match(BG_LINE);
-            const mods = m?.[1] ?? '';
             const indent = line.match(/^\s*/)?.[0] ?? '';
-            out.push(`${indent}![bg${mods}](${src})`);
+            out.push(`${indent}${formatBgLine({ ...parsed, src })}`);
           }
           handled = true;
           continue; // remove original bg line(s)
@@ -1521,7 +1524,7 @@ export default function App() {
       let i = 0;
       while (i < out.length && out[i].trim() === '') i++;
       if ((out[i]?.trim() ?? '') === '<!-- hidden -->') i++;
-      out.splice(i, 0, `![bg](${src})`);
+      out.splice(i, 0, formatBgLine({ src, size: 'cover' }));
       if (out[i + 1] && out[i + 1].trim() !== '') out.splice(i + 1, 0, '');
     }
 
@@ -1529,11 +1532,18 @@ export default function App() {
   }
 
   const handleSetSlideBackground = useCallback(async (index: number) => {
+    if (!filePath) {
+      handleWarn(t('editor.saveFirstDropMedia'));
+      return;
+    }
     const selected = await open({
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'] }],
       multiple: false,
     });
     if (!selected || Array.isArray(selected)) return;
+
+    const relPath = await resolveImagePathForMarkdown(selected, filePath, handleWarn);
+    if (!relPath) return;
 
     setContent((prev) => {
       const fmMatch = prev.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
@@ -1543,13 +1553,13 @@ export default function App() {
       // delimiters byte-identical so the parser's positional cache still hits.
       const segments = body.split(/^---$/m);
       if (index < 0 || index >= segments.length) return prev;
-      segments[index] = setSlideBackgroundInRaw(segments[index], selected);
+      segments[index] = setSlideBackgroundInRaw(segments[index], relPath);
       return fmBlock + segments.join('---');
     });
     setIsDirty(true);
     setCurrentSlideIndex(index);
     setTimeout(() => editorRef.current?.scrollToSlide(index), 50);
-  }, []);
+  }, [filePath, handleWarn, t]);
 
   const handleClearSlideBackground = useCallback((index: number) => {
     setContent((prev) => {
@@ -1564,12 +1574,6 @@ export default function App() {
     setIsDirty(true);
     setCurrentSlideIndex(index);
     setTimeout(() => editorRef.current?.scrollToSlide(index), 50);
-  }, []);
-
-  const handleWarn = useCallback((msg: string) => {
-    setWarnMessage(msg);
-    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
-    warnTimerRef.current = setTimeout(() => setWarnMessage(null), 6000);
   }, []);
 
   const handleSettingsChange = useCallback((s: AppSettings) => {

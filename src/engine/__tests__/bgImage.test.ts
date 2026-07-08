@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBgLine, extractBgImage } from '../parser/bgImage';
+import { parseBgLine, extractBgImage, formatBgLine } from '../parser/bgImage';
 
 describe('parseBgLine', () => {
   it('parses a full-slide background', () => {
@@ -29,6 +29,14 @@ describe('parseBgLine', () => {
   it('returns null for regular images', () => {
     expect(parseBgLine('![](plain.jpg)')).toBeNull();
     expect(parseBgLine('![alt](plain.jpg)')).toBeNull();
+    expect(parseBgLine('![background](plain.jpg)')).toBeNull();
+  });
+});
+
+describe('formatBgLine', () => {
+  it('encodes paths with spaces and parentheses', () => {
+    expect(formatBgLine({ src: 'photo%20%281%29.jpg', size: 'cover' })).toBe('![bg](photo%20%281%29.jpg)');
+    expect(formatBgLine({ src: 'a.jpg', side: 'left', size: 'contain' })).toBe('![bg left contain](a.jpg)');
   });
 });
 

@@ -50,7 +50,6 @@ export interface Slide {
   /** Marp-style `![bg](…)` — full-slide background behind content (not split-column). */
   backgroundImage?: {
     src: string;
-    position?: 'left' | 'right';
     size?: 'cover' | 'contain';
     /** Resolved locally for PPTX export when size is `contain`. */
     aspectRatio?: number;

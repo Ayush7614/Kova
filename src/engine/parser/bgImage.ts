@@ -1,5 +1,5 @@
 /** Marp-compatible slide background image line: `![bg left:40%](path.jpg)`. */
-const BG_LINE = /^!\[bg([^\]]*)\]\(\s*([^)]+?)\s*\)\s*$/;
+export const BG_LINE = /^!\[bg(\s[^\]]+)?\]\(\s*([^)]+?)\s*\)\s*$/;
 
 export interface ParsedBgImage {
   src: string;
@@ -7,12 +7,20 @@ export interface ParsedBgImage {
   size: 'cover' | 'contain';
 }
 
+export function formatBgLine(bg: { side?: 'left' | 'right'; size?: 'cover' | 'contain'; src: string }): string {
+  let alt = 'bg';
+  if (bg.side === 'left') alt += ' left';
+  else if (bg.side === 'right') alt += ' right';
+  if (bg.size === 'contain') alt += ' contain';
+  return `![${alt}](${bg.src})`;
+}
+
 export function parseBgLine(line: string): ParsedBgImage | null {
   const trimmed = line.trim();
   const m = trimmed.match(BG_LINE);
   if (!m) return null;
 
-  const mods = m[1].toLowerCase();
+  const mods = (m[1] ?? '').toLowerCase();
   const side = /\bleft\b/.test(mods) ? 'left' as const
     : /\bright\b/.test(mods) ? 'right' as const
     : undefined;
