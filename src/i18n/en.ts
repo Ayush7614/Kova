@@ -115,6 +115,8 @@ const en = {
     duplicateSlide: 'Duplicate slide',
     showSlide: 'Show slide',
     hideSlide: 'Hide slide',
+    setSlideBackground: 'Set slide background…',
+    clearSlideBackground: 'Clear background',
     deleteSlide: 'Delete slide',
     showSlideTitle: 'Show slide in presentation/export',
     hideSlideTitle: 'Hide slide from presentation/export',

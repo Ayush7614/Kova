@@ -33,6 +33,7 @@ import { I18nProvider, useLocaleTranslator } from './i18n';
 
 import { parseDocument } from './engine/parser/markdownToSlides';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
+import { parseBgLine } from './engine/parser/bgImage';
 import { fetchUpdate } from './engine/updater';
 import { normalizePath } from './engine/resolvePath';
 import { exportToPptx } from './engine/export/exportPptx';
@@ -1484,6 +1485,87 @@ export default function App() {
     setIsDirty(true);
   }, []);
 
+  function setSlideBackgroundInRaw(raw: string, src: string | null): string {
+    // Keep formatting stable: only touch bg lines; keep other lines byte-identical.
+    const BG_LINE = /^!\[bg([^\]]*)\]\(\s*([^)]+?)\s*\)\s*$/;
+    const lines = raw.split('\n');
+    const out: string[] = [];
+    let inFence = false;
+    let handled = false;
+
+    for (const line of lines) {
+      const t = line.trim();
+      if (/^(`{3,}|~{3,})/.test(t)) {
+        inFence = !inFence;
+        out.push(line);
+        continue;
+      }
+      if (!inFence) {
+        const parsed = parseBgLine(t);
+        if (parsed) {
+          if (src && !handled) {
+            const m = t.match(BG_LINE);
+            const mods = m?.[1] ?? '';
+            const indent = line.match(/^\s*/)?.[0] ?? '';
+            out.push(`${indent}![bg${mods}](${src})`);
+          }
+          handled = true;
+          continue; // remove original bg line(s)
+        }
+      }
+      out.push(line);
+    }
+
+    if (src && !handled) {
+      // Insert near the top, after leading blanks and a `<!-- hidden -->` marker if present.
+      let i = 0;
+      while (i < out.length && out[i].trim() === '') i++;
+      if ((out[i]?.trim() ?? '') === '<!-- hidden -->') i++;
+      out.splice(i, 0, `![bg](${src})`);
+      if (out[i + 1] && out[i + 1].trim() !== '') out.splice(i + 1, 0, '');
+    }
+
+    return out.join('\n');
+  }
+
+  const handleSetSlideBackground = useCallback(async (index: number) => {
+    const selected = await open({
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'] }],
+      multiple: false,
+    });
+    if (!selected || Array.isArray(selected)) return;
+
+    setContent((prev) => {
+      const fmMatch = prev.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+      const fmBlock = fmMatch ? fmMatch[0] : '';
+      const body = prev.slice(fmBlock.length);
+      // Edit ONLY the target segment; keep every other segment + the `---`
+      // delimiters byte-identical so the parser's positional cache still hits.
+      const segments = body.split(/^---$/m);
+      if (index < 0 || index >= segments.length) return prev;
+      segments[index] = setSlideBackgroundInRaw(segments[index], selected);
+      return fmBlock + segments.join('---');
+    });
+    setIsDirty(true);
+    setCurrentSlideIndex(index);
+    setTimeout(() => editorRef.current?.scrollToSlide(index), 50);
+  }, []);
+
+  const handleClearSlideBackground = useCallback((index: number) => {
+    setContent((prev) => {
+      const fmMatch = prev.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+      const fmBlock = fmMatch ? fmMatch[0] : '';
+      const body = prev.slice(fmBlock.length);
+      const segments = body.split(/^---$/m);
+      if (index < 0 || index >= segments.length) return prev;
+      segments[index] = setSlideBackgroundInRaw(segments[index], null);
+      return fmBlock + segments.join('---');
+    });
+    setIsDirty(true);
+    setCurrentSlideIndex(index);
+    setTimeout(() => editorRef.current?.scrollToSlide(index), 50);
+  }, []);
+
   const handleWarn = useCallback((msg: string) => {
     setWarnMessage(msg);
     if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
@@ -1990,6 +2072,8 @@ export default function App() {
               onReorder={handleSlideReorder}
               onDuplicate={handleDuplicateSlide}
               onToggleHidden={handleToggleHidden}
+              onSetBackground={handleSetSlideBackground}
+              onClearBackground={handleClearSlideBackground}
               onDelete={handleDeleteSlide}
               theme={activeTheme}
               docTitle={docTitle}

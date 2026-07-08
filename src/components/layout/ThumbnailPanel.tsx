@@ -12,6 +12,8 @@ interface Props {
   onReorder?: (fromIndex: number, toIndex: number) => void;
   onDuplicate?: (index: number) => void;
   onToggleHidden?: (index: number) => void;
+  onSetBackground?: (index: number) => void;
+  onClearBackground?: (index: number) => void;
   onDelete?: (index: number) => void;
   theme?: Theme;
   docTitle?: string;
@@ -22,7 +24,7 @@ interface Props {
 const SLIDE_W = 960;
 const THUMB_W = 140;
 
-export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onDuplicate, onToggleHidden, onDelete, theme = DEFAULT_THEME, docTitle, docDate, aspectRatio = { w: 16, h: 9 } }: Props) {
+export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onDuplicate, onToggleHidden, onSetBackground, onClearBackground, onDelete, theme = DEFAULT_THEME, docTitle, docDate, aspectRatio = { w: 16, h: 9 } }: Props) {
   const t = useT();
   const slideH = Math.round(SLIDE_W * aspectRatio.h / aspectRatio.w);
 
@@ -270,6 +272,17 @@ export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onDu
             label={slides[menu.index]?.hidden ? t('layout.showSlide') : t('layout.hideSlide')}
             disabled={!onToggleHidden}
             onClick={() => { onToggleHidden?.(menu.index); setMenu(null); }}
+          />
+          <div role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+          <MenuItem
+            label={t('layout.setSlideBackground')}
+            disabled={!onSetBackground}
+            onClick={() => { onSetBackground?.(menu.index); setMenu(null); }}
+          />
+          <MenuItem
+            label={t('layout.clearSlideBackground')}
+            disabled={!onClearBackground || !slides[menu.index]?.backgroundImage}
+            onClick={() => { onClearBackground?.(menu.index); setMenu(null); }}
           />
           <div role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
           <MenuItem
