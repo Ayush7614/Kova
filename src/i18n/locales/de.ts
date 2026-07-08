@@ -291,7 +291,7 @@ const de: DeepPartial<Messages> = {
     menuSelectAll: 'Alles auswählen', // Select All
     untitledFilename: 'unbenannt.md', // Untitled.md
     presentButton: '▶ Präsentieren', // ▶ Present
-    presentButtonTitle: 'Ab Folie 1 präsentieren (Alt+Klick, um ab der aktuellen Folie zu starten)', // Present from slide 1 (Alt+click to start from current slide)
+    presentButtonTitle: 'Ab Folie 1 präsentieren (F5) – Umschalt+F5 oder Alt+Klick, um ab der aktuellen Folie zu starten', // Present from slide 1 (F5) — Shift-F5 or Alt+click to start from current slide
     enterFocusMode: 'Fokusmodus aktivieren ({{combo}})', // Enter focus mode ({{combo}})
     exitFocusMode: 'Fokusmodus verlassen ({{combo}})', // Exit focus mode ({{combo}})
     toggleInspector: 'Inspektor ein-/asblenden', // Toggle inspector

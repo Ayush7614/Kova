@@ -288,7 +288,7 @@ const sl: DeepPartial<Messages> = {
     menuSelectAll: 'Izberi vse',
     untitledFilename: 'Neimenovano.md',
     presentButton: '▶ Predstavi',
-    presentButtonTitle: 'Predstavi od diapozitiva 1 (Alt+klik za začetek od trenutnega diapozitiva)',
+    presentButtonTitle: 'Predstavi od diapozitiva 1 (F5) – Shift+F5 ali Alt+klik za začetek od trenutnega diapozitiva',
     enterFocusMode: 'Vstopi v način fokusa ({{combo}})',
     exitFocusMode: 'Izhod iz načina fokusa ({{combo}})',
     toggleInspector: 'Preklopi nadzornika',

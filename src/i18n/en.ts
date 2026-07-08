@@ -277,7 +277,7 @@ const en = {
     menuSelectAll: 'Select All',
     untitledFilename: 'Untitled.md',
     presentButton: '▶ Present',
-    presentButtonTitle: 'Present from slide 1 (Alt+click to start from current slide)',
+    presentButtonTitle: 'Present from slide 1 (F5) — Shift-F5 or Alt+click to start from current slide',
     enterFocusMode: 'Enter focus mode ({{combo}})',
     exitFocusMode: 'Exit focus mode ({{combo}})',
     toggleInspector: 'Toggle inspector',
