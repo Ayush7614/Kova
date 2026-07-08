@@ -922,6 +922,7 @@ function PollEmbed({ embed }: { embed: Extract<SlideElement, { type: 'poll' }> }
       <div className="sl-poll__qr">
         <ErrorBoundary
           fallback={<div className="sl-poll__qr-error">{t('preview.pollQrUnavailable')}</div>}
+          onError={(error) => console.error('Poll QR code failed to render:', error)}
         >
           <QRCode value={embed.url} size={160} bgColor="transparent" fgColor={textColor} />
         </ErrorBoundary>
