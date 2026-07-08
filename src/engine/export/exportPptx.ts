@@ -11,6 +11,7 @@ import hljs from 'highlight.js';
 import type { Slide, SlideElement, Frontmatter } from '../types';
 import type { Theme } from '../theme';
 import { resolveTemplate } from '../theme';
+import { formatFallbackDate } from '../../i18n';
 
 mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'antiscript' });
 
@@ -156,6 +157,7 @@ export async function exportToPptx(
   slides: Slide[],
   frontmatter: Frontmatter,
   theme: Theme,
+  locale: string,
 ): Promise<ExportResult> {
   const pres = new PptxGenJS();
   const is4x3 = (frontmatter.aspect_ratio as string | undefined) === '4:3';
@@ -168,7 +170,7 @@ export async function exportToPptx(
   // explicit `title:` — mirrors the same fallback used for the live preview
   // (see docTitle in App.tsx), so exported footers/headers match what's shown.
   const docTitle = frontmatter.title ?? slides.find((s) => s.titleLevel === 1)?.title ?? '';
-  const docDate  = frontmatter.date != null ? String(frontmatter.date) : new Date().toISOString().slice(0, 10);
+  const docDate  = frontmatter.date != null ? String(frontmatter.date) : formatFallbackDate(locale);
   const warnings: string[] = [];
 
   // Pre-resolve theme logo once (fetch → data URL, measure AR) so it can be
@@ -791,6 +793,23 @@ function autoSplitElements(elements: SlideElement[]): [SlideElement[], SlideElem
       [{ ...list, items: list.items.slice(mid) }],
     ];
   }
+  // Mirrors the live preview's split (SlideRenderer.tsx autoSplitElements): balance
+  // by cumulative title length and carry the numbering offset into the second column.
+  if (elements.length === 1 && elements[0].type === 'toc') {
+    const toc = elements[0];
+    const entries = toc.entries;
+    const totalLen = entries.reduce((n, en) => n + en.title.length, 0);
+    let cumLen = 0;
+    let mid = Math.ceil(entries.length / 2);
+    for (let i = 0; i < entries.length; i++) {
+      cumLen += entries[i].title.length;
+      if (cumLen >= totalLen / 2) { mid = i + 1; break; }
+    }
+    return [
+      [{ ...toc, entries: entries.slice(0, mid) }],
+      [{ ...toc, entries: entries.slice(mid), numberStart: mid }],
+    ];
+  }
   const mid = Math.ceil(elements.length / 2);
   return [elements.slice(0, mid), elements.slice(mid)];
 }
@@ -1135,14 +1154,16 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
         }
         break;
 
-      case 'toc':
-        for (const entry of el.entries) {
+      case 'toc': {
+        const numberStart = el.numberStart ?? 0;
+        el.entries.forEach((entry, i) => {
           runs.push({
             text: entry.title,
-            options: { bullet: { type: 'number', style: 'arabicPeriod' } as const, fontSize: 18, paraSpaceAfter: 4, breakLine: true },
+            options: { bullet: { type: 'number', numberType: 'arabicPeriod', numberStartAt: numberStart + i + 1 }, fontSize: 18, paraSpaceAfter: 4, breakLine: true },
           });
-        }
+        });
         break;
+      }
 
       case 'code':
         // Code mixed with other elements: fall back to plain monospaced text.

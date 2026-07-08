@@ -29,15 +29,16 @@ jobs:
           ## What's new
 
           ### New features
-          - **In-app language switcher, and a Slovenian translation** — a new lightweight i18n layer (Settings > Appearance > Display language) extracts every UI string so the app can ship in more than English; Slovenian is the first community translation (addresses #125; Slovenian translation by @anderlli0053, #126).
-          - **Nix flake for reproducible builds** — `nix run github:KovaMD/Kova`, `nix profile install`, or `nix develop` for a ready-made dev shell (by @vadika, #122; addresses #9).
+          - **PDF export: "Match slide size" page option** — a new page-size choice for native PDF export that matches the slide's own aspect ratio exactly, instead of scaling it down inside an A4/Letter page with margins on every side (reported by @a1880, #129).
 
           ### Bug fixes
-          - **Fixed Linux AppImage auto-update** — the AppImage is now signed as part of the release pipeline, restoring self-update that had been broken since the earlier EGL-crash workaround shipped (reported by @frigaut, #3).
-          - **Fixed a stray left-margin gap in the editor** that grew or shrank again as the panel was resized, reintroduced after an earlier theme-based fix (reported by @a1880, #28).
-          - **Fixed `{date}` in footer/header templates showing blank** when the document had no `date:` frontmatter field — it now defaults to today's date like the other template variables do.
-          - **Fixed Enter not confirming a slide-jump** when keystrokes were forwarded from the audience window in dual/mirror presentation mode (reported by @a1880, #54).
-          - **Fixed Table of Contents overflow on long agendas** — layout was computed before ToC entries were resolved, so it could never switch to the two-column overflow layout used elsewhere (reported by @a1880, #57).
+          - **Fixed the "rescaled to fit" badge still showing on the audience/projector window** during a live presentation, and brought PowerPoint (.pptx) exports of a Table of Contents in line with the live preview — a long ToC now splits across two columns in the exported file too, with numbering continuing into the second column instead of restarting at 1 (reported by @a1880, #127).
+          - **Fixed math formulas being squeezed into a narrow side-by-side column** when paired with a callout, paragraph, list, or ToC — they now stack full-width instead (reported by @codingThome, #135).
+          - **Fixed Ctrl+V paste (and the right-click Paste menu item) not working on Linux/WebKitGTK** — clipboard text is now read natively via GTK instead of the webview's clipboard APIs, which WebKitGTK blocks regardless of user interaction (reported by @JustinKenpisi, #13).
+          - **Fixed a render crash leaving the presentation window stuck fullscreen with no way to close it** — the app now recovers gracefully instead of hanging (reported by @codingThome, #134).
+
+          ### Packaging
+          - Fixed the self-hosted Flatpak publish pipeline: corrected the Flathub runtime repo URL, made the GPG key import more reliable, and gave the installed app a friendlier remote name instead of the generic `app-origin`.
 
           ---
 
@@ -47,7 +48,7 @@ jobs:
           |---|---|---|
           | **macOS** (Apple Silicon + Intel) | `.dmg` | Signed and notarised — double-click to install |
           | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Click **More info → Run anyway** if SmartScreen appears (app is unsigned) |
-          | **Linux** | `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/RHEL/openSUSE) | Install via your package manager |
+          | **Linux** | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), or `.flatpakref` | Install via your package manager |
           | **Linux AppImage** | `.AppImage` | Graphics libs stripped for compatibility with Arch/Fedora/etc. Supports auto-update. |
 
           > **Beta release** — expect rough edges. Please report bugs via [Issues](../../issues).
@@ -315,10 +316,11 @@ jobs:
   # keep the release page clean for non-technical users.
   finalize:
     needs: release
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write        # provenance signing (OIDC)
+      attestations: write    # write the attestation
     steps:
       - name: Download per-platform latest.json artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -349,9 +351,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Add stable download aliases and remove .sig files
+        id: aliases
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${{ github.ref_name }}"
           VERSION="${TAG#v}"
           mkdir /tmp/assets
@@ -361,25 +365,37 @@ jobs:
             -p "*.deb" -p "*.rpm" -p "*_x86_64.tar.gz" -p "*_amd64.AppImage" \
             -D /tmp/assets --clobber
 
-          cp "/tmp/assets/Kova_${VERSION}_universal.dmg"        "/tmp/assets/Kova_macOS.dmg"
-          cp "/tmp/assets/Kova_${VERSION}_x64_en-US.msi"        "/tmp/assets/Kova_Windows.msi"
-          cp "/tmp/assets/Kova_${VERSION}_x64-setup.exe"        "/tmp/assets/Kova_Windows_setup.exe"
-          cp "/tmp/assets/Kova_${VERSION}_amd64.deb"            "/tmp/assets/Kova_Linux.deb"
-          cp "/tmp/assets/Kova-${VERSION}-1.x86_64.rpm"         "/tmp/assets/Kova_Linux.rpm"
-          cp "/tmp/assets/Kova_${VERSION}_x86_64.tar.gz"        "/tmp/assets/Kova_Linux.tar.gz"
-          cp "/tmp/assets/Kova_${VERSION}_amd64.AppImage"       "/tmp/assets/Kova_Linux.AppImage"
+          # One source of truth (stable alias -> version-named original). cp,
+          # upload, and the attest subject-path below all read this map, so a new
+          # alias can't ship unattested.
+          declare -A ALIAS=(
+            [Kova_macOS.dmg]="Kova_${VERSION}_universal.dmg"
+            [Kova_Windows.msi]="Kova_${VERSION}_x64_en-US.msi"
+            [Kova_Windows_setup.exe]="Kova_${VERSION}_x64-setup.exe"
+            [Kova_Linux.deb]="Kova_${VERSION}_amd64.deb"
+            [Kova_Linux.rpm]="Kova-${VERSION}-1.x86_64.rpm"
+            [Kova_Linux.tar.gz]="Kova_${VERSION}_x86_64.tar.gz"
+            [Kova_Linux.AppImage]="Kova_${VERSION}_amd64.AppImage"
+          )
+          PATHS=()
+          for a in "${!ALIAS[@]}"; do
+            cp "/tmp/assets/${ALIAS[$a]}" "/tmp/assets/$a"
+            PATHS+=("/tmp/assets/$a")
+          done
 
-          gh release upload "$TAG" -R KovaMD/Kova \
-            /tmp/assets/Kova_macOS.dmg \
-            /tmp/assets/Kova_Windows.msi \
-            /tmp/assets/Kova_Windows_setup.exe \
-            /tmp/assets/Kova_Linux.deb \
-            /tmp/assets/Kova_Linux.rpm \
-            /tmp/assets/Kova_Linux.tar.gz \
-            /tmp/assets/Kova_Linux.AppImage \
-            --clobber
+          gh release upload "$TAG" -R KovaMD/Kova "${PATHS[@]}" --clobber
+          { echo 'paths<<EOF'; printf '%s\n' "${PATHS[@]}"; echo 'EOF'; } >> "$GITHUB_OUTPUT"
 
-          # Remove .sig files — signatures are embedded in latest.json
+          # Remove .sig files — signatures are embedded in latest.json.
           gh release view "$TAG" -R KovaMD/Kova --json assets \
             --jq '.assets[] | select(.name | endswith(".sig")) | .name' \
-            | xargs -I{} gh release delete-asset "$TAG" {} -R KovaMD/Kova --yes
+            | xargs -r -I{} gh release delete-asset "$TAG" {} -R KovaMD/Kova --yes
+
+      # Cryptographic provenance tying each release binary to this commit + run.
+      # Users verify with: gh attestation verify <file> --repo KovaMD/Kova.
+      # !cancelled() so a flaky .sig cleanup above can't skip attestation.
+      - name: Attest build provenance for release binaries
+        if: ${{ !cancelled() }}
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: ${{ steps.aliases.outputs.paths }}

@@ -29,7 +29,7 @@ import { buildMacMenu } from './macMenu';
 import type { MacMenuHandlers } from './macMenu';
 import { loadKeybindings, matchShortcut, getCombo, formatCombo, isMac } from './engine/keybindings';
 import type { Keybindings } from './engine/keybindings';
-import { I18nProvider, useLocaleTranslator } from './i18n';
+import { I18nProvider, useLocaleTranslator, formatFallbackDate } from './i18n';
 
 import { parseDocument } from './engine/parser/markdownToSlides';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
@@ -144,6 +144,10 @@ export default function App() {
   const [keybindings, setKeybindings]     = useState<Keybindings>({ path: '', combos: {} });
   const [warnMessage, setWarnMessage]     = useState<string | null>(null);
   const warnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findMode, setFindMode] = useState<'text' | 'slide'>('text');
+  const [findQuery, setFindQuery] = useState('');
+  const findInputRef = useRef<HTMLInputElement>(null);
   const [showExternalChangeDialog, setShowExternalChangeDialog] = useState(false);
   const [pdfOptionsOpen, setPdfOptionsOpen] = useState(false);
   const [pdfPerPage, setPdfPerPage]         = useState(1);
@@ -479,7 +483,7 @@ export default function App() {
   // decks only ever get a title via a heading, never via frontmatter, and a
   // silently blank footer segment (issue #55) is worse than this guess.
   const docTitle = frontmatter.title ?? rawSlides.find((s) => !s.hidden && s.titleLevel === 1)?.title ?? '';
-  const docDate = (frontmatter.date as string | undefined) ?? new Date().toISOString().slice(0, 10);
+  const docDate = (frontmatter.date as string | undefined) ?? formatFallbackDate(settings.locale);
 
   const aspectRatio = useMemo(
     () => parseAspectRatio(frontmatter.aspect_ratio as string | undefined),
@@ -1207,7 +1211,7 @@ export default function App() {
   const handleExport = useCallback(async () => {
     if (visibleSlides.length === 0) return;
     try {
-      const { base64, warnings } = await exportToPptx(visibleSlides, frontmatter, activeTheme);
+      const { base64, warnings } = await exportToPptx(visibleSlides, frontmatter, activeTheme, settings.locale);
       const defaultPath = filePath
         ? filePath.replace(/\.(md|markdown)$/i, '.pptx')
         : 'presentation.pptx';
@@ -1575,6 +1579,27 @@ export default function App() {
     setCurrentSlideIndex(index);
     setTimeout(() => editorRef.current?.scrollToSlide(index), 50);
   }, []);
+
+  const openFindDialog = useCallback(() => {
+    setFindOpen(true);
+    setTimeout(() => findInputRef.current?.select(), 0);
+  }, []);
+
+  const runFind = useCallback((dir: 1 | -1 = 1) => {
+    if (findMode === 'slide') {
+      const trimmed = findQuery.trim();
+      if (!/^\d+$/.test(trimmed)) return;
+      const n = Number(trimmed);
+      if (!Number.isFinite(n) || n < 1 || n > slides.length) return;
+      const idx = n - 1;
+      setCurrentSlideIndex(idx);
+      setTimeout(() => editorRef.current?.scrollToSlide(idx), 50);
+      setFindOpen(false);
+      editorRef.current?.focus();
+      return;
+    }
+    editorRef.current?.findNext(findQuery, dir);
+  }, [findMode, findQuery, slides.length]);
 
   const handleSettingsChange = useCallback((s: AppSettings) => {
     setSettings(s);
@@ -1955,6 +1980,10 @@ export default function App() {
               <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setEditMenuOpen(false); editorRef.current?.selectAll(); }}>
                 {t('app.menuSelectAll')} <span>{formatCombo('ctrl+a')}</span>
               </button>
+              <div className="btn-group-menu-separator" />
+              <button className="btn-group-menu-item btn-group-menu-item--shortcut" onClick={() => { setEditMenuOpen(false); openFindDialog(); }}>
+                {t('editor.findDialogTitle')} <span>{formatCombo('ctrl+f')}</span>
+              </button>
             </div>
           )}
         </div>}
@@ -2096,6 +2125,7 @@ export default function App() {
               onCursorSlide={setCurrentSlideIndex}
               onWarn={handleWarn}
               onSaveAs={handleSaveAs}
+              onRequestFind={openFindDialog}
               focusMode={focusMode}
               filePath={filePath}
               uiTheme={resolvedUiTheme}
@@ -2140,6 +2170,125 @@ export default function App() {
         onVersionClick={availableUpdate ? () => { setShowSettings(true); setSettingsScrollToUpdates(true); } : undefined}
         locale={settings.locale}
       />
+
+      {findOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 10000 }}
+          onMouseDown={(e) => { e.preventDefault(); setFindOpen(false); editorRef.current?.focus(); }}
+        >
+          <div
+            role="dialog"
+            aria-label={t('editor.findDialogTitle')}
+            onMouseDown={(e) => e.stopPropagation()}
+            tabIndex={-1}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setFindOpen(false);
+                editorRef.current?.focus();
+              }
+            }}
+            style={{
+              position: 'fixed',
+              left: '50%',
+              top: 18,
+              transform: 'translateX(-50%)',
+              width: 420,
+              maxWidth: 'calc(100vw - 32px)',
+              padding: 10,
+              borderRadius: 10,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-alt)',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.55)',
+              color: 'var(--text-primary)',
+              fontSize: 13,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ fontWeight: 600 }}>{t('editor.findDialogTitle')}</div>
+              <button
+                className="btn"
+                onClick={() => { setFindOpen(false); editorRef.current?.focus(); }}
+                aria-label={t('common.close')}
+              >{t('common.close')}</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="find-mode"
+                  checked={findMode === 'text'}
+                  onChange={() => setFindMode('text')}
+                />
+                {t('editor.findModeText')}
+              </label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="find-mode"
+                  checked={findMode === 'slide'}
+                  onChange={() => {
+                    setFindMode('slide');
+                    setFindQuery((q) => q.replace(/\D+/g, ''));
+                  }}
+                />
+                {t('editor.findModeSlide')}
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                ref={findInputRef}
+                value={findQuery}
+                placeholder={findMode === 'slide'
+                  ? t('editor.findPlaceholderSlide', { total: slides.length })
+                  : t('editor.findPlaceholderText')}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setFindQuery(findMode === 'slide' ? next.replace(/\D+/g, '') : next);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') { e.preventDefault(); setFindOpen(false); editorRef.current?.focus(); }
+                  if (e.key === 'Enter') { e.preventDefault(); runFind(e.shiftKey ? -1 : 1); }
+                }}
+                style={{
+                  flex: 1,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-panel)',
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                }}
+              />
+              {findMode === 'text' ? (
+                <>
+                  <button
+                    className="btn"
+                    onClick={() => runFind(-1)}
+                  >
+                    {t('editor.findPrevious')}
+                  </button>
+                  <button
+                    className="btn btn--primary"
+                    onClick={() => runFind(1)}
+                  >
+                    {t('editor.findNext')}
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="btn btn--primary"
+                  onClick={() => runFind(1)}
+                >
+                  {t('common.ok')}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showSettings && (
         <SettingsModal

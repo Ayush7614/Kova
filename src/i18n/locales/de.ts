@@ -291,7 +291,7 @@ const de: DeepPartial<Messages> = {
     menuSelectAll: 'Alles auswählen', // Select All
     untitledFilename: 'unbenannt.md', // Untitled.md
     presentButton: '▶ Präsentieren', // ▶ Present
-    presentButtonTitle: 'Ab Folie 1 präsentieren (Alt+Klick, um ab der aktuellen Folie zu starten)', // Present from slide 1 (Alt+click to start from current slide)
+    presentButtonTitle: 'Ab Folie 1 präsentieren (F5) – Umschalt+F5 oder Alt+Klick, um ab der aktuellen Folie zu starten', // Present from slide 1 (F5) — Shift-F5 or Alt+click to start from current slide
     enterFocusMode: 'Fokusmodus aktivieren ({{combo}})', // Enter focus mode ({{combo}})
     exitFocusMode: 'Fokusmodus verlassen ({{combo}})', // Exit focus mode ({{combo}})
     toggleInspector: 'Inspektor ein-/asblenden', // Toggle inspector
@@ -383,6 +383,7 @@ const de: DeepPartial<Messages> = {
     pdfPageSizeDescription: 'Papierformat für den PDF-Export. Seiten werden im Querformat angeordnet.', // Paper size for PDF export. Pages are laid out landscape.
     pageSizeA4: 'A4', // A4
     pageSizeLetter: 'Letter', // Letter
+    pageSizeSlide: 'Foliengröße', // Match slide size
     sectionPresentation: 'Präsentation', // Presentation
     displayMode: 'Anzeigemodus', // Display mode
     displayModeDescription: 'Erkennt zum Präsentationszeitpunkt automatisch angeschlossene Bildschirme — Referentenansicht mit zwei Bildschirmen, falls ein zweiter Bildschirm gefunden wird, sonst Einzelbildschirm. Spiegeln zeigt dieselbe Folie auf beiden Bildschirmen.', // Auto detects connected displays at presentation time — dual presenter view if a second screen is found, single screen otherwise. Mirror shows the same slide on both displays.

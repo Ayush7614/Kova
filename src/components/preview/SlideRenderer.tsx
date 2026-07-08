@@ -4,7 +4,7 @@ import 'highlight.js/styles/github-dark.css';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import mermaid from 'mermaid';
-import QRCode from 'react-qr-code';
+import { QRCode } from 'react-qr-code';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Slide, SlideElement, ListItem } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
@@ -13,6 +13,7 @@ import './SlideRenderer.css';
 import { mermaidSvgCache } from '../../engine/export/mermaidSvgCache';
 import { queuedMermaidRender } from '../../engine/export/mermaidRenderQueue';
 import { useT } from '../../i18n';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'strict' });
 
@@ -913,6 +914,7 @@ function VideoEmbed({ embed }: { embed: Extract<SlideElement, { type: 'video' }>
 
 function PollEmbed({ embed }: { embed: Extract<SlideElement, { type: 'poll' }> }) {
   const { isThumbnail, textColor } = useContext(SlideCtx);
+  const t = useT();
 
   if (isThumbnail) {
     return (
@@ -926,7 +928,12 @@ function PollEmbed({ embed }: { embed: Extract<SlideElement, { type: 'poll' }> }
   return (
     <div className="sl-poll">
       <div className="sl-poll__qr">
-        <QRCode value={embed.url} size={160} bgColor="transparent" fgColor={textColor} />
+        <ErrorBoundary
+          fallback={<div className="sl-poll__qr-error">{t('preview.pollQrUnavailable')}</div>}
+          onError={(error) => console.error('Poll QR code failed to render:', error)}
+        >
+          <QRCode value={embed.url} size={160} bgColor="transparent" fgColor={textColor} />
+        </ErrorBoundary>
       </div>
       <div className="sl-poll__label">{embed.label}</div>
       <div className="sl-poll__url">{embed.url}</div>
