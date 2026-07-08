@@ -1490,7 +1490,9 @@ export default function App() {
 
   const runFind = useCallback((dir: 1 | -1 = 1) => {
     if (findMode === 'slide') {
-      const n = parseInt(findQuery.trim(), 10);
+      const trimmed = findQuery.trim();
+      if (!/^\d+$/.test(trimmed)) return;
+      const n = Number(trimmed);
       if (!Number.isFinite(n) || n < 1 || n > slides.length) return;
       const idx = n - 1;
       setCurrentSlideIndex(idx);
@@ -2127,7 +2129,10 @@ export default function App() {
                   type="radio"
                   name="find-mode"
                   checked={findMode === 'slide'}
-                  onChange={() => setFindMode('slide')}
+                  onChange={() => {
+                    setFindMode('slide');
+                    setFindQuery((q) => q.replace(/\D+/g, ''));
+                  }}
                 />
                 {t('editor.findModeSlide')}
               </label>
@@ -2140,7 +2145,10 @@ export default function App() {
                 placeholder={findMode === 'slide'
                   ? t('editor.findPlaceholderSlide', { total: slides.length })
                   : t('editor.findPlaceholderText')}
-                onChange={(e) => setFindQuery(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setFindQuery(findMode === 'slide' ? next.replace(/\D+/g, '') : next);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') { e.preventDefault(); setFindOpen(false); editorRef.current?.focus(); }
                   if (e.key === 'Enter') { e.preventDefault(); runFind(e.shiftKey ? -1 : 1); }
