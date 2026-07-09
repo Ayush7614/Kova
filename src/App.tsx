@@ -45,6 +45,7 @@ import type { Slide, Frontmatter, ListItem } from './engine/types';
 import { parseAspectRatio } from './engine/types';
 import { detectLayout } from './engine/layout/autoLayout';
 import { imageMime } from './engine/export/imageMime';
+import { videoMime } from './engine/export/videoMime';
 import type { Theme } from './engine/theme';
 
 import './styles/global.css';
@@ -60,12 +61,15 @@ function decodePathComponent(src: string): string {
 }
 
 
+const MEDIA_EXT_RE = /\.(avif|bmp|gif|ico|jpe?g|png|svg|tiff?|webp|mp4|webm|ogv|mov|m4v|mkv)(?:[?#].*)?$/i;
+const VIDEO_EXT_RE = /\.(mp4|webm|ogv|mov|m4v|mkv)(?:[?#].*)?$/i;
+
 // Returns the resolved absolute local path for a src that points to a local
-// image file, or null if the src is a web URL, data URL, or non-image.
-function localPathFromImageSrc(src: string, docDir: string): string | null {
+// image or video file, or null if the src is a web URL, data URL, or unsupported type.
+function localPathFromMediaSrc(src: string, docDir: string): string | null {
   if (/^(https?|data|asset|tauri):\/\//i.test(src)) return null;
   const p = decodePathComponent(src);
-  if (!/\.(avif|bmp|gif|ico|jpe?g|png|svg|tiff?|webp)(?:[?#].*)?$/i.test(p)) return null;
+  if (!MEDIA_EXT_RE.test(p)) return null;
   if (p.startsWith('/') || /^[A-Za-z]:[/\\]/.test(p)) return p.replace(/[?#].*$/, '');
   if (!docDir) return null;
   return normalizePath(docDir, p).replace(/[?#].*$/, '');
@@ -74,7 +78,7 @@ function localPathFromImageSrc(src: string, docDir: string): string | null {
 // localImageUrls maps absolute local paths → data: URLs loaded via read_file_b64.
 // Falls back to convertFileSrc (asset://) while the async load is in flight.
 function resolveImageSrc(src: string, docDir: string, localImageUrls: Map<string, string>): string {
-  const localPath = localPathFromImageSrc(src, docDir);
+  const localPath = localPathFromMediaSrc(src, docDir);
   if (localPath) return localImageUrls.get(localPath) ?? convertFileSrc(localPath.replace(/\\/g, '/'));
   if (/^(https?|data|asset|tauri):\/\//i.test(src)) return src;
   const p = decodePathComponent(src);
@@ -339,9 +343,9 @@ export default function App() {
     return lastSlash >= 0 ? filePath!.substring(0, lastSlash) : importDir;
   }, [filePath, importDir]);
 
-  // Load all local images as base64 data URLs via IPC. convertFileSrc / the
+  // Load all local images/videos as base64 data URLs via IPC. convertFileSrc / the
   // asset:// protocol is unreliable on Windows/WebView2, so we bypass it
-  // entirely for local image files — the same approach already used for logos.
+  // entirely for local media files — the same approach already used for logos.
   const [localImageUrls, setLocalImageUrls] = useState<Map<string, string>>(() => new Map());
 
   useEffect(() => {
@@ -349,7 +353,7 @@ export default function App() {
 
     function collectHtml(html: string) {
       for (const match of html.matchAll(/src="([^"]*)"/g)) {
-        const p = localPathFromImageSrc(match[1], docDir);
+        const p = localPathFromMediaSrc(match[1], docDir);
         if (p) paths.add(p);
       }
     }
@@ -359,8 +363,8 @@ export default function App() {
     }
     for (const slide of rawSlides) {
       for (const el of slide.elements) {
-        if (el.type === 'image') {
-          const p = localPathFromImageSrc(el.src, docDir);
+        if (el.type === 'image' || el.type === 'video') {
+          const p = localPathFromMediaSrc(el.src, docDir);
           if (p) paths.add(p);
         } else if (el.type === 'paragraph') {
           collectHtml(el.html);
@@ -376,7 +380,8 @@ export default function App() {
     Promise.all(Array.from(paths).map(async (path) => {
       try {
         const b64 = await invoke<string>('read_file_b64', { path });
-        return [path, `data:${imageMime(path)};base64,${b64}`] as [string, string];
+        const mime = VIDEO_EXT_RE.test(path) ? videoMime(path) : imageMime(path);
+        return [path, `data:${mime};base64,${b64}`] as [string, string];
       } catch (e) { console.error('[Kova] read_file_b64 failed for', path, e); return null; }
     })).then((entries) => {
       if (!cancelled) setLocalImageUrls(new Map(entries.filter((e): e is [string, string] => e !== null)));
