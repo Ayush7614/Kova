@@ -364,7 +364,7 @@ export default function App() {
     }
     for (const slide of rawSlides) {
       if (slide.backgroundImage) {
-        const p = localPathFromImageSrc(slide.backgroundImage.src, docDir);
+        const p = localPathFromMediaSrc(slide.backgroundImage.src, docDir);
         if (p) paths.add(p);
       }
       for (const el of slide.elements) {
