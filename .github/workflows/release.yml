@@ -38,6 +38,9 @@ jobs:
           - **Fixed right-click context submenus opening in the wrong place** when the interface scale (Settings → Appearance) wasn't 100%, most visible on Linux/WebKitGTK (reported by @florian-krieger, #139).
           - **Added F5 / Shift-F5 to the Present button's tooltip** so the existing keyboard shortcuts (start from the first slide / start from the current slide) are actually discoverable (reported by @a1880, #138).
 
+          ### Security
+          - Bumped `js-yaml` (used to parse theme files, markdown frontmatter, and `keybindings.yaml`) to 4.3.0, backporting an upstream fix that caps the number of keys processed via YAML merge (`<<`) to prevent a denial-of-service from a crafted YAML document.
+
           ---
 
           ## Installation
