@@ -26,7 +26,7 @@ static WIN_WAKE_TX: Mutex<Option<std::sync::mpsc::SyncSender<()>>> = Mutex::new(
 pub fn set_wake_lock(active: bool) {
     #[cfg(target_os = "macos")]
     {
-        let mut guard = CAFFEINATE.lock().unwrap();
+        let mut guard = CAFFEINATE.lock().unwrap_or_else(|e| e.into_inner());
         if active {
             if guard.is_none() {
                 // -d: prevent display sleep; -i: prevent idle sleep (also suppresses App Nap,
@@ -44,7 +44,7 @@ pub fn set_wake_lock(active: bool) {
     #[cfg(target_os = "linux")]
     {
         use gio::prelude::*;
-        let mut cookie_guard = SCREENSAVER_COOKIE.lock().unwrap();
+        let mut cookie_guard = SCREENSAVER_COOKIE.lock().unwrap_or_else(|e| e.into_inner());
         if active && cookie_guard.is_none() {
             if let Ok(conn) = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) {
                 let args = ("Kova", "Presentation mode").to_variant();
@@ -91,7 +91,7 @@ pub fn set_wake_lock(active: bool) {
     // recommended by the Windows docs.
     #[cfg(target_os = "windows")]
     {
-        let mut guard = WIN_WAKE_TX.lock().unwrap();
+        let mut guard = WIN_WAKE_TX.lock().unwrap_or_else(|e| e.into_inner());
         if active {
             if guard.is_none() {
                 let (tx, rx) = std::sync::mpsc::sync_channel::<()>(0);
@@ -441,7 +441,7 @@ pub struct AppState {
 /// Drain file paths that macOS delivered before the webview was ready to listen.
 #[tauri::command]
 pub fn take_pending_open(state: State<'_, AppState>) -> Vec<String> {
-    std::mem::take(&mut *state.pending_open.lock().unwrap())
+    std::mem::take(&mut *state.pending_open.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
 #[tauri::command]
@@ -687,24 +687,7 @@ pub fn write_asset_bytes(data: String, filename: String, dest_dir: String) -> Re
     write_bytes_to_assets(&bytes, &stem, ext, &assets_dir)
 }
 
-const DEFAULT_KEYBINDINGS: &str = "\
-# Kova — Keyboard Shortcuts
-# ─────────────────────────────────────────────────────────────────────────────
-# Edit this file to customise keyboard shortcuts, then restart Kova.
-#
-# Format:   action: modifier+key
-# Modifiers (combine with +):  ctrl  shift  alt
-#
-# Available actions:
-#   new_file    open_file    save    save_as    focus_mode    hide_slide
-
-new_file:   ctrl+n
-open_file:  ctrl+o
-save:       ctrl+s
-save_as:    ctrl+shift+s
-focus_mode: ctrl+shift+f
-hide_slide: ctrl+shift+h
-";
+const DEFAULT_KEYBINDINGS: &str = include_str!("../resources/default_keybindings.yaml");
 
 /// Reads keybindings.yaml from the platform config dir, creating it from defaults if absent.
 /// Returns (absolute_path, yaml_content).
@@ -725,46 +708,7 @@ pub fn load_keybindings(app: AppHandle) -> Result<(String, String), String> {
     Ok((path.to_string_lossy().into_owned(), content))
 }
 
-const EXAMPLE_THEME: &str = "\
-# Kova Theme — Example
-# ─────────────────────────────────────────────────────────────────────────────
-# Copy this file, rename it, and edit the values to create a custom theme.
-# Place .yaml files in this folder and restart Kova to load them.
-# Only include the properties you want to override — everything else inherits
-# from the built-in defaults.
-#
-# Colour values accept any valid CSS colour: #rrggbb, rgb(), hsl(), etc.
-
-name: My Custom Theme
-
-colors:
-  primary:    \"#1B3A5C\"   # title/section slide background, strong accents
-  accent:     \"#2563EB\"   # links, highlights, progress bars
-  background: \"#ffffff\"   # default slide background
-  text:       \"#1a1a1a\"   # body text
-  title_text: \"#ffffff\"   # text on title and section slides
-  section_bg: \"#E8F0FE\"   # section divider background
-  code_bg:    \"#F5F7FA\"   # code block background
-
-fonts:
-  title: \"Inter, 'Helvetica Neue', Arial, sans-serif\"
-  body:  \"Inter, 'Helvetica Neue', Arial, sans-serif\"
-  code:  \"'JetBrains Mono', 'Fira Code', monospace\"
-
-layout:
-  title_align:   center      # center | left | bottom-left
-  heading_align: left        # left | center
-  decoration:    none        # none | dots | grid | diagonal | bar-left
-
-footer:
-  show:              false
-  text:              \"{title} — {slide_number} / {total}\"
-  show_slide_number: true
-
-header:
-  show: false
-  text: \"\"
-";
+const EXAMPLE_THEME: &str = include_str!("../resources/example_theme.yaml");
 
 /// Returns (themes_dir_path, entries) where each entry is
 /// (filename_without_extension, yaml_content).
@@ -867,11 +811,20 @@ pub async fn download_and_cache_font(
         .join("themes")
         .join("fonts");
 
-    std::fs::create_dir_all(&fonts_dir).map_err(|e| e.to_string())?;
+    let (dest, already_cached) = {
+        let fonts_dir = fonts_dir.clone();
+        let sha256 = sha256.clone();
+        tauri::async_runtime::spawn_blocking(move || -> Result<(PathBuf, bool), String> {
+            std::fs::create_dir_all(&fonts_dir).map_err(|e| e.to_string())?;
+            let dest = fonts_dir.join(format!("{sha256}.woff2"));
+            let exists = dest.exists();
+            Ok((dest, exists))
+        })
+        .await
+        .map_err(|e| e.to_string())??
+    };
 
-    let dest = fonts_dir.join(format!("{sha256}.woff2"));
-
-    if dest.exists() {
+    if already_cached {
         return Ok(dest.to_string_lossy().into_owned());
     }
 
@@ -906,7 +859,13 @@ pub async fn download_and_cache_font(
         ));
     }
 
-    std::fs::write(&dest, &bytes).map_err(|e| e.to_string())?;
+    {
+        let dest = dest.clone();
+        tauri::async_runtime::spawn_blocking(move || std::fs::write(&dest, &bytes))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+    }
 
     Ok(dest.to_string_lossy().into_owned())
 }
@@ -1218,15 +1177,22 @@ pub async fn export_pdf_native(
         .path()
         .app_cache_dir()
         .map_err(|e| format!("app cache dir: {e}"))?;
-    std::fs::create_dir_all(&cache_dir).ok();
-
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
     let html_path = cache_dir.join(format!("kova-print-{ts}.html"));
-    std::fs::write(&html_path, html_content.as_bytes())
-        .map_err(|e| format!("write temp html: {e}"))?;
+
+    {
+        let html_path = html_path.clone();
+        tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+            std::fs::create_dir_all(&cache_dir).ok();
+            std::fs::write(&html_path, html_content.as_bytes())
+                .map_err(|e| format!("write temp html: {e}"))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+    }
 
     let html_path_str = html_path.to_str().ok_or("html_path is non-UTF-8")?.to_string();
 
@@ -1306,7 +1272,7 @@ pub async fn export_pdf_native(
             platform_linux::generate_pdf(&window, &output_path, width_mm, height_mm).await;
 
         let _ = window.destroy();
-        let _ = std::fs::remove_file(&html_path);
+        let _ = tauri::async_runtime::spawn_blocking(move || std::fs::remove_file(&html_path)).await;
 
         result
     }

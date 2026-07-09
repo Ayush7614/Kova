@@ -65,7 +65,7 @@ pub fn run() {
                 .collect();
             if !paths.is_empty() {
                 let state = app.state::<AppState>();
-                state.pending_open.lock().unwrap().extend(paths);
+                state.pending_open.lock().unwrap_or_else(|e| e.into_inner()).extend(paths);
             }
         }
             Ok(())
@@ -124,7 +124,7 @@ pub fn run() {
                 .collect();
             if !paths.is_empty() {
                 let state = app_handle.state::<AppState>();
-                state.pending_open.lock().unwrap().extend(paths.iter().cloned());
+                state.pending_open.lock().unwrap_or_else(|e| e.into_inner()).extend(paths.iter().cloned());
                 let _ = app_handle.emit("open-file", paths);
             }
             return;
