@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { parsePptx } from '../engine/import/parsePptx';
 import { pptxToMarkdown } from '../engine/import/pptxToMarkdown';
 import { useT } from '../i18n';
+import { ModalShell } from './ModalShell';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -116,18 +117,13 @@ export function ImportPptxModal({ onImported, onClose }: ImportPptxModalProps) {
   // ── Shared overlay ────────────────────────────────────────────────────────────
 
   return (
-    <>
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }}
-      />
-      <div style={{
-        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-        background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
-        boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
-        width: 460, maxWidth: '94vw', maxHeight: '90vh',
-        display: 'flex', flexDirection: 'column',
-      }}>
+    <ModalShell
+      onClose={onClose}
+      width={460}
+      maxWidth="94vw"
+      ariaLabel={t('modals.importPptxTitle')}
+      cardStyle={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+    >
 
         {/* ── Select step ── */}
         {step === 'select' && (
@@ -300,13 +296,12 @@ export function ImportPptxModal({ onImported, onClose }: ImportPptxModalProps) {
             </div>
           </>
         )}
-      </div>
 
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
       `}</style>
-    </>
+    </ModalShell>
   );
 }

@@ -18,6 +18,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ThemeLibraryModal } from './components/inspector/ThemeLibraryModal';
 import { ImportPptxModal } from './components/ImportPptxModal';
 import { ImportUrlModal } from './components/ImportUrlModal';
+import { ModalShell } from './components/ModalShell';
 import { InfoBanner } from './components/InfoBanner';
 import { isMarp, importMarp } from './engine/import/marp';
 import { MissingThemeBanner } from './components/MissingThemeBanner';
@@ -2377,14 +2378,15 @@ export default function App() {
       )}
 
       {showExternalChangeDialog && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }} />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
-            padding: '24px 28px', width: 340, maxWidth: '90vw',
-          }}>
+        <ModalShell
+          onClose={() => setShowExternalChangeDialog(false)}
+          dismissOnBackdropClick={false}
+          dismissOnEscape={false}
+          width={340}
+          maxWidth="90vw"
+          ariaLabel={t('app.fileChangedExternally')}
+          cardStyle={{ padding: '24px 28px' }}
+        >
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
               {t('app.fileChangedExternally')}
             </div>
@@ -2428,19 +2430,17 @@ export default function App() {
                 </button>
               )}
             </div>
-          </div>
-        </>
+        </ModalShell>
       )}
 
       {pdfOptionsOpen && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }} onClick={() => setPdfOptionsOpen(false)} />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
-            padding: '24px 28px', width: 360, maxWidth: '90vw',
-          }}>
+        <ModalShell
+          onClose={() => setPdfOptionsOpen(false)}
+          width={360}
+          maxWidth="90vw"
+          ariaLabel={t('app.exportPdfTitle')}
+          cardStyle={{ padding: '24px 28px' }}
+        >
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
               {t('app.exportPdfTitle')}
             </div>
@@ -2481,22 +2481,17 @@ export default function App() {
                 }}
               >{t('app.exportAction')}</button>
             </div>
-          </div>
-        </>
+        </ModalShell>
       )}
 
       {confirmCloseAction && (
-        <>
-          <div
-            onClick={() => setConfirmCloseAction(null)}
-            style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }}
-          />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
-            padding: '24px 28px', width: 320, maxWidth: '90vw',
-          }}>
+        <ModalShell
+          onClose={() => setConfirmCloseAction(null)}
+          width={320}
+          maxWidth="90vw"
+          ariaLabel={t('app.unsavedChangesTitle')}
+          cardStyle={{ padding: '24px 28px' }}
+        >
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
               {t('app.unsavedChangesTitle')}
             </div>
@@ -2525,22 +2520,17 @@ export default function App() {
                 }}
               >{t('common.save')}</button>
             </div>
-          </div>
-        </>
+        </ModalShell>
       )}
 
       {dropConfirmPath && (
-        <>
-          <div
-            onClick={() => setDropConfirmPath(null)}
-            style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }}
-          />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
-            padding: '24px 28px', width: 340, maxWidth: '90vw',
-          }}>
+        <ModalShell
+          onClose={() => setDropConfirmPath(null)}
+          width={340}
+          maxWidth="90vw"
+          ariaLabel={t('app.openFileTitle')}
+          cardStyle={{ padding: '24px 28px' }}
+        >
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
               {t('app.openFileTitle')}
             </div>
@@ -2565,8 +2555,7 @@ export default function App() {
                 }}
               >{t('common.open')}</button>
             </div>
-          </div>
-        </>
+        </ModalShell>
       )}
 
       {/* Off-screen slide rendering for Print */}
