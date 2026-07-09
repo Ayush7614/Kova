@@ -7,8 +7,9 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, usePanelRef, useDefaultLayout } from 'react-resizable-panels';
 
 import { ThumbnailPanel } from './components/layout/ThumbnailPanel';
-import { EditorPanel, resolveImagePathForMarkdown } from './components/layout/EditorPanel';
+import { EditorPanel } from './components/layout/EditorPanel';
 import type { EditorHandle, FormatCmd } from './components/layout/EditorPanel';
+import { resolveImagePathForMarkdown } from './components/editor/mediaSnippet';
 import { InspectorPanel } from './components/layout/InspectorPanel';
 import { StatusBar } from './components/layout/StatusBar';
 import { PresentationOverlay } from './components/presentation/PresentationOverlay';

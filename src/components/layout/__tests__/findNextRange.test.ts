@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { findNextRange } from '../EditorPanel';
+import { findNextRange } from '../../editor/formatCommands';
 
 describe('findNextRange', () => {
   it('wraps around when searching forward past the last match', () => {
