@@ -131,7 +131,7 @@ export default function App() {
   const t = useLocaleTranslator(settings.locale);
   const [showSettings, setShowSettings]   = useState(false);
   const [settingsScrollToUpdates, setSettingsScrollToUpdates] = useState(false);
-  const [showThemeLibrary, setShowThemeMarketplace] = useState(false);
+  const [showThemeLibrary, setShowThemeLibrary] = useState(false);
   const [showImport, setShowImport]       = useState(false);
   const [showImportUrl, setShowImportUrl] = useState(false);
   const [marpPrompt, setMarpPrompt] = useState<{ text: string; dir: string } | null>(null);
@@ -495,7 +495,7 @@ export default function App() {
     [frontmatter.aspect_ratio],
   );
 
-  const wordCount = countWords(editorBody);
+  const wordCount = useMemo(() => countWords(editorBody), [editorBody]);
 
   // Count image references that live outside the document's own folder.
   // These display fine locally but break if the .md file is moved without its images.
@@ -2155,7 +2155,7 @@ export default function App() {
                 onThemeChange={handleThemeChange}
                 onMetaChange={handleMetaChange}
                 onFormat={handleFormat}
-                onOpenLibrary={() => setShowThemeMarketplace(true)}
+                onOpenLibrary={() => setShowThemeLibrary(true)}
               />
             </Panel>
           )}
@@ -2312,7 +2312,7 @@ export default function App() {
         <ThemeLibraryModal
           installedIds={installedRemoteIds}
           onThemesChanged={reloadCustomThemes}
-          onClose={() => setShowThemeMarketplace(false)}
+          onClose={() => setShowThemeLibrary(false)}
         />
       )}
 
