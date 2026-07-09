@@ -43,9 +43,10 @@ export async function svgToPngDataUrl(
       // Read the *actual* computed font rather than guessing — the container is
       // already attached to document.body at this point, so Mermaid's own
       // embedded <style> block (populated from the theme's fontFamily via
-      // buildMermaidInit/buildExportMermaidInit) is already cascading onto this
-      // element. Falls back to the previous hardcoded values only if there's no
-      // child element to measure (foreignObject with a bare text node, etc.).
+      // buildExportMermaidInit, shared by the live preview and export) is
+      // already cascading onto this element. Falls back to the previous
+      // hardcoded values only if there's no child element to measure
+      // (foreignObject with a bare text node, etc.).
       const refEl   = fo.querySelector('*');
       const computed = refEl ? window.getComputedStyle(refEl) : null;
       const fontSize   = (computed && parseFloat(computed.fontSize)) || 14;

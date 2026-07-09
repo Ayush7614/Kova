@@ -8,10 +8,11 @@ import { QRCode } from 'react-qr-code';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Slide, SlideElement, ListItem } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
-import { themeToVars, resolveTemplate, DEFAULT_THEME, hexToHsl, hslToHex, defaultChartPalette, isLightHex, buildCScalePalette, piePaletteFromAccent } from '../../engine/theme';
+import { themeToVars, resolveTemplate, DEFAULT_THEME, isLightHex } from '../../engine/theme';
 import './SlideRenderer.css';
 import { mermaidSvgCache } from '../../engine/export/mermaidSvgCache';
 import { queuedMermaidRender } from '../../engine/export/mermaidRenderQueue';
+import { buildExportMermaidInit } from '../../engine/export/mermaidExportTheme';
 import { autoSplitElements, groupProgressRuns } from '../../engine/layout/elementGrouping';
 import { useT } from '../../i18n';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -126,33 +127,6 @@ function sanitizeMermaidSource(source: string): string {
   );
 }
 
-// ── Diagram colour palette builders ──────────────────────────────────────────
-
-function paletteToMermaidVars(colors: string[]): { pie: Record<string, string>; cScale: Record<string, string>; xy: string } {
-  const pie: Record<string, string> = {};
-  const cScale: Record<string, string> = {};
-  for (let i = 0; i < 12; i++) {
-    pie[`pie${i + 1}`]  = colors[i % colors.length];
-    cScale[`cScale${i}`] = colors[i % colors.length];
-  }
-  return { pie, cScale, xy: colors.join(',') };
-}
-
-/** Returns white or black depending on which has higher contrast against `hex`. */
-function contrastText(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return lum > 0.35 ? '#111111' : '#FFFFFF';
-}
-
-/** A muted secondary suitable for diagram notes/fills — primary shifted 20% toward mid-grey. */
-function mutedSecondary(primaryHex: string): string {
-  const [h, s, l] = hexToHsl(primaryHex);
-  return hslToHex(h, Math.min(s, 0.35), l < 0.5 ? Math.min(l + 0.20, 0.45) : Math.max(l - 0.20, 0.55));
-}
-
 // Header/footer text. A `|` in the *theme template* splits it into left | center | right
 // parts (issue #30). Segments are pre-split from the template before variable resolution
 // so a doc title containing `|` (e.g. "Costs | Benefits") is never treated as a separator.
@@ -167,62 +141,6 @@ function BarText({ segments, className }: { segments: string[]; className: strin
       <span>{right}</span>
     </span>
   );
-}
-
-function buildMermaidInit(theme: Theme): string {
-  const c = theme.colors;
-  const firstFont = (stack: string) => stack.split(',')[0].trim().replace(/['"]/g, '');
-
-  const customPalette = c.chart_colors && c.chart_colors.length > 0 ? c.chart_colors : null;
-  const { pie, cScale, xy } = customPalette
-    ? paletteToMermaidVars(customPalette)
-    : { pie: piePaletteFromAccent(c.accent), cScale: buildCScalePalette(c.accent), xy: defaultChartPalette(c.accent).join(',') };
-
-  const secondary = mutedSecondary(c.primary);
-  const tertiaryBg = c.code_bg;
-  const fontFamily = firstFont(theme.fonts.body);
-  const vars = {
-    fontFamily,
-    primaryColor:          c.primary,
-    primaryTextColor:      contrastText(c.primary),
-    primaryBorderColor:    c.primary,
-    lineColor:             c.accent,
-    secondaryColor:        secondary,
-    secondaryTextColor:    contrastText(secondary),
-    tertiaryColor:         tertiaryBg,
-    tertiaryTextColor:     contrastText(tertiaryBg),
-    background:            c.background,
-    mainBkg:               c.primary,
-    nodeBorder:            c.primary,
-    clusterBkg:            tertiaryBg,
-    titleColor:            c.text,
-    edgeLabelBackground:   c.background,
-    labelTextColor:        c.text,
-    signalColor:           c.text,
-    signalTextColor:       c.text,
-    ...cScale,
-    ...pie,
-    pieTitleTextColor:     c.text,
-    pieSectionTextColor:   c.title_text,
-    pieLegendTextColor:    c.text,
-    pieStrokeColor:        c.background,
-    pieStrokeWidth:        '2px',
-    pieOpacity:            '0.9',
-    xyChart: {
-      plotColorPalette:  xy,
-      titleColor:        c.text,
-      dataLabelColor:    c.text,
-      xAxisTitleColor:   c.text,
-      xAxisLabelColor:   c.text,
-      xAxisTickColor:    c.text,
-      xAxisLineColor:    c.text,
-      yAxisTitleColor:   c.text,
-      yAxisLabelColor:   c.text,
-      yAxisTickColor:    c.text,
-      yAxisLineColor:    c.text,
-    },
-  };
-  return `%%{init: ${JSON.stringify({ theme: 'base', fontFamily, themeVariables: vars })}}%%\n`;
 }
 
 interface Props {
@@ -270,7 +188,7 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
   const showFloatingLogo = theme.logo && !logoInHeader && !logoInFooter;
 
   const ctxValue = useMemo<SlideCtxValue>(
-    () => ({ isThumbnail: isThumbnailProp ?? scale !== 1, hideOverflowBadge, textColor: theme.colors.text, mermaidInit: buildMermaidInit(theme), onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined, onNavigateTo }),
+    () => ({ isThumbnail: isThumbnailProp ?? scale !== 1, hideOverflowBadge, textColor: theme.colors.text, mermaidInit: buildExportMermaidInit(theme), onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined, onNavigateTo }),
     [isThumbnailProp, scale, hideOverflowBadge, theme, onAllDiagramsReady, onDiagramReady, onNavigateTo],
   );
 
