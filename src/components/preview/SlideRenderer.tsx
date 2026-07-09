@@ -12,6 +12,7 @@ import { themeToVars, resolveTemplate, DEFAULT_THEME, hexToHsl, hslToHex, defaul
 import './SlideRenderer.css';
 import { mermaidSvgCache } from '../../engine/export/mermaidSvgCache';
 import { queuedMermaidRender } from '../../engine/export/mermaidRenderQueue';
+import { autoSplitElements, groupProgressRuns } from '../../engine/layout/elementGrouping';
 import { useT } from '../../i18n';
 import { ErrorBoundary } from '../ErrorBoundary';
 
@@ -480,44 +481,6 @@ function QuoteLayout({ slide }: { slide: Slide }) {
   );
 }
 
-function autoSplitElements(elements: SlideElement[]): [SlideElement[], SlideElement[]] {
-  // Single list: split by cumulative text length for visual balance
-  if (elements.length === 1 && elements[0].type === 'list') {
-    const list = elements[0];
-    const items = list.items;
-    const totalLen = items.reduce((n, it) => n + it.text.length, 0);
-    let cumLen = 0;
-    let mid = Math.ceil(items.length / 2); // fallback for empty/equal items
-    for (let i = 0; i < items.length; i++) {
-      cumLen += items[i].text.length;
-      if (cumLen >= totalLen / 2) { mid = i + 1; break; }
-    }
-    return [
-      [{ ...list, items: items.slice(0, mid) }],
-      [{ ...list, items: items.slice(mid) }],
-    ];
-  }
-  // Single toc: split entries by cumulative title length for visual balance
-  if (elements.length === 1 && elements[0].type === 'toc') {
-    const toc = elements[0];
-    const entries = toc.entries;
-    const totalLen = entries.reduce((n, en) => n + en.title.length, 0);
-    let cumLen = 0;
-    let mid = Math.ceil(entries.length / 2); // fallback for empty/equal entries
-    for (let i = 0; i < entries.length; i++) {
-      cumLen += entries[i].title.length;
-      if (cumLen >= totalLen / 2) { mid = i + 1; break; }
-    }
-    return [
-      [{ ...toc, entries: entries.slice(0, mid) }],
-      [{ ...toc, entries: entries.slice(mid), numberStart: mid }],
-    ];
-  }
-  // Multiple elements: split at midpoint
-  const mid = Math.ceil(elements.length / 2);
-  return [elements.slice(0, mid), elements.slice(mid)];
-}
-
 function TwoColumnLayout({ slide }: { slide: Slide }) {
   const breakIdx = slide.elements.findIndex((e) => e.type === 'column-break');
 
@@ -667,25 +630,6 @@ function MathLayout({ slide }: { slide: Slide }) {
 
 function BlankLayout() {
   return <div className="sl-blank" />;
-}
-
-// ── Progress grouping helper ──────────────────────────────────────────────────
-
-/**
- * Collapses consecutive `progress` elements into sub-arrays so that bsp/grid
- * renderers can place them all in a single pane/cell.
- */
-function groupProgressRuns(elements: SlideElement[]): SlideElement[][] {
-  const groups: SlideElement[][] = [];
-  for (const el of elements) {
-    const last = groups[groups.length - 1];
-    if (el.type === 'progress' && last && last[0]?.type === 'progress') {
-      last.push(el);
-    } else {
-      groups.push([el]);
-    }
-  }
-  return groups;
 }
 
 // ── Element renderer ──────────────────────────────────────────────────────────

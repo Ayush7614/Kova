@@ -5,6 +5,7 @@ import { svgToPngDataUrl } from './svgToPng';
 import { queuedMermaidRender } from './mermaidRenderQueue';
 import { imageMime } from './imageMime';
 import { buildExportMermaidInit, parseChannels } from './mermaidExportTheme';
+import { autoSplitElements, groupProgressRuns } from '../layout/elementGrouping';
 import mermaid from 'mermaid';
 import hljs from 'highlight.js';
 import type { Slide, SlideElement, Frontmatter } from '../types';
@@ -769,51 +770,6 @@ function addLogo(
   try {
     s.addImage({ data: logoDataUrl, x: lx, y: ly, w: LOGO_W, h: LOGO_H, transparency });
   } catch { /* ignore */ }
-}
-
-// ── Layout helpers (mirror SlideRenderer.tsx) ─────────────────────────────────
-
-function groupProgressRuns(elements: SlideElement[]): SlideElement[][] {
-  const groups: SlideElement[][] = [];
-  for (const el of elements) {
-    const last = groups[groups.length - 1];
-    if (el.type === 'progress' && last && last[0]?.type === 'progress') {
-      last.push(el);
-    } else {
-      groups.push([el]);
-    }
-  }
-  return groups;
-}
-
-function autoSplitElements(elements: SlideElement[]): [SlideElement[], SlideElement[]] {
-  if (elements.length === 1 && elements[0].type === 'list') {
-    const list = elements[0];
-    const mid = Math.ceil(list.items.length / 2);
-    return [
-      [{ ...list, items: list.items.slice(0, mid) }],
-      [{ ...list, items: list.items.slice(mid) }],
-    ];
-  }
-  // Mirrors the live preview's split (SlideRenderer.tsx autoSplitElements): balance
-  // by cumulative title length and carry the numbering offset into the second column.
-  if (elements.length === 1 && elements[0].type === 'toc') {
-    const toc = elements[0];
-    const entries = toc.entries;
-    const totalLen = entries.reduce((n, en) => n + en.title.length, 0);
-    let cumLen = 0;
-    let mid = Math.ceil(entries.length / 2);
-    for (let i = 0; i < entries.length; i++) {
-      cumLen += entries[i].title.length;
-      if (cumLen >= totalLen / 2) { mid = i + 1; break; }
-    }
-    return [
-      [{ ...toc, entries: entries.slice(0, mid) }],
-      [{ ...toc, entries: entries.slice(mid), numberStart: mid }],
-    ];
-  }
-  const mid = Math.ceil(elements.length / 2);
-  return [elements.slice(0, mid), elements.slice(mid)];
 }
 
 // ── Syntax-highlight helpers (github-dark colour map) ─────────────────────────
