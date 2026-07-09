@@ -29,16 +29,14 @@ jobs:
           ## What's new
 
           ### New features
-          - **PDF export: "Match slide size" page option** — a new page-size choice for native PDF export that matches the slide's own aspect ratio exactly, instead of scaling it down inside an A4/Letter page with margins on every side (reported by @a1880, #129).
+          - **Native Marp-style slide background images** — `![bg](path)` sets a full-bleed background, `![bg left]` / `![bg right]` splits the slide with the image on that side, and adding body content over a plain `![bg]` overlays it as a background behind the normal layout; `contain`/`fit` is also supported. Backgrounds can now be set or cleared directly from the thumbnail's right-click menu, and are included in PowerPoint (.pptx) export (requested and built by @Ayush7614, #130).
+          - **Find dialog with slide-number jump** — press the new shortcut to search slide content and jump straight to a slide by number while editing, instead of scrolling or hunting through thumbnails (requested by @Ayush7614, #132).
 
           ### Bug fixes
-          - **Fixed the "rescaled to fit" badge still showing on the audience/projector window** during a live presentation, and brought PowerPoint (.pptx) exports of a Table of Contents in line with the live preview — a long ToC now splits across two columns in the exported file too, with numbering continuing into the second column instead of restarting at 1 (reported by @a1880, #127).
-          - **Fixed math formulas being squeezed into a narrow side-by-side column** when paired with a callout, paragraph, list, or ToC — they now stack full-width instead (reported by @codingThome, #135).
-          - **Fixed Ctrl+V paste (and the right-click Paste menu item) not working on Linux/WebKitGTK** — clipboard text is now read natively via GTK instead of the webview's clipboard APIs, which WebKitGTK blocks regardless of user interaction (reported by @JustinKenpisi, #13).
-          - **Fixed a render crash leaving the presentation window stuck fullscreen with no way to close it** — the app now recovers gracefully instead of hanging (reported by @codingThome, #134).
-
-          ### Packaging
-          - Fixed the self-hosted Flatpak publish pipeline: corrected the Flathub runtime repo URL, made the GPG key import more reliable, and gave the installed app a friendlier remote name instead of the generic `app-origin`.
+          - **Fixed poll QR codes crashing the slide renderer on Windows**, which was masked by a fallback message that always claimed the poll link was "too long" regardless of the real cause — the actual bug was a bundler import mismatch that broke the QR component on every platform (reported by @codingThome, #134; misattributed cause found by @a1880).
+          - **Fixed local video links breaking after insert** — `Insert / Image or Video...` now embeds the file directly instead of pointing at a broken `asset://` URL that Windows couldn't resolve (reported by @a1880, #140).
+          - **Fixed right-click context submenus opening in the wrong place** when the interface scale (Settings → Appearance) wasn't 100%, most visible on Linux/WebKitGTK (reported by @florian-krieger, #139).
+          - **Added F5 / Shift-F5 to the Present button's tooltip** so the existing keyboard shortcuts (start from the first slide / start from the current slide) are actually discoverable (reported by @a1880, #138).
 
           ---
 
