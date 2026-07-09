@@ -1,6 +1,4 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { invoke } from '@tauri-apps/api/core';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { indentWithTab, undo, redo, selectAll } from '@codemirror/commands';
 import { Annotation, Compartment, EditorSelection, EditorState, Prec } from '@codemirror/state';
@@ -12,7 +10,6 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { focusModeCompartment, focusModeExtension } from '../editor/focusMode';
 import { slideDivider } from '../editor/slideDivider';
 import { EditorContextMenu } from '../editor/EditorContextMenu';
-import type { MenuEntry } from '../editor/EditorContextMenu';
 import {
   slideNav,
   makeWrapCommand,
@@ -22,18 +19,15 @@ import {
   makeLinePrefixCommand,
   findNextRange,
 } from '../editor/formatCommands';
-import { MEDIA_EXT, buildMediaSnippet, encodeMarkdownPath } from '../editor/mediaSnippet';
+import { buildMediaSnippet } from '../editor/mediaSnippet';
+import { buildContextMenuEntries } from '../editor/contextMenuEntries';
+import { insertTable } from '../editor/contextMenuActions';
+import { useMediaDragAndDrop } from '../editor/useMediaDragAndDrop';
+import { useMediaPaste } from '../editor/useMediaPaste';
 import { ModalShell } from '../ModalShell';
 import { isMac } from '../../engine/keybindings';
 import { spellCheckExtension } from '../../engine/spellcheck/spellCheckExtension';
-import {
-  initSpellChecker,
-  isSpellCheckerReady,
-  spellCheck,
-  spellSuggest,
-  addCustomWord,
-  ignoreSpellingFor,
-} from '../../engine/spellcheck/spellChecker';
+import { initSpellChecker } from '../../engine/spellcheck/spellChecker';
 import type { SpellCheckLanguage } from '../../engine/spellcheck/spellChecker';
 import { useT } from '../../i18n';
 import '../../styles/editor.css';
@@ -143,7 +137,6 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
   const spellCheckEnabledRef = useRef(spellCheckEnabled);
   const spellCheckActiveRef = useRef(false);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null);
-  const [dragActive, setDragActive] = useState(false);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [tablePromptOpen, setTablePromptOpen] = useState(false);
   const [tableRows, setTableRows] = useState(3);
@@ -367,242 +360,8 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle OS file drops via Tauri's drag-drop window event.
-  // The browser File API never exposes paths; this is the only reliable source.
-  useEffect(() => {
-    const dragHasMedia = { current: false };
-
-    const unlisten = getCurrentWindow().onDragDropEvent((evt) => {
-      const p = evt.payload;
-
-      if (p.type === 'enter') {
-        dragHasMedia.current = p.paths.some((f) => MEDIA_EXT.test(f));
-        return;
-      }
-
-      if (p.type === 'over') {
-        if (!dragHasMedia.current) return;
-        const rect = containerRef.current?.getBoundingClientRect();
-        const overEditor = !!rect
-          && p.position.x >= rect.left && p.position.x <= rect.right
-          && p.position.y >= rect.top  && p.position.y <= rect.bottom;
-        setDragActive(overEditor);
-        return;
-      }
-
-      if (p.type === 'leave') {
-        setDragActive(false);
-        dragHasMedia.current = false;
-        return;
-      }
-
-      if (p.type === 'drop') {
-        setDragActive(false);
-        dragHasMedia.current = false;
-
-        const { x, y } = p.position;
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect || x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return;
-
-        const mediaPaths = [...new Set(p.paths.filter((f) => MEDIA_EXT.test(f)))];
-        if (!mediaPaths.length) return;
-
-        const view = viewRef.current;
-        if (!view) return;
-
-        const pos = view.posAtCoords({ x, y }) ?? view.state.doc.length;
-        const docPath = filePathRef.current ?? null;
-        if (!docPath) {
-          onWarnRef.current?.(t('editor.saveFirstDropMedia'));
-          return;
-        }
-
-        void (async () => {
-          const inserts = await Promise.all(
-            mediaPaths.map((abs) => buildMediaSnippet(abs, docPath, (m) => onWarnRef.current?.(m))),
-          );
-
-          const validInserts = inserts.filter((s): s is string => s !== null);
-          if (!validInserts.length) return;
-          const insert = validInserts.join('\n');
-          view.dispatch({ changes: { from: pos, insert }, selection: { anchor: pos + insert.length } });
-          view.focus();
-        })();
-      }
-    });
-
-    return () => { unlisten.then((fn) => fn()); };
-  }, []);
-
-  // Handle clipboard image paste.
-  // macOS (WKWebView): intercept the native 'paste' event. e.clipboardData.items
-  //   exposes image blobs directly without a permission prompt because the paste
-  //   event itself is the user's consent. If there's no image, fall through so
-  //   CodeMirror's own paste handler processes text — no permission dialog needed.
-  // Linux/Windows: intercept keydown instead, because WebKitGTK does not expose
-  //   binary image data through e.clipboardData, so we must read it via the native
-  //   GTK clipboard command before deciding whether to preventDefault.
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    if (isMac) {
-      const handler = (e: ClipboardEvent) => {
-        const items = e.clipboardData?.items;
-        if (!items) return;
-        const mediaItem = Array.from(items).find((item) => item.type.startsWith('image/') || item.type.startsWith('video/'));
-        if (!mediaItem) return; // no media — let CodeMirror handle text paste natively
-        e.preventDefault();
-        const blob = mediaItem.getAsFile();
-        if (!blob) return;
-        const isVideo = blob.type.startsWith('video/');
-        const view = viewRef.current;
-        if (!view) return;
-        void (async () => {
-          const docPath = filePathRef.current ?? null;
-          if (!docPath) {
-            onWarnRef.current?.(t('editor.saveFirstPasteMedia'));
-            return;
-          }
-          const docDir = docPath.substring(
-            0,
-            Math.max(docPath.lastIndexOf('/'), docPath.lastIndexOf('\\'))
-          );
-          const arrayBuffer = await blob.arrayBuffer();
-          const pasteExt = blob.type.split('/')[1]?.replace('jpeg', 'jpg').replace('quicktime', 'mov') ?? (isVideo ? 'mp4' : 'png');
-          const mediaBase64 = btoa(
-            Array.from(new Uint8Array(arrayBuffer)).map((b) => String.fromCharCode(b)).join('')
-          );
-          try {
-            const savedFilename = await invoke<string>('write_asset_bytes', {
-              data: mediaBase64,
-              filename: `paste-${Date.now()}.${pasteExt}`,
-              destDir: docDir,
-            });
-            const enc = encodeMarkdownPath(savedFilename);
-            const snippet = isVideo ? `!video[](assets/${enc})` : `![](assets/${enc})`;
-            const { from, to } = view.state.selection.main;
-            view.dispatch({
-              changes: { from, to, insert: snippet },
-              selection: EditorSelection.cursor(from + snippet.length),
-            });
-            view.focus();
-          } catch (err) {
-            console.error('[Kova] paste media failed:', err);
-            onWarnRef.current?.(t('editor.couldNotPasteMedia'));
-          }
-        })();
-      };
-      el.addEventListener('paste', handler, { capture: true });
-      return () => el.removeEventListener('paste', handler, { capture: true });
-    }
-
-    // Linux / Windows: intercept the native 'paste' event (fires for both
-    // Ctrl+V and Ctrl+Shift+V) rather than keydown. This lets us read text
-    // synchronously off e.clipboardData instead of via the async
-    // navigator.clipboard.readText(), which is unreliable under WebKitGTK
-    // (Ubuntu) — it can reject silently, and by the time it resolves the
-    // preceding preventDefault() has already discarded the native paste, so
-    // the keystroke does nothing. Image bytes still require the async native
-    // read below since WebKitGTK doesn't expose them through clipboardData.
-    const handler = (e: ClipboardEvent) => {
-      // Capture cursor position and text synchronously — both the document
-      // state and the clipboard event data can become unavailable once we
-      // go async.
-      const view = viewRef.current;
-      const selection = view?.state.selection.main;
-      const text = e.clipboardData?.getData('text/plain') ?? '';
-
-      e.preventDefault();
-
-      void (async () => {
-        let mediaBase64: string | null = null;
-        let pasteExt = 'png';
-        let isVideo = false;
-
-        // GTK native clipboard (Linux — WebKitGTK doesn't expose binary
-        // image data through e.clipboardData, so we read it natively).
-        try {
-          mediaBase64 = await invoke<string>('read_clipboard_image');
-          // The Rust command always encodes as PNG.
-        } catch {
-          // Not Linux, or clipboard has no image.
-        }
-
-        // Web Clipboard API (Windows WebView2).
-        if (mediaBase64 === null) {
-          try {
-            const clipboardItems = await navigator.clipboard.read();
-            for (const item of clipboardItems) {
-              const mediaType = item.types.find((t) => t.startsWith('image/') || t.startsWith('video/'));
-              if (mediaType) {
-                isVideo = mediaType.startsWith('video/');
-                const blob = await item.getType(mediaType);
-                const arrayBuffer = await blob.arrayBuffer();
-                mediaBase64 = btoa(
-                  Array.from(new Uint8Array(arrayBuffer)).map((b) => String.fromCharCode(b)).join('')
-                );
-                pasteExt = mediaType.split('/')[1]?.replace('jpeg', 'jpg').replace('quicktime', 'mov') ?? (isVideo ? 'mp4' : 'png');
-                break;
-              }
-            }
-          } catch {
-            // API not available or clipboard contains no media.
-          }
-        }
-
-        if (mediaBase64 !== null) {
-          const docPath = filePathRef.current ?? null;
-          if (!docPath) {
-            onWarnRef.current?.(t('editor.saveFirstPasteMedia'));
-            return;
-          }
-          const docDir = docPath.substring(
-            0,
-            Math.max(docPath.lastIndexOf('/'), docPath.lastIndexOf('\\'))
-          );
-          try {
-            const savedFilename = await invoke<string>('write_asset_bytes', {
-              data: mediaBase64,
-              filename: `paste-${Date.now()}.${pasteExt}`,
-              destDir: docDir,
-            });
-            const enc = encodeMarkdownPath(savedFilename);
-            const snippet = isVideo ? `!video[](assets/${enc})` : `![](assets/${enc})`;
-            const view = viewRef.current;
-            if (!view) return;
-            const { from, to } = view.state.selection.main;
-            view.dispatch({
-              changes: { from, to, insert: snippet },
-              selection: EditorSelection.cursor(from + snippet.length),
-            });
-            view.focus();
-          } catch (err) {
-            console.error('[Kova] paste media failed:', err);
-            onWarnRef.current?.(t('editor.couldNotPasteMedia'));
-          }
-          return;
-        }
-
-        // No image — fall back to the plain text captured synchronously
-        // from the paste event.
-        if (!view || !selection || !text) return;
-        // CodeMirror normalises \r\n → \n internally, so the inserted length
-        // may be shorter than text.length. Use the normalised form to compute
-        // the correct cursor position; otherwise the dispatch is silently
-        // rejected when the cursor would land past the end of the new document.
-        const normalised = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        view.dispatch({
-          changes: { from: selection.from, to: selection.to, insert: normalised },
-          selection: EditorSelection.cursor(selection.from + normalised.length),
-        });
-        view.focus();
-      })();
-    };
-
-    el.addEventListener('paste', handler, { capture: true });
-    return () => el.removeEventListener('paste', handler, { capture: true });
-  }, []);
+  const dragActive = useMediaDragAndDrop({ containerRef, viewRef, filePathRef, onWarnRef, t });
+  useMediaPaste({ containerRef, viewRef, filePathRef, onWarnRef, t });
 
   // Ctrl+scroll to zoom editor font size
   useEffect(() => {
@@ -695,269 +454,49 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
     setCtxMenu({ x: e.clientX, y: e.clientY, hasSelection: from !== to, clickPos: clickPos ?? null });
   }
 
-  function getWordAtPos(pos: number): { word: string; from: number; to: number } | null {
-    const view = viewRef.current;
-    if (!view) return null;
-    const doc = view.state.doc.toString();
-    let from = pos;
-    let to = pos;
-    while (from > 0 && /[a-zA-Z'-]/.test(doc[from - 1])) from--;
-    while (to < doc.length && /[a-zA-Z'-]/.test(doc[to])) to++;
-    while (from < to && /['"-]/.test(doc[from])) from++;
-    while (to > from && /['"-]/.test(doc[to - 1])) to--;
-    if (to - from < 2) return null;
-    return { word: doc.slice(from, to), from, to };
-  }
-
-  function doCopy() {
-    const view = viewRef.current;
-    if (!view) return;
-    const { from, to } = view.state.selection.main;
-    if (from !== to) navigator.clipboard.writeText(view.state.sliceDoc(from, to));
-  }
-
-  function doCut() {
-    const view = viewRef.current;
-    if (!view) return;
-    const { from, to } = view.state.selection.main;
-    if (from === to) return;
-    navigator.clipboard.writeText(view.state.sliceDoc(from, to));
-    view.dispatch({ changes: { from, to, insert: '' } });
-    view.focus();
-  }
-
-  async function doPaste() {
-    const view = viewRef.current;
-    if (!view) return;
-    // Linux: read the GTK clipboard natively. WebKitGTK rejects both
-    // navigator.clipboard.readText() (throws NotAllowedError) and scripted
-    // document.execCommand('paste') (silently no-ops) regardless of
-    // user-gesture context, so a script-triggered paste needs to bypass the
-    // webview's clipboard APIs entirely.
-    try {
-      const text = await invoke<string>('read_clipboard_text');
-      const { from, to } = view.state.selection.main;
-      view.dispatch({
-        changes: { from, to, insert: text },
-        selection: EditorSelection.cursor(from + text.length),
-      });
-      view.focus();
-      return;
-    } catch {
-      // Not Linux, or clipboard has no text.
-    }
-    // mac / Windows: this triggers a real native 'paste' DOM event, handled
-    // by the listener registered above.
-    view.focus();
-    document.execCommand('paste');
-  }
-
-  function doInsert(snippet: string, cursorOffset: number) {
-    const view = viewRef.current;
-    if (!view) return;
-    const { from, to } = view.state.selection.main;
-    view.dispatch({
-      changes: { from, to, insert: snippet },
-      selection: EditorSelection.cursor(from + cursorOffset),
-    });
-    view.focus();
-  }
-
-  function insertTable(rows: number, cols: number) {
-    const headerCells = Array.from({ length: cols }, (_, i) => ` Header ${i + 1} `).join('|');
-    const sepCells    = Array(cols).fill(' ------ ').join('|');
-    const dataRow     = '|' + Array(cols).fill(' Cell   ').join('|') + '|';
-    const dataRows    = Array(rows - 1).fill(dataRow).join('\n');
-    doInsert(`|${headerCells}|\n|${sepCells}|\n${dataRows}`, 2);
-  }
-
-  function doWrap(before: string, after: string, placeholder: string) {
-    const view = viewRef.current;
-    if (!view) return;
-    const { from, to } = view.state.selection.main;
-    if (from === to) {
-      const insert = `${before}${placeholder}${after}`;
-      view.dispatch({
-        changes: { from, insert },
-        selection: EditorSelection.range(from + before.length, from + before.length + placeholder.length),
-      });
-    } else {
-      const selected = view.state.sliceDoc(from, to);
-      const insert = `${before}${selected}${after}`;
-      view.dispatch({
-        changes: { from, to, insert },
-        selection: EditorSelection.cursor(from + insert.length),
-      });
-    }
-    view.focus();
-  }
-
   const mod = isMac ? 'Cmd' : 'Ctrl';
 
-  function buildMenuEntries(): MenuEntry[] {
-    const hasSel = ctxMenu?.hasSelection ?? false;
-    const view = viewRef.current;
+  function openTablePrompt() {
+    setTableRows(3);
+    setTableCols(3);
+    setTablePromptOpen(true);
+  }
 
-    const spellEntries: MenuEntry[] = [];
-    if (spellCheckEnabledRef.current && ctxMenu?.clickPos != null && view && isSpellCheckerReady()) {
-      const wordInfo = getWordAtPos(ctxMenu.clickPos);
-      if (wordInfo && !spellCheck(wordInfo.word)) {
-        const suggestions = spellSuggest(wordInfo.word);
-        spellEntries.push({ type: 'header', label: `"${wordInfo.word}"` });
-        if (suggestions.length > 0) {
-          suggestions.forEach(s => spellEntries.push({
-            type: 'item',
-            label: s,
-            action: () => {
-              const v = viewRef.current;
-              if (!v) return;
-              v.dispatch({
-                changes: { from: wordInfo.from, to: wordInfo.to, insert: s },
-                selection: EditorSelection.cursor(wordInfo.from + s.length),
-              });
-              v.focus();
-            },
-          }));
-        } else {
-          spellEntries.push({ type: 'item', label: t('editor.menuNoSuggestions'), disabled: true, action: () => {} });
-        }
-        spellEntries.push({
-          type: 'item',
-          label: t('editor.menuAddToDictionary'),
-          action: () => addCustomWord(wordInfo.word),
-        });
-        spellEntries.push({
-          type: 'item',
-          label: t('editor.menuIgnore'),
-          action: () => ignoreSpellingFor(wordInfo.word),
-        });
-        spellEntries.push({ type: 'divider' });
-      }
+  function handleInsertTable() {
+    const view = viewRef.current;
+    if (!view) return;
+    insertTable(view, tableRows, tableCols);
+    setTablePromptOpen(false);
+  }
+
+  // Resolve the document path before opening any picker. If unsaved, explain
+  // why and offer to save first.
+  async function handleInsertMedia() {
+    let docPath = filePathRef.current ?? null;
+    if (!docPath) {
+      const ok = await showConfirmRef.current(
+        t('editor.saveDocumentFirstTitle'),
+        t('editor.saveDocumentFirstMessage'),
+        t('common.save'),
+      );
+      if (!ok) return;
+      docPath = await onSaveAsRef.current?.() ?? null;
+      if (!docPath) return;
     }
 
-    return [
-      ...spellEntries,
-      { type: 'header', label: t('editor.menuClipboard') },
-      { type: 'item', label: t('editor.menuCopy'),  shortcut: `${mod}+C`, action: doCopy,  disabled: !hasSel },
-      { type: 'item', label: t('editor.menuCut'),   shortcut: `${mod}+X`, action: doCut,   disabled: !hasSel },
-      { type: 'item', label: t('editor.menuPaste'), shortcut: `${mod}+V`, action: doPaste },
-      { type: 'divider' },
-      { type: 'header', label: t('editor.menuFormat') },
-      { type: 'item', label: t('editor.menuBold'),          shortcut: `${mod}+B`,       action: () => doWrap('**',  '**',   'bold text') },
-      { type: 'item', label: t('editor.menuItalic'),        shortcut: `${mod}+I`,       action: () => doWrap('*',   '*',    'italic text') },
-      { type: 'item', label: t('editor.menuUnderline'),     shortcut: `${mod}+U`,       action: () => doWrap('<u>', '</u>', 'underlined text') },
-      { type: 'item', label: t('editor.menuStrikethrough'), shortcut: `${mod}+Shift+X`, action: () => doWrap('~~',  '~~',   'strikethrough text') },
-      { type: 'item', label: t('editor.menuInlineCode'),    shortcut: `${mod}+\``,      action: () => doWrap('`',   '`',    'code') },
-      { type: 'item', label: t('editor.menuIndent'),        shortcut: `${mod}+]`,       action: () => { const v = viewRef.current; if (v) indentLine(v); } },
-      { type: 'item', label: t('editor.menuDedent'),        shortcut: `${mod}+[`,       action: () => { const v = viewRef.current; if (v) dedentLine(v); } },
-      { type: 'divider' },
-      {
-        type: 'submenu', label: t('editor.menuInsert'), entries: [
-          { type: 'item', label: t('editor.menuCodeBlock'),      action: () => doInsert('```\n\n```', 3) },
-          { type: 'item', label: t('editor.menuBlockquote'),     action: () => doInsert('> ', 2) },
-          { type: 'item', label: t('editor.menuTable'), action: () => { setTableRows(3); setTableCols(3); setTablePromptOpen(true); } },
-          { type: 'item', label: t('editor.menuHorizontalRule'), action: () => doInsert('\n<hr>\n', 5) },
-          {
-            type: 'item', label: t('editor.menuImageOrVideo'), action: async () => {
-              // Resolve the document path before opening any picker.
-              // If unsaved, explain why and offer to save first.
-              let docPath = filePathRef.current ?? null;
-              if (!docPath) {
-                const ok = await showConfirmRef.current(
-                  t('editor.saveDocumentFirstTitle'),
-                  t('editor.saveDocumentFirstMessage'),
-                  t('common.save'),
-                );
-                if (!ok) return;
-                docPath = await onSaveAsRef.current?.() ?? null;
-                if (!docPath) return;
-              }
+    const selected = await openFileDialog({
+      multiple: false,
+      filters: [{ name: 'Media', extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'avif', 'tiff', 'mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv'] }],
+    });
+    if (!selected) return;
 
-              const selected = await openFileDialog({
-                multiple: false,
-                filters: [{ name: 'Media', extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'avif', 'tiff', 'mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv'] }],
-              });
-              if (!selected) return;
-
-              const snippet = await buildMediaSnippet(selected, docPath, (m) => onWarnRef.current?.(m));
-              if (!snippet) return;
-              const view = viewRef.current;
-              if (!view) return;
-              const { from, to } = view.state.selection.main;
-              view.dispatch({ changes: { from, to, insert: snippet }, selection: EditorSelection.cursor(from + snippet.length) });
-              view.focus();
-            },
-          },
-          { type: 'item', label: t('editor.menuLink'),            action: () => doInsert('[link text](url)', 1) },
-          { type: 'item', label: t('editor.menuMathBlock'), action: () => doInsert('$$\nE = mc^2\n$$', 3) },
-          { type: 'item', label: t('editor.menuSpeakerNotes'),   action: () => doInsert('\n\n???\n\n', 7) },
-          { type: 'item', label: t('editor.menuReference'),       action: () => doInsert('!ref[]', 5) },
-          {
-            type: 'item',
-            label: t('editor.menuTableOfContents'),
-            action: () => doInsert('## Agenda\n\n!toc\n', 3),
-          },
-        ],
-      },
-      { type: 'divider' },
-      {
-        type: 'submenu', label: t('editor.menuCharts'), entries: [
-          {
-            type: 'item', label: t('editor.menuPieChart'),
-            action: () => doInsert(
-              '\n```mermaid\npie title Distribution\n    "Category A" : 40\n    "Category B" : 35\n    "Category C" : 25\n```\n',
-              22,  // lands on "Distribution"
-            ),
-          },
-          {
-            type: 'item', label: t('editor.menuBarChart'),
-            action: () => doInsert(
-              '\n```mermaid\nxychart-beta\n    title "Sales by Quarter"\n    x-axis [Q1, Q2, Q3, Q4]\n    y-axis 0 --> 100\n    bar [40, 65, 55, 80]\n```\n',
-              36,  // lands on "Sales by Quarter"
-            ),
-          },
-          {
-            type: 'item', label: t('editor.menuLineChart'),
-            action: () => doInsert(
-              '\n```mermaid\nxychart-beta\n    title "Trend Over Time"\n    x-axis [Jan, Feb, Mar, Apr, May]\n    y-axis 0 --> 100\n    line [30, 45, 60, 55, 75]\n```\n',
-              36,  // lands on "Trend Over Time"
-            ),
-          },
-        ],
-      },
-      {
-        type: 'submenu', label: t('editor.menuDiagrams'), entries: [
-          {
-            type: 'item', label: t('editor.menuProgressBars'),
-            action: () => doInsert(
-              '\n!progress[Task Complete](75)\n!progress[In Progress](40)\n!progress[Planned](10)\n',
-              11,  // lands on "Task Complete"
-            ),
-          },
-          {
-            type: 'item', label: t('editor.menuFlowchart'),
-            action: () => doInsert(
-              '\n```mermaid\nflowchart TD\n    A([Start]) --> B[Process Step]\n    B --> C{Decision?}\n    C -- Yes --> D([End])\n    C -- No --> B\n```\n',
-              46,  // lands on "Process Step"
-            ),
-          },
-          {
-            type: 'item', label: t('editor.menuTimeline'),
-            action: () => doInsert(
-              '\n```mermaid\ntimeline\n    title Company Milestones\n    2022 : Founded\n         : Seed Funding\n    2023 : Product Launch\n         : 1K Users\n    2024 : Series A\n         : 10K Users\n```\n',
-              31,  // lands on "Company Milestones"
-            ),
-          },
-          {
-            type: 'item', label: t('editor.menuSequenceDiagram'),
-            action: () => doInsert(
-              '\n```mermaid\nsequenceDiagram\n    participant U as User\n    participant A as App\n    participant D as Database\n    U->>A: Login Request\n    A->>D: Verify Credentials\n    D-->>A: User Found\n    A-->>U: Access Granted\n```\n',
-              49,  // lands on "User"
-            ),
-          },
-        ],
-      },
-    ];
+    const snippet = await buildMediaSnippet(selected, docPath, (m) => onWarnRef.current?.(m));
+    if (!snippet) return;
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    view.dispatch({ changes: { from, to, insert: snippet }, selection: EditorSelection.cursor(from + snippet.length) });
+    view.focus();
   }
 
   return (
@@ -996,7 +535,16 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
       <EditorContextMenu
         x={ctxMenu.x}
         y={ctxMenu.y}
-        entries={buildMenuEntries()}
+        entries={buildContextMenuEntries({
+          t,
+          mod,
+          view: viewRef.current,
+          hasSelection: ctxMenu.hasSelection,
+          clickPos: ctxMenu.clickPos,
+          spellCheckEnabled: spellCheckEnabledRef.current,
+          onOpenTablePrompt: openTablePrompt,
+          onInsertMedia: handleInsertMedia,
+        })}
         onClose={() => setCtxMenu(null)}
       />
     )}
@@ -1049,7 +597,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
                 }}
                 autoFocus
                 onKeyDown={e => {
-                  if (e.key === 'Enter') { insertTable(tableRows, tableCols); setTablePromptOpen(false); }
+                  if (e.key === 'Enter') handleInsertTable();
                 }}
               />
             </label>
@@ -1064,14 +612,14 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
                   color: 'var(--text-primary)', boxSizing: 'border-box',
                 }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') { insertTable(tableRows, tableCols); setTablePromptOpen(false); }
+                  if (e.key === 'Enter') handleInsertTable();
                 }}
               />
             </label>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn" onClick={() => setTablePromptOpen(false)}>{t('common.cancel')}</button>
-            <button className="btn btn-primary" onClick={() => { insertTable(tableRows, tableCols); setTablePromptOpen(false); }}>
+            <button className="btn btn-primary" onClick={handleInsertTable}>
               {t('editor.insertTableAction')}
             </button>
           </div>
