@@ -1,5 +1,4 @@
 import { toJpeg } from 'html-to-image';
-import jsPDF from 'jspdf';
 import { invoke } from '@tauri-apps/api/core';
 import { mermaidSvgCache } from './mermaidSvgCache';
 import { svgToPngDataUrl } from './svgToPng';
@@ -223,6 +222,9 @@ export async function exportToPdf(
   const W = PDF_W_MM;
   const H = Math.round((W * (aspectRatio.h / aspectRatio.w)) * 100) / 100;
 
+  // Lazy-loaded: jsPDF is only needed once a PDF export is actually
+  // triggered, and shouldn't add weight to the app's initial bundle.
+  const { default: jsPDF } = await import('jspdf');
   const pdf = new jsPDF({ orientation: 'l', unit: 'mm', format: [W, H], compress: true });
 
   for (let i = 0; i < slideElements.length; i++) {

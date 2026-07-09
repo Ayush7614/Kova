@@ -1,4 +1,3 @@
-import PptxGenJS from 'pptxgenjs';
 import JSZip from 'jszip';
 import { invoke } from '@tauri-apps/api/core';
 import { mermaidSvgCache } from './mermaidSvgCache';
@@ -159,6 +158,9 @@ export async function exportToPptx(
   theme: Theme,
   locale: string,
 ): Promise<ExportResult> {
+  // Lazy-loaded: pptxgenjs is only needed once a PPTX export is actually
+  // triggered, and shouldn't add weight to the app's initial bundle.
+  const { default: PptxGenJS } = await import('pptxgenjs');
   const pres = new PptxGenJS();
   const is4x3 = (frontmatter.aspect_ratio as string | undefined) === '4:3';
   // LAYOUT_16x9 = 10" × 5.625", which matches W=10 and H=5.625 below.
