@@ -67,8 +67,11 @@ const IMAGE_EXT = /\.(png|jpe?g|gif|svg|webp|bmp|ico|avif|tiff?)$/i;
 const VIDEO_EXT = /\.(mp4|webm|ogv|mov|m4v|mkv)$/i;
 const MEDIA_EXT = new RegExp(`${IMAGE_EXT.source}|${VIDEO_EXT.source}`, 'i');
 
-export async function buildMediaSnippet(abs: string, docPath: string, warn: (m: string) => void): Promise<string | null> {
-  const label  = abs.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') ?? 'media';
+export async function resolveImagePathForMarkdown(
+  abs: string,
+  docPath: string,
+  warn: (m: string) => void,
+): Promise<string | null> {
   const docDir = docPath.substring(0, Math.max(docPath.lastIndexOf('/'), docPath.lastIndexOf('\\')));
   const normAbs = abs.replace(/\\/g, '/');
   const normDir = docDir.replace(/\\/g, '/');
@@ -85,7 +88,13 @@ export async function buildMediaSnippet(abs: string, docPath: string, warn: (m: 
       return null;
     }
   }
-  const enc = encodeMarkdownPath(rel);
+  return encodeMarkdownPath(rel);
+}
+
+export async function buildMediaSnippet(abs: string, docPath: string, warn: (m: string) => void): Promise<string | null> {
+  const enc = await resolveImagePathForMarkdown(abs, docPath, warn);
+  if (!enc) return null;
+  const label = abs.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') ?? 'media';
   return VIDEO_EXT.test(abs) ? `!video[${label}](${enc})` : `![${label}](${enc})`;
 }
 

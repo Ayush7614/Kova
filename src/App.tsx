@@ -7,7 +7,7 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, usePanelRef, useDefaultLayout } from 'react-resizable-panels';
 
 import { ThumbnailPanel } from './components/layout/ThumbnailPanel';
-import { EditorPanel } from './components/layout/EditorPanel';
+import { EditorPanel, resolveImagePathForMarkdown } from './components/layout/EditorPanel';
 import type { EditorHandle, FormatCmd } from './components/layout/EditorPanel';
 import { InspectorPanel } from './components/layout/InspectorPanel';
 import { StatusBar } from './components/layout/StatusBar';
@@ -33,6 +33,7 @@ import { I18nProvider, useLocaleTranslator, formatFallbackDate } from './i18n';
 
 import { parseDocument } from './engine/parser/markdownToSlides';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
+import { parseBgLine, formatBgLine } from './engine/parser/bgImage';
 import { fetchUpdate } from './engine/updater';
 import { normalizePath } from './engine/resolvePath';
 import { exportToPptx } from './engine/export/exportPptx';
@@ -362,6 +363,10 @@ export default function App() {
       item.children.forEach(collectItem);
     }
     for (const slide of rawSlides) {
+      if (slide.backgroundImage) {
+        const p = localPathFromImageSrc(slide.backgroundImage.src, docDir);
+        if (p) paths.add(p);
+      }
       for (const el of slide.elements) {
         if (el.type === 'image' || el.type === 'video') {
           const p = localPathFromMediaSrc(el.src, docDir);
@@ -452,7 +457,14 @@ export default function App() {
       const layout = hasToc && !slide.layoutOverride
         ? detectLayout(resolvedElements, slide.titleLevel, !!slide.title)
         : slide.layout;
-      const resolved: Slide = { ...slide, elements: resolvedElements, layout };
+      const resolved: Slide = {
+        ...slide,
+        elements: resolvedElements,
+        layout,
+        backgroundImage: slide.backgroundImage
+          ? { ...slide.backgroundImage, src: resolveImageSrc(slide.backgroundImage.src, docDir, localImageUrls) }
+          : undefined,
+      };
       if (!hasToc) cache.set(slide, resolved);
       return resolved;
     });
@@ -1488,6 +1500,91 @@ export default function App() {
     warnTimerRef.current = setTimeout(() => setWarnMessage(null), 6000);
   }, []);
 
+  function setSlideBackgroundInRaw(raw: string, src: string | null): string {
+    // Keep formatting stable: only touch bg lines; keep other lines byte-identical.
+    const lines = raw.split('\n');
+    const out: string[] = [];
+    let inFence = false;
+    let handled = false;
+
+    for (const line of lines) {
+      const t = line.trim();
+      if (/^(`{3,}|~{3,})/.test(t)) {
+        inFence = !inFence;
+        out.push(line);
+        continue;
+      }
+      if (!inFence) {
+        const parsed = parseBgLine(t);
+        if (parsed) {
+          if (src && !handled) {
+            const indent = line.match(/^\s*/)?.[0] ?? '';
+            out.push(`${indent}${formatBgLine({ ...parsed, src })}`);
+          }
+          handled = true;
+          continue; // remove original bg line(s)
+        }
+      }
+      out.push(line);
+    }
+
+    if (src && !handled) {
+      // Insert near the top, after leading blanks and a `<!-- hidden -->` marker if present.
+      let i = 0;
+      while (i < out.length && out[i].trim() === '') i++;
+      if ((out[i]?.trim() ?? '') === '<!-- hidden -->') i++;
+      out.splice(i, 0, formatBgLine({ src, size: 'cover' }));
+      if (out[i + 1] && out[i + 1].trim() !== '') out.splice(i + 1, 0, '');
+    }
+
+    return out.join('\n');
+  }
+
+  const handleSetSlideBackground = useCallback(async (index: number) => {
+    if (!filePath) {
+      handleWarn(t('editor.saveFirstDropMedia'));
+      return;
+    }
+    const selected = await open({
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'] }],
+      multiple: false,
+    });
+    if (!selected || Array.isArray(selected)) return;
+
+    const relPath = await resolveImagePathForMarkdown(selected, filePath, handleWarn);
+    if (!relPath) return;
+
+    setContent((prev) => {
+      const fmMatch = prev.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+      const fmBlock = fmMatch ? fmMatch[0] : '';
+      const body = prev.slice(fmBlock.length);
+      // Edit ONLY the target segment; keep every other segment + the `---`
+      // delimiters byte-identical so the parser's positional cache still hits.
+      const segments = body.split(/^---$/m);
+      if (index < 0 || index >= segments.length) return prev;
+      segments[index] = setSlideBackgroundInRaw(segments[index], relPath);
+      return fmBlock + segments.join('---');
+    });
+    setIsDirty(true);
+    setCurrentSlideIndex(index);
+    setTimeout(() => editorRef.current?.scrollToSlide(index), 50);
+  }, [filePath, handleWarn, t]);
+
+  const handleClearSlideBackground = useCallback((index: number) => {
+    setContent((prev) => {
+      const fmMatch = prev.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+      const fmBlock = fmMatch ? fmMatch[0] : '';
+      const body = prev.slice(fmBlock.length);
+      const segments = body.split(/^---$/m);
+      if (index < 0 || index >= segments.length) return prev;
+      segments[index] = setSlideBackgroundInRaw(segments[index], null);
+      return fmBlock + segments.join('---');
+    });
+    setIsDirty(true);
+    setCurrentSlideIndex(index);
+    setTimeout(() => editorRef.current?.scrollToSlide(index), 50);
+  }, []);
+
   const openFindDialog = useCallback(() => {
     setFindOpen(true);
     setTimeout(() => findInputRef.current?.select(), 0);
@@ -2013,6 +2110,8 @@ export default function App() {
               onReorder={handleSlideReorder}
               onDuplicate={handleDuplicateSlide}
               onToggleHidden={handleToggleHidden}
+              onSetBackground={handleSetSlideBackground}
+              onClearBackground={handleClearSlideBackground}
               onDelete={handleDeleteSlide}
               theme={activeTheme}
               docTitle={docTitle}
