@@ -48,7 +48,7 @@ jobs:
           | Platform | Download | Note |
           |---|---|---|
           | **macOS** (Apple Silicon + Intel) | `.dmg` | Signed and notarised — double-click to install |
-          | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Click **More info → Run anyway** if SmartScreen appears (app is unsigned) |
+          | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Signed via SignPath |
           | **Linux** | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), or `.flatpakref` | Install via your package manager |
           | **Linux AppImage** | `.AppImage` | Graphics libs stripped for compatibility with Arch/Fedora/etc. Supports auto-update. |
 
@@ -161,6 +161,80 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+      # Windows builds from tauri-action above are unsigned (Kova doesn't own an
+      # Authenticode certificate) — SignPath's OSS program signs them for us
+      # instead. Signing changes the exe/msi bytes, which invalidates the
+      # updater .sig tauri-action already computed on the unsigned bytes, so
+      # once SignPath returns the signed files we re-sign them with the
+      # updater key and patch latest.json — same pattern as the AppImage
+      # re-sign below, just for a different reason (external signing vs
+      # post-build stripping).
+      - name: Zip unsigned Windows binaries for SignPath
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/signpath-unsigned"
+          cp src-tauri/target/release/bundle/msi/*.msi "$RUNNER_TEMP/signpath-unsigned/"
+          cp src-tauri/target/release/bundle/nsis/*.exe "$RUNNER_TEMP/signpath-unsigned/"
+          ( cd "$RUNNER_TEMP/signpath-unsigned" && zip -j "$RUNNER_TEMP/signpath-unsigned.zip" * )
+
+      - name: Upload unsigned Windows binaries as build artifact
+        if: matrix.platform == 'windows-latest'
+        id: upload-unsigned-windows
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: signpath-unsigned-windows
+          path: ${{ runner.temp }}/signpath-unsigned.zip
+          retention-days: 1
+
+      - name: Submit Windows binaries to SignPath for signing
+        if: matrix.platform == 'windows-latest'
+        id: signpath
+        uses: signpath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2.2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: 6aea854d-5015-451b-80a3-a1031e70eb9e
+          project-slug: kova
+          signing-policy-slug: ${{ github.event_name == 'push' && 'release-signing' || 'test-signing' }}
+          artifact-configuration-slug: Windows_Executable_Samples
+          github-artifact-id: ${{ steps.upload-unsigned-windows.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ${{ runner.temp }}/signpath-signed
+
+      - name: Replace unsigned binaries with SignPath-signed versions and refresh updater signature
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          MSI=$(ls src-tauri/target/release/bundle/msi/*.msi)
+          NSIS=$(ls src-tauri/target/release/bundle/nsis/*.exe)
+
+          cp "$RUNNER_TEMP/signpath-signed"/*.msi "$MSI"
+          cp "$RUNNER_TEMP/signpath-signed"/*.exe "$NSIS"
+
+          npm install -g @tauri-apps/cli@^2
+          tauri signer sign "$MSI"
+          tauri signer sign "$NSIS"
+          MSI_SIG=$(cat "$MSI.sig")
+          NSIS_SIG=$(cat "$NSIS.sig")
+
+          gh release upload "${{ github.ref_name }}" "$MSI" "$NSIS" --clobber
+
+          jq --arg sig "$MSI_SIG" \
+             '.platforms["windows-x86_64"].signature = $sig | .platforms["windows-x86_64-msi"].signature = $sig' \
+             latest.json > "$RUNNER_TEMP/latest.json.new"
+          mv "$RUNNER_TEMP/latest.json.new" latest.json
+
+          jq --arg sig "$NSIS_SIG" \
+             '.platforms["windows-x86_64-nsis"].signature = $sig' \
+             latest.json > "$RUNNER_TEMP/latest.json.new"
+          mv "$RUNNER_TEMP/latest.json.new" latest.json
+
       # Builds and signs the AppImage, then patches this platform's latest.json
       # (already written to the repo root by the step above) before it gets
       # copied into the cross-platform-merge artifact below — so the fix
@@ -237,13 +311,13 @@ jobs:
             echo "latest.json not found — skipping artifact upload"
             exit 0
           fi
-          mkdir -p /tmp/platform-latest
-          cp "$LATEST" /tmp/platform-latest/latest.json
+          mkdir -p "$RUNNER_TEMP/platform-latest"
+          cp "$LATEST" "$RUNNER_TEMP/platform-latest/latest.json"
           echo "Found: $LATEST"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: latest-json-${{ matrix.platform }}
-          path: /tmp/platform-latest/latest.json
+          path: ${{ runner.temp }}/platform-latest/latest.json
           if-no-files-found: warn
 
       # Submit the signed DMG to Apple, then wait up to 10 minutes for acceptance,
