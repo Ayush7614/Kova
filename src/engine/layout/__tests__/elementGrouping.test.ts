@@ -26,21 +26,46 @@ describe('groupProgressRuns', () => {
 });
 
 describe('autoSplitElements — multi-element branch', () => {
-  it('splits at the element-count midpoint', () => {
-    const els = [paragraph('a'), paragraph('b'), image, paragraph('c')];
+  it('falls back to a count-based midpoint when elements have equal estimated weight', () => {
+    const els = [paragraph('a'), paragraph('b'), paragraph('c'), paragraph('d')];
     const [left, right] = autoSplitElements(els);
     expect(left).toEqual([paragraph('a'), paragraph('b')]);
-    expect(right).toEqual([image, paragraph('c')]);
+    expect(right).toEqual([paragraph('c'), paragraph('d')]);
+  });
+
+  it('balances by cumulative estimated line count, not raw element count', () => {
+    // A long paragraph (several wrapped lines) followed by three short ones:
+    // a naive count-based midpoint (ceil(4/2) = 2) would pair the long
+    // paragraph with one short paragraph on the left, leaving the right
+    // column comparatively empty once the renderer shrinks the font to fit
+    // — line-count balancing should instead put the long paragraph on its
+    // own (see issue #145).
+    const long = paragraph('x '.repeat(200)); // ~400 visual chars, several wrapped lines at ~90 chars/line
+    const shorts = [paragraph('a'), paragraph('b'), paragraph('c')];
+    const els = [long, ...shorts];
+
+    const [left, right] = autoSplitElements(els);
+
+    expect(left).toEqual([long]);
+    expect(right).toEqual(shorts);
+  });
+
+  it('still weighs non-text elements like images into the balance', () => {
+    const els = [paragraph('a'), paragraph('b'), image, paragraph('c')];
+    const [left, right] = autoSplitElements(els);
+    expect(left).toEqual([paragraph('a'), paragraph('b'), image]);
+    expect(right).toEqual([paragraph('c')]);
   });
 });
 
 describe('autoSplitElements — single list branch', () => {
-  it('balances by cumulative item text length, not item count', () => {
-    // One long item followed by four short ones: a naive count-based midpoint
-    // split (Math.ceil(5/2) = 3) would put the long item alone with one short
-    // item on the left — length-based balancing should instead isolate the
-    // long item by itself, since it already exceeds half the total length.
-    const long = item('x'.repeat(100));
+  it('balances by cumulative estimated line count, not item count', () => {
+    // One long item (several wrapped lines) followed by four short ones: a
+    // naive count-based midpoint split (Math.ceil(5/2) = 3) would put the
+    // long item alone with two short items on the left — line-based
+    // balancing should instead isolate the long item by itself, since its
+    // estimated line count already exceeds half the total.
+    const long = item('x'.repeat(700));
     const shorts = [item('a'), item('b'), item('c'), item('d')];
     const list: SlideElement = { type: 'list', ordered: false, items: [long, ...shorts] };
 
@@ -62,9 +87,9 @@ describe('autoSplitElements — single list branch', () => {
 });
 
 describe('autoSplitElements — single toc branch', () => {
-  it('balances by cumulative title length and carries numberStart into the second half', () => {
+  it('balances by cumulative estimated line count and carries numberStart into the second half', () => {
     const entries = [
-      { title: 'x'.repeat(100), index: 0 },
+      { title: 'x'.repeat(700), index: 0 },
       { title: 'a', index: 1 },
       { title: 'b', index: 2 },
       { title: 'c', index: 3 },

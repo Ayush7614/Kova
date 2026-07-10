@@ -44,38 +44,50 @@ function visualLength(text: string): number {
   return n;
 }
 
-function estimateItemLines(item: ListItem): number {
+/**
+ * Estimated wrapped-line count for a single list item (including its
+ * children). Exported so element-splitting code can balance columns by the
+ * same weight used here to decide whether to split at all — see
+ * elementGrouping.ts.
+ */
+export function estimateItemLines(item: ListItem): number {
   // ~70 chars/line: proportional body font at 18px across a half-slide column
   const self = Math.max(1, Math.ceil(visualLength(item.text) / 70));
   const children = item.children.reduce((n, c) => n + estimateItemLines(c), 0);
   return self + children;
 }
 
-function estimateLines(elements: SlideElement[]): number {
-  let total = 0;
-  for (const el of elements) {
-    switch (el.type) {
-      case 'list':
-        total += el.items.reduce((n, item) => n + estimateItemLines(item), 0);
-        break;
-      case 'toc':
-        // ~70 chars/line, same column width assumption as list items.
-        total += el.entries.reduce((n, entry) => n + Math.max(1, Math.ceil(visualLength(entry.title) / 70)), 0);
-        break;
-      case 'paragraph': {
-        // ~90 chars/line: proportional body font at 18px across ~826px usable width
-        const lines = el.text.split('\n').filter(Boolean);
-        total += lines.reduce((n, l) => n + Math.max(1, Math.ceil(visualLength(l) / 90)), 0);
-        break;
-      }
-      case 'progress':
-        total += 2;
-        break;
-      default:
-        total += 2;
+/** Estimated wrapped-line count for a single TOC entry title. */
+export function estimateTocEntryLines(title: string): number {
+  // ~70 chars/line, same column width assumption as list items.
+  return Math.max(1, Math.ceil(visualLength(title) / 70));
+}
+
+/**
+ * Estimated wrapped-line count for a single slide element. Exported so
+ * elementGrouping.ts can balance the "multiple elements" column split by the
+ * same per-element weight this module uses to decide whether to split at all.
+ */
+export function estimateElementLines(el: SlideElement): number {
+  switch (el.type) {
+    case 'list':
+      return el.items.reduce((n, item) => n + estimateItemLines(item), 0);
+    case 'toc':
+      return el.entries.reduce((n, entry) => n + estimateTocEntryLines(entry.title), 0);
+    case 'paragraph': {
+      // ~90 chars/line: proportional body font at 18px across ~826px usable width
+      const lines = el.text.split('\n').filter(Boolean);
+      return lines.reduce((n, l) => n + Math.max(1, Math.ceil(visualLength(l) / 90)), 0);
     }
+    case 'progress':
+      return 2;
+    default:
+      return 2;
   }
-  return total;
+}
+
+function estimateLines(elements: SlideElement[]): number {
+  return elements.reduce((n, el) => n + estimateElementLines(el), 0);
 }
 
 /**

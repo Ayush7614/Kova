@@ -9,15 +9,35 @@ import { Elements, CodeBlock, MermaidDiagram, YoutubeEmbed, VideoEmbed, PollEmbe
 // Measures scrollHeight vs clientHeight after every render and on resize,
 // then applies a CSS transform to the inner wrapper — no visual flash because
 // the measurement and style update both happen inside useLayoutEffect (before paint).
-export function OverflowPane({ className, elements }: { className: string; elements: SlideElement[] }) {
+//
+// `minScale`/`onNaturalScale` are an opt-in pair that let a parent (e.g.
+// TwoColumnLayout) synchronise the shrink across sibling panes: each pane
+// reports its own unclamped ("natural") fit scale via onNaturalScale, and the
+// parent feeds back the smallest of its children's scales as minScale so a
+// lightly filled column shrinks in lockstep with a heavily overflowing
+// sibling instead of sitting at full size with empty space below it — see
+// issue #145.
+export function OverflowPane({ className, elements, minScale, onNaturalScale }: { className: string; elements: SlideElement[]; minScale?: number; onNaturalScale?: (scale: number) => void }) {
   const t = useT();
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const { isThumbnail, hideOverflowBadge } = useContext(SlideCtx);
-  const fitScaleRef = useRef(1);
+  const fitScaleRef = useRef(1); // this pane's own natural (unclamped) fit scale
   const [fitScale, setFitScale] = useState(1);
+  const minScaleRef = useRef(minScale);
+  minScaleRef.current = minScale;
 
   const lastRef = useRef({ c: -1, a: -1 });
+
+  // `transform` is paint-only — it never changes the element's content-box
+  // size, so writing it here can't re-trigger the ResizeObserver below and
+  // can't reopen the loop the bail-out in remeasure() guards against.
+  const applyTransform = useCallback((natural: number) => {
+    const inner = innerRef.current;
+    if (!inner) return;
+    const applied = Math.min(natural, minScaleRef.current ?? 1);
+    inner.style.transform = applied < 1 ? `scale(${applied})` : '';
+  }, []);
 
   const remeasure = useCallback(() => {
     const outer = outerRef.current;
@@ -30,19 +50,19 @@ export function OverflowPane({ className, elements }: { className: string; eleme
     const contentH = inner.scrollHeight;
     const availH = outer.clientHeight;
     if (contentH === lastRef.current.c && availH === lastRef.current.a) {
-      inner.style.transform = fitScaleRef.current < 1 ? `scale(${fitScaleRef.current})` : '';
+      applyTransform(fitScaleRef.current);
       return;
     }
     lastRef.current = { c: contentH, a: availH };
     const s = contentH > availH + 2 && availH > 0
       ? Math.max(0.4, availH / contentH)
       : 1;
-    inner.style.transform = s < 1 ? `scale(${s})` : '';
+    applyTransform(s);
     if (Math.abs(s - fitScaleRef.current) > 0.005) {
       fitScaleRef.current = s;
       setFitScale(s);
     }
-  }, []);
+  }, [applyTransform]);
 
   // ResizeObserver fires once on observe() (covers mount), then on real box-size
   // changes: `outer` for available height, `inner` for content growth. The callback
@@ -70,12 +90,28 @@ export function OverflowPane({ className, elements }: { className: string; eleme
     remeasure();
   }, [elements, remeasure]);
 
+  // Report this pane's natural scale up so a parent can compute the shared
+  // minScale across sibling panes. useLayoutEffect (not useEffect) so the
+  // report — and the resulting minScale prop update below — land before paint.
+  useLayoutEffect(() => {
+    onNaturalScale?.(fitScale);
+  }, [fitScale, onNaturalScale]);
+
+  // Re-apply whenever the externally supplied minScale changes, even though
+  // this pane's own dimensions haven't — that's exactly the case where a
+  // sibling column grew fuller and forced a deeper shared shrink.
+  useLayoutEffect(() => {
+    applyTransform(fitScaleRef.current);
+  }, [minScale, applyTransform]);
+
+  const appliedScale = minScale !== undefined ? Math.min(fitScale, minScale) : fitScale;
+
   return (
     <div ref={outerRef} className={className}>
       <div ref={innerRef} style={{ transformOrigin: 'top left' }}>
         <Elements elements={elements} />
       </div>
-      {fitScale < 0.99 && !isThumbnail && !hideOverflowBadge && <div className="sl-overflow-badge">{t('preview.rescaledToFit')}</div>}
+      {appliedScale < 0.99 && !isThumbnail && !hideOverflowBadge && <div className="sl-overflow-badge">{t('preview.rescaledToFit')}</div>}
     </div>
   );
 }
@@ -227,13 +263,20 @@ function TwoColumnLayout({ slide }: { slide: Slide }) {
     [left, right] = autoSplitElements(slide.elements);
   }
 
+  // Shrink both columns in lockstep: without this, a lightly filled column
+  // sits at full size (with dead space below it) next to a sibling that had
+  // to shrink heavily to fit its share of the content — issue #145.
+  const [leftScale, setLeftScale] = useState(1);
+  const [rightScale, setRightScale] = useState(1);
+  const syncedScale = Math.min(leftScale, rightScale);
+
   return (
     <div className="sl-two-col">
       {slide.title && <div className="sl-heading sl-two-col__title">{slide.title}</div>}
       <div className="sl-two-col__body">
-        <OverflowPane className="sl-two-col__col" elements={left} />
+        <OverflowPane className="sl-two-col__col" elements={left} minScale={syncedScale} onNaturalScale={setLeftScale} />
         <div className="sl-two-col__divider" />
-        <OverflowPane className="sl-two-col__col" elements={right} />
+        <OverflowPane className="sl-two-col__col" elements={right} minScale={syncedScale} onNaturalScale={setRightScale} />
       </div>
     </div>
   );
