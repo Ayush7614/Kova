@@ -177,7 +177,7 @@ jobs:
           mkdir "$RUNNER_TEMP/signpath-unsigned"
           cp src-tauri/target/release/bundle/msi/*.msi "$RUNNER_TEMP/signpath-unsigned/"
           cp src-tauri/target/release/bundle/nsis/*.exe "$RUNNER_TEMP/signpath-unsigned/"
-          ( cd "$RUNNER_TEMP/signpath-unsigned" && zip -j "$RUNNER_TEMP/signpath-unsigned.zip" * )
+          ( cd "$RUNNER_TEMP/signpath-unsigned" && 7z a -tzip "$RUNNER_TEMP/signpath-unsigned.zip" * )
 
       - name: Upload unsigned Windows binaries as build artifact
         if: matrix.platform == 'windows-latest'
