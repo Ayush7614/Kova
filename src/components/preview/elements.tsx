@@ -278,8 +278,17 @@ export function PollEmbed({ embed }: { embed: Extract<SlideElement, { type: 'pol
     );
   }
 
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent click bubbling to PresentationOverlay navigation handler
+    openUrl(embed.url).catch(() => {});
+  };
+
   return (
-    <div className="sl-poll">
+    <div
+      className="sl-poll sl-poll--clickable"
+      onClick={handleClick}
+      title={t('preview.openInBrowserTitle', { url: embed.url })}
+    >
       <div className="sl-poll__qr">
         <ErrorBoundary
           fallback={<div className="sl-poll__qr-error">{t('preview.pollQrUnavailable')}</div>}
@@ -290,6 +299,7 @@ export function PollEmbed({ embed }: { embed: Extract<SlideElement, { type: 'pol
       </div>
       <div className="sl-poll__label">{embed.label}</div>
       <div className="sl-poll__url">{embed.url}</div>
+      <div className="sl-poll__open-hint">{t('preview.clickToOpenInBrowser')}</div>
     </div>
   );
 }

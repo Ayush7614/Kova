@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import mermaid from 'mermaid';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Slide } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
 import { themeToVars, resolveTemplate, DEFAULT_THEME, isLightHex } from '../../engine/theme';
@@ -70,10 +71,27 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
   const logoInFooter = theme.footer.show && theme.logo && ['bottom-left', 'bottom-right'].includes(theme.logo_position);
   const showFloatingLogo = theme.logo && !logoInHeader && !logoInFooter;
 
+  const isThumbnail = isThumbnailProp ?? scale !== 1;
+
   const ctxValue = useMemo<SlideCtxValue>(
-    () => ({ isThumbnail: isThumbnailProp ?? scale !== 1, hideOverflowBadge, textColor: theme.colors.text, mermaidInit: buildExportMermaidInit(theme), onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined, onNavigateTo }),
-    [isThumbnailProp, scale, hideOverflowBadge, theme, onAllDiagramsReady, onDiagramReady, onNavigateTo],
+    () => ({ isThumbnail, hideOverflowBadge, textColor: theme.colors.text, mermaidInit: buildExportMermaidInit(theme), onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined, onNavigateTo }),
+    [isThumbnail, hideOverflowBadge, theme, onAllDiagramsReady, onDiagramReady, onNavigateTo],
   );
+
+  // Markdown-authored <a> tags (rendered via dangerouslySetInnerHTML in child
+  // elements) would otherwise navigate the Tauri webview itself, stranding the
+  // user outside the app with no way back to the presentation (issue #142).
+  // Delegate from the slide root so every content area is covered without
+  // wiring a handler into each renderer.
+  const handleContentClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const anchor = (e.target as HTMLElement).closest('a[href]');
+    if (!anchor) return;
+    const href = anchor.getAttribute('href');
+    if (!href || href === '#') return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isThumbnail) openUrl(href).catch(() => {});
+  }, [isThumbnail]);
 
   return (
     <SlideCtx.Provider value={ctxValue}>
@@ -82,6 +100,7 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
       style={{ ...vars, ...(scale !== 1 ? { transform: `scale(${scale})`, transformOrigin: 'top left' } : {}) }}
       data-layout={slide.layout}
       data-code-scheme={isLightHex(theme.colors.code_bg) ? 'light' : 'dark'}
+      onClick={handleContentClick}
     >
       {/* Header bar */}
       {theme.header.show && (

@@ -266,6 +266,36 @@ describe('element parsing', () => {
     expect(table?.type === 'table' && table.rows[0][1]).toContain('<a href="https://example.com">docs</a>');
   });
 
+  it('defaults a schemeless bare-domain link to https', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n[link text](google.de)\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.html).toContain('<a href="https://google.de">link text</a>');
+  });
+
+  it('defaults a protocol-relative link to https', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n[link text](//google.de)\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.html).toContain('<a href="https://google.de">link text</a>');
+  });
+
+  it('defaults a bare-domain link with a path to https', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n[link text](google.de/page?x=1)\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.html).toContain('<a href="https://google.de/page?x=1">link text</a>');
+  });
+
+  it('leaves an explicit http scheme untouched', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n[link text](http://google.de)\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.html).toContain('<a href="http://google.de">link text</a>');
+  });
+
+  it('still strips an unsafe/unrecognised link scheme to #', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n[link text](javascript:alert(1))\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.html).toContain('<a href="#">link text</a>');
+  });
+
   it('leaves plain table cell text unchanged', () => {
     const { slides } = parseDocument(doc([
       '## Slide',
