@@ -169,7 +169,7 @@ jobs:
       # updater key and patch latest.json — same pattern as the AppImage
       # re-sign below, just for a different reason (external signing vs
       # post-build stripping).
-      - name: Zip unsigned Windows binaries for SignPath
+      - name: Stage unsigned Windows binaries for SignPath
         if: matrix.platform == 'windows-latest'
         shell: bash
         run: |
@@ -181,15 +181,19 @@ jobs:
           # SignPath's exact-match artifact config chokes on multiple hits.
           cp "$(ls -t src-tauri/target/release/bundle/msi/*.msi | head -1)" "$RUNNER_TEMP/signpath-unsigned/"
           cp "$(ls -t src-tauri/target/release/bundle/nsis/*.exe | head -1)" "$RUNNER_TEMP/signpath-unsigned/"
-          ( cd "$RUNNER_TEMP/signpath-unsigned" && 7z a -tzip "$RUNNER_TEMP/signpath-unsigned.zip" * )
 
+      # actions/upload-artifact already zips whatever path it's given — that
+      # zip is what SignPath's <zip-file> root matches against. Point it at
+      # the directory itself rather than a zip we made ourselves, or the two
+      # binaries end up nested one level too deep (inside our own zip, inside
+      # the zip upload-artifact makes of it) and no configured path matches.
       - name: Upload unsigned Windows binaries as build artifact
         if: matrix.platform == 'windows-latest'
         id: upload-unsigned-windows
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: signpath-unsigned-windows
-          path: ${{ runner.temp }}/signpath-unsigned.zip
+          path: ${{ runner.temp }}/signpath-unsigned
           retention-days: 1
 
       - name: Submit Windows binaries to SignPath for signing
