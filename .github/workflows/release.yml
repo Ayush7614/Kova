@@ -175,8 +175,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir "$RUNNER_TEMP/signpath-unsigned"
-          cp src-tauri/target/release/bundle/msi/*.msi "$RUNNER_TEMP/signpath-unsigned/"
-          cp src-tauri/target/release/bundle/nsis/*.exe "$RUNNER_TEMP/signpath-unsigned/"
+          # The Rust build cache persists src-tauri/target/ across releases, so
+          # bundle/{msi,nsis} can accumulate old versions' installers alongside
+          # the one just built — glob by newest mtime, not just extension, or
+          # SignPath's exact-match artifact config chokes on multiple hits.
+          cp "$(ls -t src-tauri/target/release/bundle/msi/*.msi | head -1)" "$RUNNER_TEMP/signpath-unsigned/"
+          cp "$(ls -t src-tauri/target/release/bundle/nsis/*.exe | head -1)" "$RUNNER_TEMP/signpath-unsigned/"
           ( cd "$RUNNER_TEMP/signpath-unsigned" && 7z a -tzip "$RUNNER_TEMP/signpath-unsigned.zip" * )
 
       - name: Upload unsigned Windows binaries as build artifact
@@ -211,8 +215,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          MSI=$(ls src-tauri/target/release/bundle/msi/*.msi)
-          NSIS=$(ls src-tauri/target/release/bundle/nsis/*.exe)
+          MSI=$(ls -t src-tauri/target/release/bundle/msi/*.msi | head -1)
+          NSIS=$(ls -t src-tauri/target/release/bundle/nsis/*.exe | head -1)
 
           cp "$RUNNER_TEMP/signpath-signed"/*.msi "$MSI"
           cp "$RUNNER_TEMP/signpath-signed"/*.exe "$NSIS"
