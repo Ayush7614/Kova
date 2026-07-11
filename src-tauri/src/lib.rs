@@ -84,6 +84,7 @@ pub fn run() {
             commands::write_asset_bytes,
             commands::copy_image_to_assets,
             commands::scan_asset_refs,
+            commands::cleanup_unused_assets,
             commands::copy_file_with_assets,
             commands::show_in_file_manager,
             commands::setup_audience_window,
