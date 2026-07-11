@@ -49,7 +49,7 @@ const de: DeepPartial<Messages> = {
     sectionTheme: 'Design', // Theme
     sectionColours: 'Farben', // Colours
     sectionFonts: 'Schriftarten', // Fonts
-    sectionBranding: 'Branding', // Branding
+    sectionDocument: 'Dokument', // Document
     fileLabel: 'Datei', // File
     slidesLabel: 'Folien', // Slides
     titleLabel: 'Titel', // Title

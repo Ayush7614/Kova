@@ -826,7 +826,7 @@ function htmlToInlineRuns(
   div.innerHTML = html;
   const runs: PptxRun[] = [];
 
-  function walk(node: Node, bold: boolean, italic: boolean, isCode: boolean, color: string) {
+  function walk(node: Node, bold: boolean, italic: boolean, isCode: boolean, color: string, href: string | null) {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent ?? '';
       if (!text) return;
@@ -837,11 +837,15 @@ function htmlToInlineRuns(
           ...(bold   ? { bold: true }   : {}),
           ...(italic ? { italic: true } : {}),
           ...(isCode ? { fontFace: codeFont } : {}),
+          ...(href   ? { hyperlink: { url: href } } : {}),
         },
       });
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const el = node as Element;
       const tag = el.tagName.toLowerCase();
+      // '#' is escUrl's sentinel for a stripped/invalid href (see markdownToSlides.ts) — never link to it.
+      const linkHref = tag === 'a' ? el.getAttribute('href') : null;
+      const nextHref = linkHref && linkHref !== '#' ? linkHref : href;
       for (const child of node.childNodes) {
         walk(
           child,
@@ -849,12 +853,13 @@ function htmlToInlineRuns(
           italic || tag === 'em'     || tag === 'i',
           isCode || tag === 'code',
           tag === 'a' ? accentColor : color,
+          nextHref,
         );
       }
     }
   }
 
-  for (const child of div.childNodes) walk(child, false, false, false, defaultColor);
+  for (const child of div.childNodes) walk(child, false, false, false, defaultColor, null);
   return runs.length > 0 ? runs : [{ text: stripHtml(html) || ' ', options: { color: defaultColor } }];
 }
 
@@ -1061,7 +1066,10 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
     switch (el.type) {
       case 'paragraph':
         if (el.text.trim()) {
-          runs.push({ text: el.text, options: { fontSize: 18, breakLine: true } });
+          const paraRuns = htmlToInlineRuns(el.html, hex(t.colors.text), firstFont(t.fonts.code), hex(t.colors.accent));
+          paraRuns.forEach((run, ri) => {
+            runs.push({ text: run.text, options: { fontSize: 18, ...run.options, breakLine: ri === paraRuns.length - 1 } });
+          });
         }
         break;
 
@@ -1117,7 +1125,12 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
         el.entries.forEach((entry, i) => {
           runs.push({
             text: entry.title,
-            options: { bullet: { type: 'number', numberType: 'arabicPeriod', numberStartAt: numberStart + i + 1 }, fontSize: 18, paraSpaceAfter: 4, breakLine: true },
+            options: {
+              ...(t.toc.numbered
+                ? { bullet: { type: 'number', numberType: 'arabicPeriod', numberStartAt: numberStart + i + 1 } }
+                : {}),
+              fontSize: 18, paraSpaceAfter: 4, breakLine: true,
+            },
           });
         });
         break;

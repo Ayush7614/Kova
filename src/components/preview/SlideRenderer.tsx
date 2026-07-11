@@ -74,7 +74,7 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
   const isThumbnail = isThumbnailProp ?? scale !== 1;
 
   const ctxValue = useMemo<SlideCtxValue>(
-    () => ({ isThumbnail, hideOverflowBadge, textColor: theme.colors.text, mermaidInit: buildExportMermaidInit(theme), onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined, onNavigateTo }),
+    () => ({ isThumbnail, hideOverflowBadge, textColor: theme.colors.text, mermaidInit: buildExportMermaidInit(theme), tocNumbered: theme.toc.numbered, onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined, onNavigateTo }),
     [isThumbnail, hideOverflowBadge, theme, onAllDiagramsReady, onDiagramReady, onNavigateTo],
   );
 

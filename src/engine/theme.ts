@@ -36,6 +36,11 @@ export interface ThemeFooter {
   show_slide_number: boolean;
 }
 
+export interface ThemeToc {
+  /** Ordered (numbered, `<ol>`) vs. unordered (plain hyperlinked, `<ul>`) list. */
+  numbered: boolean;
+}
+
 export interface ThemeLayout {
   /** Alignment of title/hero slide content */
   title_align: 'center' | 'left' | 'bottom-left';
@@ -56,6 +61,7 @@ export interface Theme {
   logo_opacity: number;
   header: ThemeHeader;
   footer: ThemeFooter;
+  toc: ThemeToc;
   /** Font families to load from the app's bundled font assets (OFL fonts). */
   bundledFonts?: string[];
   /** Remote fonts to download-once, verify, and cache locally. */
@@ -89,6 +95,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: false, text: '' },
     footer: { show: false, text: '{title}', show_slide_number: true },
+    toc: { numbered: true },
   },
   {
     id: 'dark',
@@ -112,6 +119,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: false, text: '' },
     footer: { show: false, text: '{title}', show_slide_number: true },
+    toc: { numbered: true },
   },
   {
     id: 'institutional',
@@ -135,6 +143,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: true, text: '' },
     footer: { show: true, text: '{title}', show_slide_number: true },
+    toc: { numbered: true },
   },
   {
     id: 'minimal',
@@ -158,6 +167,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: false, text: '' },
     footer: { show: false, text: '', show_slide_number: false },
+    toc: { numbered: true },
   },
   {
     id: 'editorial',
@@ -181,6 +191,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: false, text: '' },
     footer: { show: true, text: '{title}', show_slide_number: true },
+    toc: { numbered: true },
   },
   {
     id: 'slate',
@@ -204,6 +215,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: false, text: '' },
     footer: { show: true, text: '{title}', show_slide_number: true },
+    toc: { numbered: true },
   },
   {
     id: 'pitch',
@@ -227,6 +239,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: false, text: '' },
     footer: { show: false, text: '', show_slide_number: false },
+    toc: { numbered: true },
   },
   {
     id: 'cosmos',
@@ -250,6 +263,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: false, text: '' },
     footer: { show: true, text: '{title}', show_slide_number: true },
+    toc: { numbered: true },
   },
   {
     id: 'forge',
@@ -273,6 +287,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: false, text: '' },
     footer: { show: false, text: '', show_slide_number: false },
+    toc: { numbered: true },
   },
   {
     id: 'grove',
@@ -296,6 +311,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: false, text: '' },
     footer: { show: true, text: '{title}', show_slide_number: true },
+    toc: { numbered: true },
   },
   {
     id: 'horizon',
@@ -319,6 +335,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     logo_opacity: 0.85,
     header: { show: false, text: '' },
     footer: { show: true, text: '{title}', show_slide_number: true },
+    toc: { numbered: true },
   },
 ];
 
@@ -534,6 +551,10 @@ export function sanitiseThemeOverrides(raw: Record<string, unknown>): Partial<Th
     if (typeof f.show_slide_number === 'boolean') footer.show_slide_number = f.show_slide_number;
     if (Object.keys(footer).length > 0) result.footer = footer as unknown as ThemeFooter;
   }
+  if (raw.toc && typeof raw.toc === 'object') {
+    const rawToc = raw.toc as Record<string, unknown>;
+    if (typeof rawToc.numbered === 'boolean') result.toc = { numbered: rawToc.numbered };
+  }
   return result;
 }
 
@@ -593,6 +614,7 @@ function normaliseTheme(id: string, raw: Record<string, unknown>): Theme {
   const layout = (raw.layout as Partial<ThemeLayout>) ?? {};
   const header = (raw.header as Partial<ThemeHeader>) ?? {};
   const footer = (raw.footer as Partial<ThemeFooter>) ?? {};
+  const toc = (raw.toc as Partial<ThemeToc>) ?? {};
   const rawLogo = raw.logo as string | undefined;
   const logo = rawLogo && /^(https?:|data:image\/|\/|[A-Za-z]:[/\\])/.test(rawLogo) ? rawLogo : undefined;
   const bundledFonts = Array.isArray(raw.bundledFonts)
@@ -630,6 +652,7 @@ function normaliseTheme(id: string, raw: Record<string, unknown>): Theme {
     logo_opacity: typeof raw.logo_opacity === 'number' ? Math.min(1, Math.max(0, raw.logo_opacity)) : 0.85,
     header: { ...base.header, ...header },
     footer: { ...base.footer, ...footer },
+    toc: { ...base.toc, ...toc },
     ...(bundledFonts && bundledFonts.length > 0 ? { bundledFonts } : {}),
     ...(remoteFonts  && remoteFonts.length  > 0 ? { remoteFonts  } : {}),
   };

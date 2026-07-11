@@ -166,6 +166,7 @@ export default function App() {
       fonts:  { ...base.fonts,  ...(themeOverrides.fonts  ?? {}) },
       header: { ...base.header, ...(themeOverrides.header ?? {}) },
       footer: { ...base.footer, ...(themeOverrides.footer ?? {}) },
+      toc: { ...base.toc, ...(themeOverrides.toc ?? {}) },
     };
     // Swap in the pre-resolved data URL for the logo. The asset protocol cannot
     // reliably serve absolute Windows paths outside the home directory, so we
@@ -747,13 +748,14 @@ export default function App() {
 
   const handleThemeSelect = useCallback((id: string) => {
     setActiveThemeId(id);
-    // Preserve user-configured values across theme switches: header/footer
+    // Preserve user-configured values across theme switches: header/footer/toc
     // content and any logo the user explicitly chose. Color/font overrides
     // are cleared since they were customising the old theme's palette.
     setThemeOverrides((prev) => {
       const preserved: Partial<Theme> = {};
       if (prev.header !== undefined) preserved.header = prev.header;
       if (prev.footer !== undefined) preserved.footer = prev.footer;
+      if (prev.toc !== undefined) preserved.toc = prev.toc;
       if ('logo' in prev) preserved.logo = prev.logo;
       if (prev.logo_position !== undefined) preserved.logo_position = prev.logo_position;
       if (prev.logo_opacity !== undefined) preserved.logo_opacity = prev.logo_opacity;
@@ -980,6 +982,8 @@ export default function App() {
       overridePatch.header = themeOverrides.header;
     if (themeOverrides.footer !== undefined)
       overridePatch.footer = themeOverrides.footer;
+    if (themeOverrides.toc !== undefined)
+      overridePatch.toc = themeOverrides.toc;
     const hasOverrides = Object.keys(overridePatch).length > 0;
     return hasOverrides
       ? patchFrontmatter(content, { theme_overrides: overridePatch })
@@ -1024,6 +1028,7 @@ export default function App() {
       // Explicitly re-watching after each save ensures external changes are
       // detected regardless of how the OS / notify crate handles the rename.
       await invoke('start_watching', { path: filePath }).catch(console.error);
+      invoke('cleanup_unused_assets', { filePath }).catch((err) => console.error('Asset cleanup failed:', err));
       // Saving resolves any pending external-change conflict: the user's edits
       // win. Dismiss the dialog so the confirmCloseAction "Save" path can
       // proceed with the close, and so Ctrl+S while the dialog is open doesn't
@@ -1050,6 +1055,7 @@ export default function App() {
       setIsDirty(false);
       diskContentRef.current = toWrite;
       await invoke('start_watching', { path: target }).catch(console.error);
+      invoke('cleanup_unused_assets', { filePath: target }).catch((err) => console.error('Asset cleanup failed:', err));
       return target;
     } catch (err) { console.error('Save As failed:', err); setWarnMessage(`Save failed: ${err}`); return null; }
   }, [filePath, content, buildSaveContent]);

@@ -200,28 +200,27 @@ export function ListItemNode({ item }: { item: ListItem }) {
 
 function TocElement({ el }: { el: Extract<SlideElement, { type: 'toc' }> }) {
   const t = useT();
-  const { isThumbnail, onNavigateTo } = useContext(SlideCtx);
+  const { isThumbnail, onNavigateTo, tocNumbered } = useContext(SlideCtx);
   const interactive = !isThumbnail && !!onNavigateTo;
 
   if (el.entries.length === 0) {
     return <p className="sl-para" style={{ opacity: 0.5, fontStyle: 'italic' }}>{t('preview.noTitledSlidesFound')}</p>;
   }
-  const numberStart = el.numberStart ?? 0;
-  return (
-    <ul className="sl-list sl-list--toc">
-      {el.entries.map((entry, i) => (
-        <li key={i} className="sl-toc-entry">
-          <span className="sl-toc-num">{numberStart + i + 1}.</span>
-          {interactive ? (
-            <button className="sl-toc-link" onClick={(e) => { e.stopPropagation(); onNavigateTo!(entry.index); }}>
-              {entry.title}
-            </button>
-          ) : (
-            <span>{entry.title}</span>
-          )}
-        </li>
-      ))}
-    </ul>
+  const items = el.entries.map((entry, i) => (
+    <li key={i}>
+      {interactive ? (
+        <button className="sl-toc-link" onClick={(e) => { e.stopPropagation(); onNavigateTo!(entry.index); }}>
+          {entry.title}
+        </button>
+      ) : (
+        <span>{entry.title}</span>
+      )}
+    </li>
+  ));
+  return tocNumbered ? (
+    <ol className="sl-list sl-list--toc sl-list--toc-ordered" start={(el.numberStart ?? 0) + 1}>{items}</ol>
+  ) : (
+    <ul className="sl-list sl-list--toc">{items}</ul>
   );
 }
 
