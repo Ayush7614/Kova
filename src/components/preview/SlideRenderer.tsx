@@ -239,7 +239,15 @@ interface Props {
 }
 
 export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, totalSlides, docTitle = '', docDate = '', scale = 1, isThumbnail: isThumbnailProp, hideOverflowBadge = false, onAllDiagramsReady, onNavigateTo }: Props) {
-  const vars = themeToVars(theme);
+  // Per-slide text colour: explicit `<!-- color -->` wins; otherwise a Marp
+  // `<!-- _class: invert -->` swaps to the theme's light "text on dark" colour
+  // (title_text). Falls back to the deck text colour. Drives both the content
+  // area's `--sl-text` override and the QR/poll foreground colour in context.
+  const slideTextColor = slide.textColor
+    ?? (slide.invert ? theme.colors.title_text : theme.colors.text);
+  const slideCodeBg = slide.invert && !slide.textColor ? '#0d1117' : undefined;
+
+  const vars = themeToVars(theme, slideTextColor, slideCodeBg);
 
   // Signal export-readiness when all Mermaid diagrams on this slide have rendered.
   const mermaidCount = useMemo(() => slide.elements.filter((e) => e.type === 'mermaid').length, [slide.elements]);
@@ -269,8 +277,8 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
   const showFloatingLogo = theme.logo && !logoInHeader && !logoInFooter;
 
   const ctxValue = useMemo<SlideCtxValue>(
-    () => ({ isThumbnail: isThumbnailProp ?? scale !== 1, hideOverflowBadge, textColor: theme.colors.text, mermaidInit: buildMermaidInit(theme), onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined, onNavigateTo }),
-    [isThumbnailProp, scale, hideOverflowBadge, theme, onAllDiagramsReady, onDiagramReady, onNavigateTo],
+    () => ({ isThumbnail: isThumbnailProp ?? scale !== 1, hideOverflowBadge, textColor: slideTextColor, mermaidInit: buildMermaidInit(theme), onDiagramReady: onAllDiagramsReady ? onDiagramReady : undefined, onNavigateTo }),
+    [isThumbnailProp, scale, hideOverflowBadge, slideTextColor, theme, onAllDiagramsReady, onDiagramReady, onNavigateTo],
   );
 
   return (
