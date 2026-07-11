@@ -37,9 +37,9 @@ jobs:
           - **Fixed links without a scheme (e.g. `google.de` instead of `https://google.de`) doing nothing when clicked** — they now default to https and open in your system browser instead of dead-ending inside the app (reported by @a1880, #142).
           - **Fixed the footer's fallback date reverting to a hardcoded dash separator for some locales** (German showed `DD-MM-YYYY` instead of `DD.MM.YYYY`) — a regression left over from the original fix for the footer-reset bug (reported by @a1880, #55).
           - **Fixed two-column layouts splitting unevenly once the renderer shrank the font to fit** — a heavy column would shrink to a tiny font while its lighter neighbour sat mostly empty; both columns now balance and shrink together, in the live preview and in PowerPoint export alike (reported by @mdopp, #145).
-          - Fixed exported Mermaid diagrams occasionally rendering in a different font than the live preview showed.
-          - Fixed opening or saving files outside your home folder being blocked on every Linux build — that restriction is now scoped to actual Flatpak sandboxes, where it's needed.
-          - Fixed the app being able to get stuck after a single background task (e.g. font loading) failed, instead of recovering gracefully.
+          - **Fixed exported Mermaid diagrams** occasionally rendering in a different font than the live preview showed.
+          - **Fixed opening or saving files outside your home folder** being blocked on every Linux build — that restriction is now scoped to actual Flatpak sandboxes, where it's needed.
+          - **Fixed the app being able to get stuck** after a single background task (e.g. font loading) failed, instead of recovering gracefully.
 
           ### Performance
           - Capped the Mermaid diagram render cache so long editing sessions on diagram-heavy decks no longer grow memory unboundedly.
