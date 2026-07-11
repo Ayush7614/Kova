@@ -54,6 +54,14 @@ export interface Slide {
     /** Resolved locally for PPTX export when size is `contain`. */
     aspectRatio?: number;
   };
+  /** Per-slide text colour override (e.g. `<!-- color: #ffffff -->` or Marp
+   *  `<!-- _color: white -->`). Applies to body content rendered over a
+   *  background image; falls back to the theme's `text` colour when absent. */
+  textColor?: string;
+  /** Marp `<!-- _class: invert -->` — swap to the deck's inverted palette for
+   *  this slide (theme-defined or a sensible default). Implies a light-on-dark
+   *  text colour when `textColor` is not also set. */
+  invert?: boolean;
 }
 
 export interface AspectRatio { w: number; h: number }

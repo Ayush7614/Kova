@@ -54,6 +54,15 @@ function parseSlide(raw: string, index: number): Slide {
 
   const hidden = /<!--\s*hidden\s*-->/.test(rawWithoutBg);
 
+  // Per-slide text colour override. Kova uses `<!-- color: #fff -->`; Marp
+  // decks use `<!-- _color: white -->`. Both set the same `textColor` field.
+  const colorMatch = rawWithoutBg.match(/<!--\s*(?:_?color)\s*:\s*([^\s-][^\n]*?)\s*-->/i);
+  const textColor = colorMatch ? parseColorValue(colorMatch[1]) : undefined;
+
+  // Marp `<!-- _class: invert -->` — swap to an inverted palette for this slide.
+  const invertMatch = rawWithoutBg.match(/<!--\s*_class\s*:\s*([^\n]*?)\s*-->/);
+  const invert = !!invertMatch && /\binvert\b/.test(invertMatch[1]);
+
   // Preprocess before speaker-notes extraction so ??? inside custom URLs is not
   // misinterpreted as speaker-note markers. Custom elements become inline HTML
   // comment placeholders so remark preserves their position in the element list.
@@ -80,7 +89,7 @@ function parseSlide(raw: string, index: number): Slide {
     }
   }
 
-  return { index, raw, title, titleLevel, elements, speakerNotes: notes, references, layout, layoutOverride, hidden, backgroundImage };
+  return { index, raw, title, titleLevel, elements, speakerNotes: notes, references, layout, layoutOverride, hidden, backgroundImage, textColor, invert };
 }
 
 // ── Custom syntax pre-processor ──────────────────────────────────────────────
@@ -174,6 +183,9 @@ function preprocess(content: string): PreprocessResult {
     // Strip layout override + hidden comments (already captured above)
     if (/^<!--\s*layout:/.test(t)) continue;
     if (/^<!--\s*hidden\s*-->$/.test(t)) continue;
+    // Strip per-slide colour + invert directives (also captured above)
+    if (/^<!--\s*(?:_?color)\s*:/.test(t)) continue;
+    if (/^<!--\s*_class\s*:/.test(t)) continue;
 
     // Expand single-line $$...$$ to multi-line so remark-math treats it as a block
     const dm = t.match(DISPLAY_MATH_RE);
@@ -497,3 +509,18 @@ function escUrl(url: string): string {
 }
 
 export type { Frontmatter };
+
+// Validates a per-slide colour directive value (`<!-- color: … -->` /
+// `<!-- _color: … -->`). Accepts hex (#rgb/#rrggbb/#rrggbbaa), functional
+// notations (rgb()/hsl()/color()/…), and single-word named colours (white,
+// black, rebeccapurple, …). Anything containing spaces, quotes, or CSS
+// metacharacters (`;`, `{`, `}`) is rejected so the value can't be used to
+// inject extra declarations when later placed into a `style` attribute.
+function parseColorValue(raw: string): string | undefined {
+  const v = raw.trim();
+  if (!v) return undefined;
+  if (/^#[0-9a-fA-F]{3,8}$/.test(v)) return v;
+  if (/^(?:rgb|rgba|hsl|hsla|color|hwb|lab|lch|oklab|oklch)\(/i.test(v)) return v;
+  if (/^[a-zA-Z]+$/.test(v)) return v.toLowerCase();
+  return undefined;
+}

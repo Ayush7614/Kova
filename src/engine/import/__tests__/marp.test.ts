@@ -143,11 +143,11 @@ describe('importMarp', () => {
     expect(markdown).not.toContain('marp: true');
   });
 
-  it('drops unsupported _class: invert without mapping to a layout', () => {
+  it('maps _class: invert to Kova invert directive (issue #143)', () => {
     const { markdown, dropped } = importMarp('---\nmarp: true\n---\n<!-- _class: invert -->\n# Hi');
-    expect(dropped).toContain('_class:invert');
+    expect(dropped).not.toContain('_class:invert');
     expect(markdown).not.toContain('<!-- layout:title -->');
-    expect(markdown).not.toContain('_class: invert');
+    expect(markdown).toContain('<!-- _class: invert -->');
     expect(markdown).toContain('# Hi');
   });
 
