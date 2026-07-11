@@ -33,7 +33,7 @@ jobs:
 
           ### Bug fixes
           - **Fixed** a video hiding every other element on the slide unless it was the only thing on it — video now shares the slide with text/images like any other element, and mixed video content is no longer silently dropped from PowerPoint (.pptx) exports (reported by @a1880, #140).
-          - **Fixed** duplicate copies of the same image piling up in the assets folder when re-adding a previously removed image, and added automatic cleanup of asset files no longer referenced by any slide (reported by @a1880, #141).
+          - **Fixed** duplicate copies of the same image piling up in the assets folder when re-adding a previously removed image (reported by @a1880, #141).
           - **Fixed** links without a scheme (e.g. `google.de` instead of `https://google.de`) doing nothing when clicked — they now default to https and open in your system browser instead of dead-ending inside the app (reported by @a1880, #142).
           - **Fixed** the footer's fallback date reverting to a hardcoded dash separator for some locales (German showed `DD-MM-YYYY` instead of `DD.MM.YYYY`) — a regression left over from the original fix for the footer-reset bug (reported by @a1880, #55).
           - **Fixed** two-column layouts splitting unevenly once the renderer shrank the font to fit — a heavy column would shrink to a tiny font while its lighter neighbour sat mostly empty; both columns now balance and shrink together, in the live preview and in PowerPoint export alike (reported by @mdopp, #145).
