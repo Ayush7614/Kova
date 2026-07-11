@@ -211,7 +211,9 @@ jobs:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: 6aea854d-5015-451b-80a3-a1031e70eb9e
           project-slug: kova
-          signing-policy-slug: ${{ github.event_name == 'push' && 'release-signing' || 'test-signing' }}
+          # TODO: switch to 'release-signing' once SignPath's production
+          # certificate application is approved (see 0.6.17 release notes).
+          signing-policy-slug: test-signing
           artifact-configuration-slug: Windows_Executable_Samples
           github-artifact-id: ${{ steps.upload-unsigned-windows.outputs.artifact-id }}
           wait-for-completion: true
