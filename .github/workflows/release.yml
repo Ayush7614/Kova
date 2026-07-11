@@ -46,7 +46,7 @@ jobs:
           - PDF and PowerPoint export libraries now load on demand instead of adding to the app's startup time.
 
           ### Packaging
-          - Windows `.msi`/`.exe` installers are now digitally signed via SignPath, which should reduce or eliminate SmartScreen warnings on install.
+          - Windows `.msi`/`.exe` installers now go through SignPath as part of the release pipeline, using SignPath's test certificate while the production certificate application is pending — Windows SmartScreen will still show its "unrecognised publisher" warning for now.
 
           ---
 
@@ -55,7 +55,7 @@ jobs:
           | Platform | Download | Note |
           |---|---|---|
           | **macOS** (Apple Silicon + Intel) | `.dmg` | Signed and notarised — double-click to install |
-          | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Signed via SignPath |
+          | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Test-signed via SignPath — SmartScreen warning still expected |
           | **Linux** | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), or `.flatpakref` | Install via your package manager |
           | **Linux AppImage** | `.AppImage` | Graphics libs stripped for compatibility with Arch/Fedora/etc. Supports auto-update. |
 
