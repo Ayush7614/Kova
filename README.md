@@ -122,3 +122,5 @@ Kova is free and open source software, released under the **GNU General Public L
 You are free to use, study, modify, and distribute this software under the terms of the GPL v3. Any modified versions distributed to others must also be made available under the GPL v3.
 
 See [LICENSE](LICENSE) for the full license text.
+
+Windows builds are code signed for free courtesy of [SignPath.io](https://signpath.io), using a free code signing certificate from the [SignPath Foundation](https://signpath.org).
