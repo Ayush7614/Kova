@@ -1146,6 +1146,13 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
         runs.push({ text: el.value, options: { fontFace: firstFont(t.fonts.code), fontSize: 15, breakLine: true } });
         break;
 
+      case 'video':
+        // pptx can't embed local video without bundling the file — emit a
+        // labelled placeholder, matching the media-slide placeholder in addMediaSlide.
+        runs.push({ text: `▶ ${el.label || 'Video'}`, options: { fontSize: 16, bold: true, breakLine: true } });
+        runs.push({ text: el.src, options: { fontSize: 11, color: hex(t.colors.accent), breakLine: true, paraSpaceAfter: 4 } });
+        break;
+
       // Images and tables handled separately below
       default:
         break;

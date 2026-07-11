@@ -108,7 +108,7 @@ export function detectLayout(
 
   // ── Highest-priority special types ───────────────────────────────────────
 
-  if (has('youtube') || has('poll') || has('video')) return 'media';
+  if (has('youtube') || has('poll')) return 'media';
   if (has('column-break')) return 'two-column';
 
   // ── Code-only ────────────────────────────────────────────────────────────
@@ -116,6 +116,12 @@ export function detectLayout(
   const bodyElements = hasTitle
     ? elements.filter((e) => e.type !== 'column-break')
     : elements;
+
+  // A lone video (the slide's only body element, title or no title) keeps
+  // the full-slide media treatment; a video alongside other content instead
+  // flows through the standard auto-layout rules below like any other
+  // element type, mirroring the image full-bleed rule further down.
+  if (bodyElements.length === 1 && bodyElements[0].type === 'video') return 'media';
 
   if (bodyElements.length > 0 && bodyElements.every((e) => e.type === 'code' || e.type === 'mermaid')) {
     return 'code';
