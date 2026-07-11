@@ -1028,7 +1028,6 @@ export default function App() {
       // Explicitly re-watching after each save ensures external changes are
       // detected regardless of how the OS / notify crate handles the rename.
       await invoke('start_watching', { path: filePath }).catch(console.error);
-      invoke('cleanup_unused_assets', { filePath }).catch((err) => console.error('Asset cleanup failed:', err));
       // Saving resolves any pending external-change conflict: the user's edits
       // win. Dismiss the dialog so the confirmCloseAction "Save" path can
       // proceed with the close, and so Ctrl+S while the dialog is open doesn't
@@ -1055,7 +1054,6 @@ export default function App() {
       setIsDirty(false);
       diskContentRef.current = toWrite;
       await invoke('start_watching', { path: target }).catch(console.error);
-      invoke('cleanup_unused_assets', { filePath: target }).catch((err) => console.error('Asset cleanup failed:', err));
       return target;
     } catch (err) { console.error('Save As failed:', err); setWarnMessage(`Save failed: ${err}`); return null; }
   }, [filePath, content, buildSaveContent]);
