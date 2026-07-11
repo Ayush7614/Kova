@@ -389,6 +389,23 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, s
         />
 
         <div style={{ padding: '10px 0' }}>
+          <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>{t('settings.contentWidth')}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10, lineHeight: 1.5 }}>
+            {t('settings.contentWidthDescription')}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {([
+              { value: 'fixed', label: t('settings.contentWidthFixed') },
+              { value: 'full',  label: t('settings.contentWidthFull')  },
+            ] as { value: AppSettings['editorContentWidth']; label: string }[]).map(({ value, label }) => (
+              <button key={value} type="button" onClick={() => set('editorContentWidth', value)}
+                style={groupBtnStyle(settings.editorContentWidth === value)}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: '10px 0' }}>
           <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 8 }}>{t('settings.defaultTheme')}</div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
             {t('settings.defaultThemeDescription')}

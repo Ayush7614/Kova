@@ -44,6 +44,7 @@ interface Props {
   uiTheme?: 'dark' | 'light';
   editorFontFamily?: string;
   wordWrap?: boolean;
+  contentWidth?: 'fixed' | 'full';
   spellCheckEnabled?: boolean;
   spellCheckLanguage?: string;
 }
@@ -55,7 +56,7 @@ const externalSync = Annotation.define<boolean>();
 
 const DEFAULT_FONT_SIZE = 14;
 const SCROLLER_BASE = { lineHeight: '1.7' };
-const CONTENT       = { padding: '16px 24px', maxWidth: '720px' };
+const CONTENT       = { padding: '16px 24px' };
 
 const DEFAULT_FONT_FAMILY = "'JetBrains Mono', 'Fira Code', monospace";
 
@@ -83,12 +84,21 @@ function makeFontTheme(fontFamily: string) {
   return EditorView.theme({ '.cm-scroller': { fontFamily } });
 }
 
+function makeContentWidthTheme(contentWidth: 'fixed' | 'full') {
+  return EditorView.theme({
+    '.cm-content': contentWidth === 'full'
+      ? { maxWidth: 'none' }
+      : { maxWidth: '720px', margin: '0 auto' },
+  });
+}
+
 
 const editorColorCompartment    = new Compartment();
 const editorFontCompartment     = new Compartment();
 const editorFontSizeCompartment = new Compartment();
 const lineWrapCompartment       = new Compartment();
 const spellCheckCompartment     = new Compartment();
+const contentWidthCompartment   = new Compartment();
 
 function makeFontSizeTheme(size: number) {
   return EditorView.theme({ '.cm-scroller': { fontSize: `${size}px` } });
@@ -120,7 +130,7 @@ interface ContextMenuState { x: number; y: number; hasSelection: boolean; clickP
 interface ConfirmState { title: string; message: string; okLabel: string; resolve: (ok: boolean) => void }
 
 export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
-  { content, onChange, onCursorSlide, onWarn, onSaveAs, onRequestFind, focusMode = false, filePath, uiTheme = 'dark', editorFontFamily = DEFAULT_FONT_FAMILY, wordWrap = true, spellCheckEnabled = false, spellCheckLanguage = 'en_US' }: Props,
+  { content, onChange, onCursorSlide, onWarn, onSaveAs, onRequestFind, focusMode = false, filePath, uiTheme = 'dark', editorFontFamily = DEFAULT_FONT_FAMILY, wordWrap = true, contentWidth = 'fixed', spellCheckEnabled = false, spellCheckLanguage = 'en_US' }: Props,
   ref,
 ) {
   const t = useT();
@@ -289,6 +299,7 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
         editorFontCompartment.of(makeFontTheme(editorFontFamily)),
         editorFontSizeCompartment.of(makeFontSizeTheme(DEFAULT_FONT_SIZE)),
         lineWrapCompartment.of(wordWrap ? EditorView.lineWrapping : []),
+        contentWidthCompartment.of(makeContentWidthTheme(contentWidth)),
         markdown({ codeLanguages: languages }),
         Prec.high(keymap.of([
           indentWithTab,
@@ -410,6 +421,13 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
       effects: lineWrapCompartment.reconfigure(wordWrap ? EditorView.lineWrapping : []),
     });
   }, [wordWrap]);
+
+  // Switch content width when prop changes
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: contentWidthCompartment.reconfigure(makeContentWidthTheme(contentWidth)),
+    });
+  }, [contentWidth]);
 
   // Manage spell check extension
   useEffect(() => {

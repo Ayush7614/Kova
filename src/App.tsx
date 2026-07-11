@@ -1981,6 +1981,7 @@ export default function App() {
               uiTheme={resolvedUiTheme}
               editorFontFamily={EDITOR_FONT_OPTIONS.find(o => o.value === settings.editorFont)?.family}
               wordWrap={settings.editorWordWrap}
+              contentWidth={settings.editorContentWidth}
               spellCheckEnabled={settings.spellCheckEnabled}
               spellCheckLanguage={settings.spellCheckLanguage}
             />
