@@ -399,7 +399,7 @@ function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, wa
   const ar = img && img.type === 'image' ? imgAr(img) : undefined;
 
   if (imgOnRight) {
-    addElements(s, rest, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings);
+    addElements(s, rest, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, tc);
     if (img && img.type === 'image') {
       tryAddImage(s, img.src, { x: M + colW + 0.3, y: bodyY, w: colW, h: bodyH }, warnings, ar);
     }
@@ -407,7 +407,7 @@ function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, wa
     if (img && img.type === 'image') {
       tryAddImage(s, img.src, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, ar);
     }
-    addElements(s, rest, t, { x: M + colW + 0.3, y: bodyY, w: colW, h: bodyH }, warnings);
+    addElements(s, rest, t, { x: M + colW + 0.3, y: bodyY, w: colW, h: bodyH }, warnings, tc);
   }
 }
 
@@ -472,8 +472,8 @@ function addTwoColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number
     [left, right] = autoSplitElements(slide.elements);
   }
 
-  addElements(s, left,  t, { x: M,               y: bodyY, w: colW, h: bodyH }, warnings);
-  addElements(s, right, t, { x: M + colW + 0.3,  y: bodyY, w: colW, h: bodyH }, warnings);
+  addElements(s, left,  t, { x: M,               y: bodyY, w: colW, h: bodyH }, warnings, tc);
+  addElements(s, right, t, { x: M + colW + 0.3,  y: bodyY, w: colW, h: bodyH }, warnings, tc);
 }
 
 function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
@@ -496,7 +496,7 @@ function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warn
   // Mirror preview: group consecutive progress bars, then apply same placement logic
   const groups = groupProgressRuns(slide.elements);
   if (groups.length < 2) {
-    addElements(s, slide.elements, t, { x: M, y: bodyY, w: W - M * 2, h: bodyH }, warnings);
+    addElements(s, slide.elements, t, { x: M, y: bodyY, w: W - M * 2, h: bodyH }, warnings, tc);
     return;
   }
 
@@ -519,15 +519,15 @@ function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warn
     rightGroups = groups.slice(1);
   }
 
-  addElements(s, leftGroup, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings);
+  addElements(s, leftGroup, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, tc);
 
   if (rightGroups.length === 1) {
-    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY, w: colW, h: bodyH }, warnings);
+    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY, w: colW, h: bodyH }, warnings, tc);
   } else {
     const subH = (bodyH - 0.2) / 2;
-    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY,              w: colW, h: subH }, warnings);
+    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY,              w: colW, h: subH }, warnings, tc);
     if (rightGroups[1]) {
-      addElements(s, rightGroups[1], t, { x: M + colW + GAP, y: bodyY + subH + 0.2, w: colW, h: subH }, warnings);
+      addElements(s, rightGroups[1], t, { x: M + colW + GAP, y: bodyY + subH + 0.2, w: colW, h: subH }, warnings, tc);
     }
   }
 }
@@ -561,7 +561,7 @@ function addGridSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, war
       x: M + col * (cellW + GAP),
       y: bodyY + row * (cellH + GAP),
       w: cellW, h: cellH,
-    }, warnings);
+    }, warnings, tc);
   });
 }
 
@@ -592,7 +592,7 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc
       { text: vid.src, options: { fontSize: 11, color: hex(t.colors.accent) } },
     ], {
       x: M, y: bodyY, w: W - M * 2, h: bodyH,
-      color: hex(t.colors.text), fontFace: firstFont(t.fonts.body),
+      color: tc, fontFace: firstFont(t.fonts.body),
       align: 'center', valign: 'middle', wrap: true,
     });
   }
@@ -607,7 +607,7 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc
       { text: yt.url, options: { fontSize: 11, color: hex(t.colors.accent) } },
     ], {
       x: M, y: bodyY, w: W - M * 2, h: both ? halfH : bodyH,
-      color: hex(t.colors.text), fontFace: firstFont(t.fonts.body),
+      color: tc, fontFace: firstFont(t.fonts.body),
       align: 'center', valign: 'middle', wrap: true,
     });
   }
@@ -618,7 +618,7 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc
       { text: poll.url, options: { fontSize: 11, color: hex(t.colors.accent) } },
     ], {
       x: M, y: pollY, w: W - M * 2, h: both ? halfH : bodyH,
-      color: hex(t.colors.text), fontFace: firstFont(t.fonts.body),
+      color: tc, fontFace: firstFont(t.fonts.body),
       align: 'center', valign: 'middle', wrap: true,
     });
   }
