@@ -48,7 +48,12 @@ export function OverflowPane({ className, elements, minScale, onNaturalScale }: 
     // ResizeObserver → setState → re-render cycle terminates.
     inner.style.transform = '';
     const contentH = inner.scrollHeight;
-    const availH = outer.clientHeight;
+    // clientHeight includes padding, and .sl-body's is a percentage — which
+    // resolves against the *width*, so it is ~90px on a 16:9 slide. Measuring
+    // against it made content up to two table rows too tall read as "fits",
+    // and the frame's overflow:hidden then clipped it instead of scaling.
+    const pad = getComputedStyle(outer);
+    const availH = outer.clientHeight - parseFloat(pad.paddingTop) - parseFloat(pad.paddingBottom);
     if (contentH === lastRef.current.c && availH === lastRef.current.a) {
       applyTransform(fitScaleRef.current);
       return;
