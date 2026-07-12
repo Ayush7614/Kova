@@ -80,6 +80,7 @@ export interface ThemeOverrides {
   logo_opacity?: number;
   header?: { show?: boolean; text?: string };
   footer?: { show?: boolean; text?: string; show_slide_number?: boolean };
+  toc?: { numbered?: boolean };
 }
 
 export interface Frontmatter {

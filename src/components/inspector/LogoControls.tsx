@@ -10,11 +10,13 @@ interface Props {
   logoOpacity: number;
   header: Theme['header'];
   footer: Theme['footer'];
+  toc: Theme['toc'];
   onLogoChange: (path: string | undefined) => void;
   onLogoPositionChange: (pos: Theme['logo_position']) => void;
   onLogoOpacityChange: (opacity: number) => void;
   onHeaderChange: (header: Theme['header']) => void;
   onFooterChange: (footer: Theme['footer']) => void;
+  onTocChange: (toc: Theme['toc']) => void;
 }
 
 const POSITIONS: Array<{ value: Theme['logo_position']; labelKey: MessageKey }> = [
@@ -25,8 +27,8 @@ const POSITIONS: Array<{ value: Theme['logo_position']; labelKey: MessageKey }> 
 ];
 
 export function LogoControls({
-  logo, logoPosition, logoOpacity, header, footer,
-  onLogoChange, onLogoPositionChange, onLogoOpacityChange, onHeaderChange, onFooterChange,
+  logo, logoPosition, logoOpacity, header, footer, toc,
+  onLogoChange, onLogoPositionChange, onLogoOpacityChange, onHeaderChange, onFooterChange, onTocChange,
 }: Props) {
   const t = useT();
   const pickLogo = useCallback(async () => {
@@ -172,6 +174,23 @@ export function LogoControls({
             </div>
           </>
         )}
+      </div>
+
+      {/* Table of contents */}
+      <div>
+        <div style={{ fontSize: 11, color: 'var(--text-label)', marginBottom: 4 }}>{t('inspector.tocSectionLabel')}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            id="toc-numbered"
+            type="checkbox"
+            checked={toc.numbered}
+            onChange={(e) => onTocChange({ ...toc, numbered: e.target.checked })}
+            style={{ cursor: 'pointer' }}
+          />
+          <label htmlFor="toc-numbered" style={{ fontSize: 11, color: 'var(--text-label)', cursor: 'pointer' }}>
+            {t('inspector.tocNumberedLabel')}
+          </label>
+        </div>
       </div>
     </div>
   );

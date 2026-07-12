@@ -144,8 +144,7 @@
 .sl-list li { margin-bottom: 0.25em; }
 .sl-list--nested { margin-top: 0.15em; margin-bottom: 0; }
 .sl-list--toc { list-style: none; padding-left: 0; }
-.sl-toc-entry { display: flex; align-items: baseline; gap: 0.4em; }
-.sl-toc-num { flex: none; opacity: 0.85; }
+.sl-list--toc-ordered { list-style: decimal; padding-left: 1.4em; }
 .sl-toc-link { background: none; border: none; padding: 0; cursor: pointer; font: inherit; color: inherit; text-align: left; opacity: 0.85; transition: opacity 0.15s; }
 .sl-toc-link:hover { opacity: 1; text-decoration: underline; }
 
@@ -474,11 +473,14 @@
 .sl-video__label { font-size: clamp(9px, 2cqi, 16px); font-weight: 600; color: var(--sl-text); text-align: center; font-family: var(--sl-font-body); }
 
 .sl-poll { display: flex; flex-direction: column; align-items: center; gap: 3%; padding: 4%; background: color-mix(in srgb, var(--sl-accent) 10%, var(--sl-bg)); border: 2px solid var(--sl-accent); border-radius: 8px; width: 75%; }
+.sl-poll--clickable { cursor: pointer; }
+.sl-poll--clickable:hover .sl-poll__qr { box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
 .sl-poll__icon { font-size: clamp(20px, 5cqi, 44px); }
-.sl-poll__qr { padding: clamp(6px, 1.2cqi, 12px); background: #fff; border-radius: 6px; display: flex; }
+.sl-poll__qr { padding: clamp(6px, 1.2cqi, 12px); background: #fff; border-radius: 6px; display: flex; transition: box-shadow 0.15s; }
 .sl-poll__qr-error { width: 160px; height: 160px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: clamp(8px, 1.6cqi, 12px); color: #666; padding: 8px; box-sizing: border-box; }
 .sl-poll__label { font-family: var(--sl-font-title); font-size: clamp(10px, 2.5cqi, 22px); font-weight: 700; text-align: center; color: var(--sl-text); }
 .sl-poll__url { font-size: clamp(8px, 1.8cqi, 14px); color: var(--sl-accent); text-align: center; }
+.sl-poll__open-hint { font-size: clamp(7px, 1.4cqi, 11px); color: color-mix(in srgb, var(--sl-accent) 80%, transparent); text-align: center; }
 
 /* ── highlight.js override — let the slide supply the background ─────────── */
 

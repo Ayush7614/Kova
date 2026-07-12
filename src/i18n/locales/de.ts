@@ -49,7 +49,7 @@ const de: DeepPartial<Messages> = {
     sectionTheme: 'Design', // Theme
     sectionColours: 'Farben', // Colours
     sectionFonts: 'Schriftarten', // Fonts
-    sectionBranding: 'Branding', // Branding
+    sectionDocument: 'Dokument', // Document
     fileLabel: 'Datei', // File
     slidesLabel: 'Folien', // Slides
     titleLabel: 'Titel', // Title
@@ -95,6 +95,8 @@ const de: DeepPartial<Messages> = {
     showFooter: 'Fußzeile anzeigen', // Show footer
     footerPlaceholder: 'Fußzeilentext ({title}, {date})', // Footer text ({title}, {date})
     slideNumberLabel: 'Foliennummer', // Slide number
+    tocSectionLabel: 'Inhaltsverzeichnis', // Table of contents
+    tocNumberedLabel: 'Nummeriertes Verzeichnis', // Numbered list
     fontFieldTitle: 'Titel', // Title
     fontFieldBody: 'Fließtext', // Body
     fontFieldCode: 'Code', // Code
@@ -115,27 +117,29 @@ const de: DeepPartial<Messages> = {
     duplicateSlide: 'Folie duplizieren', // Duplicate slide
     showSlide: 'Folie anzeigen', // Show slide
     hideSlide: 'Folie ausblenden', // Hide slide
+    setSlideBackground: 'Hintergrundbild für Folie setzen …', // Set slide background…
+    clearSlideBackground: 'Hintergrundbild entfernen', // Clear background
     deleteSlide: 'Folie löschen', // Delete slide
     showSlideTitle: 'Folie in Präsentation/Export anzeigen', // Show slide in presentation/export
     hideSlideTitle: 'Folie in Präsentation/Export ausblenden', // Hide slide from presentation/export
     editorPanelHeader: 'Editor', // Editor
     slideCountStatus: 'Folie {{current}} von {{total}}', // Slide {{current}} of {{total}}
     noSlides: 'Keine Folien', // No slides
-    estimatedMinutes: { 
-	  one: 'Geschätzt {{count}} Minute', 
-	  zero: 'Geschätzt {{count}} Minuten', 
-	  other: 'Geschätzt {{count}} Minuten' 
-	}, // Est. {{count}} min / mins
+    estimatedMinutes: {
+      zero: 'Geschätzt {{count}} Minuten', // Est. {{count}} min
+      one: 'Geschätzt {{count}} Minute', // Est. {{count}} min
+      other: 'Geschätzt {{count}} Minuten', // Est. {{count}} mins
+    },
     wordCount: '{{count}} Wörter', // {{count}} words
     aspectRatioTooltip: 'Seitenverhältnis: {{current}} — klicken für {{next}}', // Aspect ratio: {{current}} — click for {{next}}
     externalImageWarning: {
       one: '{{count}} Bild liegt außerhalb des Ordners dieser Datei — es wird nicht angezeigt, wenn die Datei verschoben wird', // {{count}} image is outside this file's folder — it won't appear if the file is moved
       other: '{{count}} Bilder liegen außerhalb des Ordners dieser Datei — sie werden nicht angezeigt, wenn die Datei verschoben wird', // {{count}} images are outside this file's folder — they won't appear if the file is moved
     },
-    externalImageBadge: { 
-	  one: '⚠ {{count}} externes Bild', 
-	  other: '⚠ {{count}} externe Bilder' 
-	}, // ⚠ {{count}} external image(s)
+    externalImageBadge: {
+      one: '⚠ {{count}} externes Bild', // ⚠ {{count}} external image
+      other: '⚠ {{count}} externe Bilder', // ⚠ {{count}} external images
+    },
     unsaved: 'Nicht gespeichert', // Unsaved
     newUnsaved: 'Neu — nicht gespeichert', // New — unsaved
     saved: 'Gespeichert', // Saved
@@ -144,6 +148,13 @@ const de: DeepPartial<Messages> = {
   },
   editor: {
     contextMenuAriaLabel: 'Kontextmenü', // Context menu
+    findDialogTitle: 'Suchen', // Find
+    findModeText: 'Text', // Text
+    findModeSlide: 'Folie #', // Slide #
+    findPlaceholderText: 'Suche im Dokument …', // Find in document…
+    findPlaceholderSlide: 'Springe zur Folie (1–{{total}})…', // Go to slide (1–{{total}})…
+    findNext: 'Nächste', // Next
+    findPrevious: 'Vorherige', // Previous
     newPresentationHint: '{{mod}}+N — neue Präsentation', // {{mod}}+N — new presentation
     openFileHint: '{{mod}}+O — Datei öffnen', // {{mod}}+O — open file
     tocHint: 'Rechtsklick → Einfügen → Inhaltsverzeichnis', // Right-click → Insert → Table of Contents
@@ -200,6 +211,7 @@ const de: DeepPartial<Messages> = {
     openInBrowserTitle: 'Im Browser öffnen: {{url}}', // Open in browser: {{url}}
     rescaledToFit: 'Größe angepasst/skaliert', // rescaled to fit
     noTitledSlidesFound: 'Keine Folien mit Titel gefunden', // No titled slides found
+    pollQrUnavailable: 'QR Code ist nicht verfügbar', // QR code unavailable
   },
   modals: {
     importPptxTitle: 'Aus PowerPoint importieren', // Import from PowerPoint
@@ -227,16 +239,14 @@ const de: DeepPartial<Messages> = {
     importPptxSavingFile: 'Datei wird gespeichert …', // Saving file…
     importPptxPasswordProtected: 'Diese Datei ist passwortgeschützt und kann nicht importiert werden.', // This file is password-protected and cannot be imported.
     importPptxComplete: 'Import abgeschlossen', // Import complete
-    importPptxSlidesImported: 
-	{ 
-	  one: '{{count}} Folie importiert', 
-	  other: '{{count}} Folien importiert' 
-	}, // {{count}} slide(s) imported
-    importPptxItemsSkipped: 
-	{ 
-	  one: '{{count}} Element übersprungen', 
-	  other: '{{count}} Elemente übersprungen' 
-	}, // {{count}} item(s) skipped
+    importPptxSlidesImported: {
+      one: '{{count}} Folie importiert', // {{count}} slide imported
+      other: '{{count}} Folien importiert', // {{count}} slides imported
+    },
+    importPptxItemsSkipped: {
+      one: '{{count}} Element übersprungen', // {{count}} item skipped
+      other: '{{count}} Elemente übersprungen', // {{count}} items skipped
+    },
     importPptxSavedToLabel: 'Gespeichert unter:', // Saved to:
     importPptxOpenInEditor: 'Im Editor öffnen', // Open in Editor
     importPptxFailed: 'Import fehlgeschlagen', // Import failed
@@ -273,7 +283,7 @@ const de: DeepPartial<Messages> = {
     menuImportFromMarp: 'Aus Marp …', // From Marp…
     menuSave: 'Speichern', // Save
     menuSaveAs: 'Speichern unter …', // Save As…
-    menuCopyWithAssets: 'Mit Ressourcen kopieren…', // Copy with Assets…
+    menuCopyWithAssets: 'Mit Ressourcen kopieren …', // Copy with Assets…
     menuExport: 'Exportieren', // Export
     menuExportPowerpoint: 'PowerPoint (.pptx)', // PowerPoint (.pptx)
     menuExportPdf: 'PDF (.pdf)', // PDF (.pdf)
@@ -281,7 +291,7 @@ const de: DeepPartial<Messages> = {
     menuExportHtml: 'HTML (.html)', // HTML (.html)
     menuExporting: 'Wird exportiert …', // Exporting…
     menuPrint: 'Drucken …', // Print…
-    menuPreparingPrint: 'Druck wird vorbereitet…', // Preparing Print…
+    menuPreparingPrint: 'Druck wird vorbereitet …', // Preparing Print…
     menuExit: 'Beenden', // Exit
     menuUndo: 'Rückgängig', // Undo
     menuRedo: 'Wiederholen', // Redo
@@ -291,7 +301,7 @@ const de: DeepPartial<Messages> = {
     menuSelectAll: 'Alles auswählen', // Select All
     untitledFilename: 'unbenannt.md', // Untitled.md
     presentButton: '▶ Präsentieren', // ▶ Present
-    presentButtonTitle: 'Ab Folie 1 präsentieren (F5) – Umschalt+F5 oder Alt+Klick, um ab der aktuellen Folie zu starten', // Present from slide 1 (F5) — Shift-F5 or Alt+click to start from current slide
+    presentButtonTitle: 'Ab Folie 1 präsentieren (Alt+Klick, um ab der aktuellen Folie zu starten)', // Present from slide 1 (F5) — Shift-F5 or Alt+click to start from current slide
     enterFocusMode: 'Fokusmodus aktivieren ({{combo}})', // Enter focus mode ({{combo}})
     exitFocusMode: 'Fokusmodus verlassen ({{combo}})', // Exit focus mode ({{combo}})
     toggleInspector: 'Inspektor ein-/asblenden', // Toggle inspector
@@ -313,18 +323,17 @@ const de: DeepPartial<Messages> = {
     },
     marpDetected: 'Dies sieht aus wie ein Marp-Foliensatz.', // This looks like a Marp deck.
     marpConvert: 'In Kova-Format umwandeln', // Convert to Kova
-    marpImported: 
-	{ 
-	  one: 'Importiert. {{count}} Marp-Funktion wurde vereinfacht.', 
-	  other: 'Importiert. {{count}} Marp-Funktionen wurden vereinfacht.' 
-	}, // Imported. {{count}} Marp feature(s) simplified.
+    marpImported: {
+      one: 'Importiert. {{count}} Marp-Funktion wurde vereinfacht.', // Imported. {{count}} Marp feature simplified.
+      other: 'Importiert. {{count}} Marp-Funktionen wurden vereinfacht.', // Imported. {{count}} Marp features simplified.
+    },
     fileChangedExternally: 'Datei wurde extern geändert', // File changed externally
     fileChangedExternallyDirty: 'Eine andere Anwendung hat diese Datei geändert. Laden Sie neu, um die neueste Version zu erhalten, oder speichern Sie Ihre aktuellen Änderungen unter einem neuen Namen.', // Another application modified this file. Reload to get the latest version, or save your current edits under a new name.
     fileChangedExternallyClean: 'Eine andere Anwendung hat diese Datei geändert. Die neueste Version wurde geladen.', // Another application modified this file. The latest version has been loaded.
     exportPdfTitle: 'PDF exportieren', // Export PDF
     slidesPerPage: 'Folien pro Seite', // Slides per page
     includeSpeakerNotes: 'Referenten-Notizen einschließen (Handout){{noneNote}}', // Include speaker notes (handout){{noneNote}}
-    includeSpeakerNotesNone: ' — keine in diesem Foliensatz', // — none in this deck
+    includeSpeakerNotesNone: ' — keine in diesem Foliensatz', //  — none in this deck
     exportAction: 'Exportieren', // Export
     unsavedChangesTitle: 'Nicht gespeicherte Änderungen', // Unsaved changes
     unsavedChangesMessage: 'Du hast ungespeicherte Änderungen. Möchtest du erst speichern?', // You have unsaved changes. Save before continuing?
@@ -358,6 +367,10 @@ const de: DeepPartial<Messages> = {
     showFrontmatterDescription: 'Zeigt den YAML-Vorspann (Frontmatter-Block) oben im Editor an, sodass er direkt neben den Folien bearbeitet werden kann.', // Displays the YAML frontmatter block at the top of the editor so it can be edited directly alongside the slides.
     wordWrap: 'Zeilenumbruch', // Word wrap
     wordWrapDescription: 'Bricht lange Zeilen im Editor um. Wenn deaktiviert, erscheint für Zeilen, die breiter als das Panel sind, ein horizontaler Bildlaufbalken.', // Wrap long lines in the editor. When off, a horizontal scrollbar appears for lines wider than the panel.
+    contentWidth: 'Breite des Inhalts', // Content width
+    contentWidthDescription: 'Fixiert hält die Zeilen bei einer ansprechenden Breite. Aufgefüllt streckt den Editierbereich während du den Trenner verschiebst.', // Fixed keeps editor lines at a comfortable reading width. Full stretches the editor to fill the panel as you resize the split.
+    contentWidthFixed: 'Fixiert', // Fixed
+    contentWidthFull: 'Aufgefüllt', // Full
     defaultTheme: 'Standard-Präsentations-Design', // Default presentation theme
     defaultThemeDescription: 'Wird beim Erstellen einer neuen Präsentation angewendet.', // Applied when creating a new presentation.
     sectionLanguageSpelling: 'Sprache & Rechtschreibung', // Language & Spelling
@@ -383,7 +396,7 @@ const de: DeepPartial<Messages> = {
     pdfPageSizeDescription: 'Papierformat für den PDF-Export. Seiten werden im Querformat angeordnet.', // Paper size for PDF export. Pages are laid out landscape.
     pageSizeA4: 'A4', // A4
     pageSizeLetter: 'Letter', // Letter
-    pageSizeSlide: 'Foliengröße', // Match slide size
+    pageSizeSlide: 'Entsprechend der Folien-Größe', // Match slide size
     sectionPresentation: 'Präsentation', // Presentation
     displayMode: 'Anzeigemodus', // Display mode
     displayModeDescription: 'Erkennt zum Präsentationszeitpunkt automatisch angeschlossene Bildschirme — Referentenansicht mit zwei Bildschirmen, falls ein zweiter Bildschirm gefunden wird, sonst Einzelbildschirm. Spiegeln zeigt dieselbe Folie auf beiden Bildschirmen.', // Auto detects connected displays at presentation time — dual presenter view if a second screen is found, single screen otherwise. Mirror shows the same slide on both displays.

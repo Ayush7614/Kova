@@ -77,8 +77,8 @@ const changeListeners = new Set<() => void>();
 // so it can never go stale across a dictionary swap or a custom/ignored word
 // change — every mutation path below already calls notifyChange(), so this
 // piggybacks on an existing, already-correct invalidation signal rather than
-// adding a new one. Never evicted otherwise, same as mermaidSvgCache
-// elsewhere in this codebase — bounded by vocabulary size, not document size.
+// adding a new one. Never evicted otherwise — unlike mermaidSvgCache, this is
+// safe unbounded because it's keyed by vocabulary size, not document size.
 const spellCheckCache = new Map<string, boolean>();
 
 function loadCustomWords(): string[] {

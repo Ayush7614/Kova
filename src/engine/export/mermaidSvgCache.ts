@@ -3,5 +3,33 @@
  * Populated by MermaidDiagram in the live preview; consumed by the PPTX
  * exporter so it can skip a second mermaid.render() call (which hangs when
  * a rendered diagram is already present in the live-preview DOM).
+ *
+ * Capped LRU: keyed by full diagram source text, so every edit to a Mermaid
+ * block adds a new entry. Without a cap this grows unboundedly over a long
+ * editing session on a diagram-heavy deck.
  */
-export const mermaidSvgCache = new Map<string, string>();
+const MAX_ENTRIES = 50;
+
+class MermaidSvgLruCache {
+  private map = new Map<string, string>();
+
+  get(key: string): string | undefined {
+    const value = this.map.get(key);
+    if (value === undefined) return undefined;
+    // Refresh recency: re-insert so it's last in iteration order.
+    this.map.delete(key);
+    this.map.set(key, value);
+    return value;
+  }
+
+  set(key: string, value: string): void {
+    this.map.delete(key);
+    this.map.set(key, value);
+    if (this.map.size > MAX_ENTRIES) {
+      const oldest = this.map.keys().next().value;
+      if (oldest !== undefined) this.map.delete(oldest);
+    }
+  }
+}
+
+export const mermaidSvgCache = new MermaidSvgLruCache();

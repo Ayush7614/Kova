@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// Mock the Tauri core import so importing EditorPanel doesn't need a backend.
+// Mock the Tauri core import so importing mediaSnippet doesn't need a backend.
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
-import { buildMediaSnippet } from '../EditorPanel';
+import { buildMediaSnippet } from '../../editor/mediaSnippet';
 
 const warn = () => {};
 

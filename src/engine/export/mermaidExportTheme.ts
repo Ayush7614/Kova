@@ -15,12 +15,15 @@ function diagramMutedSecondary(primaryHex: string): string {
   return hslToHex(h, Math.min(s, 0.35), l < 0.5 ? Math.min(l + 0.20, 0.45) : Math.max(l - 0.20, 0.55));
 }
 
-// Builds a Mermaid `%%{init: ...}%%` pragma matching the slide's theme, for
-// diagrams rendered outside the live preview (export-time cache misses on
-// the PPTX and PDF paths).
+// Builds a Mermaid `%%{init: ...}%%` pragma matching the slide's theme. Shared
+// by the live preview (SlideRenderer) and diagrams rendered outside it
+// (export-time cache misses on the PPTX and PDF paths) — despite the name,
+// this is no longer export-only; keeping it since both call sites and a test
+// already import it, and renaming purely for tidiness isn't worth the churn.
 export function buildExportMermaidInit(t: Theme): string {
   const c = t.colors;
   const ff = (stack: string) => stack.split(',')[0].trim().replace(/['"]/g, '');
+  const fontFamily = ff(t.fonts.body);
   const customPalette = c.chart_colors && c.chart_colors.length > 0 ? c.chart_colors : null;
   let pie: Record<string, string>, cScale: Record<string, string>, xy: string;
   if (customPalette) {
@@ -35,6 +38,7 @@ export function buildExportMermaidInit(t: Theme): string {
   const secondary = diagramMutedSecondary(c.primary);
   const tertiaryBg = c.code_bg;
   const vars = {
+    fontFamily,
     primaryColor: c.primary, primaryTextColor: diagramContrastText(c.primary),
     primaryBorderColor: c.primary, lineColor: c.accent,
     secondaryColor: secondary, secondaryTextColor: diagramContrastText(secondary),
@@ -42,7 +46,7 @@ export function buildExportMermaidInit(t: Theme): string {
     background: c.background, mainBkg: c.primary, nodeBorder: c.primary,
     clusterBkg: tertiaryBg, titleColor: c.text, edgeLabelBackground: c.background,
     labelTextColor: c.text, signalColor: c.text, signalTextColor: c.text,
-    fontFamily: ff(t.fonts.body), ...cScale, ...pie,
+    ...cScale, ...pie,
     pieTitleTextColor: c.text, pieSectionTextColor: c.title_text,
     pieLegendTextColor: c.text, pieStrokeColor: c.background,
     pieStrokeWidth: '2px', pieOpacity: '0.9',
@@ -52,5 +56,9 @@ export function buildExportMermaidInit(t: Theme): string {
       yAxisTitleColor: c.text, yAxisLabelColor: c.text, yAxisTickColor: c.text, yAxisLineColor: c.text,
     },
   };
-  return `%%{init: ${JSON.stringify({ theme: 'base', themeVariables: vars })}}%%\n`;
+  // fontFamily set both at the top level (Mermaid's document-wide default
+  // font) and inside themeVariables (theme CSS substitution) — matches what
+  // the live preview has always sent; export previously only set the latter,
+  // a drift that could make exported diagrams render in a different font.
+  return `%%{init: ${JSON.stringify({ theme: 'base', fontFamily, themeVariables: vars })}}%%\n`;
 }

@@ -13,6 +13,7 @@ export const LASER_COLOR_OPTIONS = [
 ] as const;
 export type LaserColor = typeof LASER_COLOR_OPTIONS[number]['value'];
 export type UiTheme           = 'auto' | 'dark' | 'light';
+export type EditorContentWidth = 'fixed' | 'full';
 export type EditorFont        = 'ibm-plex-mono' | 'jetbrains-mono' | 'fira-code' | 'cascadia-code' | 'source-code-pro' | 'ubuntu-mono' | 'inconsolata' | 'system';
 export type { SpellCheckLanguage } from '../engine/spellcheck/spellChecker';
 
@@ -49,6 +50,7 @@ export interface AppSettings {
   // Editor
   showFrontmatter: boolean;
   editorWordWrap: boolean;
+  editorContentWidth: EditorContentWidth;
   // Presentation defaults
   defaultThemeId: string;
   // Export
@@ -79,6 +81,8 @@ function buildDefaults(): AppSettings {
     laserColor: '#ff2020',
     showFrontmatter: false,
     editorWordWrap: true,
+    // Preserves existing behaviour (720px reading-width cap) for anyone upgrading
+    editorContentWidth: 'fixed',
     defaultThemeId: 'light',
     pdfPageSize: 'a4',
     // Preserves existing behaviour (always launch blank) for anyone upgrading

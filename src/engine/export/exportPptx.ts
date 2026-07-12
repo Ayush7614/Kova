@@ -1,4 +1,3 @@
-import PptxGenJS from 'pptxgenjs';
 import JSZip from 'jszip';
 import { invoke } from '@tauri-apps/api/core';
 import { mermaidSvgCache } from './mermaidSvgCache';
@@ -6,6 +5,7 @@ import { svgToPngDataUrl } from './svgToPng';
 import { queuedMermaidRender } from './mermaidRenderQueue';
 import { imageMime } from './imageMime';
 import { buildExportMermaidInit, parseChannels } from './mermaidExportTheme';
+import { autoSplitElements, groupProgressRuns } from '../layout/elementGrouping';
 import mermaid from 'mermaid';
 import hljs from 'highlight.js';
 import type { Slide, SlideElement, Frontmatter } from '../types';
@@ -159,6 +159,9 @@ export async function exportToPptx(
   theme: Theme,
   locale: string,
 ): Promise<ExportResult> {
+  // Lazy-loaded: pptxgenjs is only needed once a PPTX export is actually
+  // triggered, and shouldn't add weight to the app's initial bundle.
+  const { default: PptxGenJS } = await import('pptxgenjs');
   const pres = new PptxGenJS();
   const is4x3 = (frontmatter.aspect_ratio as string | undefined) === '4:3';
   // LAYOUT_16x9 = 10" × 5.625", which matches W=10 and H=5.625 below.
@@ -775,51 +778,6 @@ function addLogo(
   } catch { /* ignore */ }
 }
 
-// ── Layout helpers (mirror SlideRenderer.tsx) ─────────────────────────────────
-
-function groupProgressRuns(elements: SlideElement[]): SlideElement[][] {
-  const groups: SlideElement[][] = [];
-  for (const el of elements) {
-    const last = groups[groups.length - 1];
-    if (el.type === 'progress' && last && last[0]?.type === 'progress') {
-      last.push(el);
-    } else {
-      groups.push([el]);
-    }
-  }
-  return groups;
-}
-
-function autoSplitElements(elements: SlideElement[]): [SlideElement[], SlideElement[]] {
-  if (elements.length === 1 && elements[0].type === 'list') {
-    const list = elements[0];
-    const mid = Math.ceil(list.items.length / 2);
-    return [
-      [{ ...list, items: list.items.slice(0, mid) }],
-      [{ ...list, items: list.items.slice(mid) }],
-    ];
-  }
-  // Mirrors the live preview's split (SlideRenderer.tsx autoSplitElements): balance
-  // by cumulative title length and carry the numbering offset into the second column.
-  if (elements.length === 1 && elements[0].type === 'toc') {
-    const toc = elements[0];
-    const entries = toc.entries;
-    const totalLen = entries.reduce((n, en) => n + en.title.length, 0);
-    let cumLen = 0;
-    let mid = Math.ceil(entries.length / 2);
-    for (let i = 0; i < entries.length; i++) {
-      cumLen += entries[i].title.length;
-      if (cumLen >= totalLen / 2) { mid = i + 1; break; }
-    }
-    return [
-      [{ ...toc, entries: entries.slice(0, mid) }],
-      [{ ...toc, entries: entries.slice(mid), numberStart: mid }],
-    ];
-  }
-  const mid = Math.ceil(elements.length / 2);
-  return [elements.slice(0, mid), elements.slice(mid)];
-}
-
 // ── Syntax-highlight helpers (github-dark colour map) ─────────────────────────
 
 const HLJS_DEFAULT = 'C9D1D9'; // .hljs base text colour
@@ -874,7 +832,7 @@ function htmlToInlineRuns(
   div.innerHTML = html;
   const runs: PptxRun[] = [];
 
-  function walk(node: Node, bold: boolean, italic: boolean, isCode: boolean, color: string) {
+  function walk(node: Node, bold: boolean, italic: boolean, isCode: boolean, color: string, href: string | null) {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent ?? '';
       if (!text) return;
@@ -885,11 +843,15 @@ function htmlToInlineRuns(
           ...(bold   ? { bold: true }   : {}),
           ...(italic ? { italic: true } : {}),
           ...(isCode ? { fontFace: codeFont } : {}),
+          ...(href   ? { hyperlink: { url: href } } : {}),
         },
       });
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const el = node as Element;
       const tag = el.tagName.toLowerCase();
+      // '#' is escUrl's sentinel for a stripped/invalid href (see markdownToSlides.ts) — never link to it.
+      const linkHref = tag === 'a' ? el.getAttribute('href') : null;
+      const nextHref = linkHref && linkHref !== '#' ? linkHref : href;
       for (const child of node.childNodes) {
         walk(
           child,
@@ -897,12 +859,13 @@ function htmlToInlineRuns(
           italic || tag === 'em'     || tag === 'i',
           isCode || tag === 'code',
           tag === 'a' ? accentColor : color,
+          nextHref,
         );
       }
     }
   }
 
-  for (const child of div.childNodes) walk(child, false, false, false, defaultColor);
+  for (const child of div.childNodes) walk(child, false, false, false, defaultColor, null);
   return runs.length > 0 ? runs : [{ text: stripHtml(html) || ' ', options: { color: defaultColor } }];
 }
 
@@ -1110,7 +1073,10 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
     switch (el.type) {
       case 'paragraph':
         if (el.text.trim()) {
-          runs.push({ text: el.text, options: { fontSize: 18, breakLine: true } });
+          const paraRuns = htmlToInlineRuns(el.html, tc, firstFont(t.fonts.code), hex(t.colors.accent));
+          paraRuns.forEach((run, ri) => {
+            runs.push({ text: run.text, options: { fontSize: 18, ...run.options, breakLine: ri === paraRuns.length - 1 } });
+          });
         }
         break;
 
@@ -1166,7 +1132,12 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
         el.entries.forEach((entry, i) => {
           runs.push({
             text: entry.title,
-            options: { bullet: { type: 'number', numberType: 'arabicPeriod', numberStartAt: numberStart + i + 1 }, fontSize: 18, paraSpaceAfter: 4, breakLine: true },
+            options: {
+              ...(t.toc.numbered
+                ? { bullet: { type: 'number', numberType: 'arabicPeriod', numberStartAt: numberStart + i + 1 } }
+                : {}),
+              fontSize: 18, paraSpaceAfter: 4, breakLine: true,
+            },
           });
         });
         break;
@@ -1180,6 +1151,13 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
 
       case 'math':
         runs.push({ text: el.value, options: { fontFace: firstFont(t.fonts.code), fontSize: 15, breakLine: true } });
+        break;
+
+      case 'video':
+        // pptx can't embed local video without bundling the file — emit a
+        // labelled placeholder, matching the media-slide placeholder in addMediaSlide.
+        runs.push({ text: `▶ ${el.label || 'Video'}`, options: { fontSize: 16, bold: true, breakLine: true } });
+        runs.push({ text: el.src, options: { fontSize: 11, color: hex(t.colors.accent), breakLine: true, paraSpaceAfter: 4 } });
         break;
 
       // Images and tables handled separately below

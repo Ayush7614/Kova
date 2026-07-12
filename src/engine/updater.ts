@@ -23,10 +23,19 @@ export interface AvailableUpdate {
   install(onProgress: (downloaded: number, total: number | null) => void): Promise<void>;
 }
 
+// Both requests default to no timeout, so a stalled (not merely dropped)
+// connection would otherwise hang "Checking…"/"Downloading…" forever instead
+// of failing into the UI's error state. The timeout covers the *entire*
+// request (connect through full body), so the download budget has to be
+// generous enough for the ~25-105MB installers over a slow connection, not
+// just a stall guard.
+const CHECK_TIMEOUT_MS = 15_000;
+const DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
+
 export async function fetchUpdate(): Promise<AvailableUpdate | null> {
   if (import.meta.env.DEV) return fetchUpdateDev();
 
-  const update = await check();
+  const update = await check({ timeout: CHECK_TIMEOUT_MS });
   if (!update) return null;
 
   return {
@@ -42,7 +51,7 @@ export async function fetchUpdate(): Promise<AvailableUpdate | null> {
           downloaded += event.data.chunkLength;
           onProgress(downloaded, total);
         }
-      });
+      }, { timeout: DOWNLOAD_TIMEOUT_MS });
     },
   };
 }

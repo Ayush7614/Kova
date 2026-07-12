@@ -6,12 +6,15 @@ fn home_dir() -> Result<PathBuf, String> {
 }
 
 pub fn check_in_home(path: &Path) -> Result<(), String> {
-    // On Linux this enforces the Flatpak sandbox boundary: Flatpak apps are
-    // expected to access only the user's home directory, so we hard-fail for
-    // paths outside it. On macOS and Windows users legitimately keep files
-    // anywhere (e.g. C:\ak\... on Windows or /Volumes/... on macOS), so the
-    // check is skipped — canonicalize() already prevents path-traversal attacks
-    // on all platforms by resolving symlinks and .. components.
+    // This enforces the Flatpak sandbox boundary: Flatpak apps are expected to
+    // access only the user's home directory, so we hard-fail for paths outside
+    // it. FLATPAK_ID is set by the Flatpak runtime for every process it
+    // launches (mirrors the APPIMAGE-detection pattern in main.rs/lifecycle.rs)
+    // — deb/rpm/AppImage/native Linux builds are not sandboxed this way and,
+    // like macOS/Windows, legitimately need to open/save files anywhere (external
+    // drives, /mnt, /media, NAS mounts), so the check is skipped for them.
+    // canonicalize() already prevents path-traversal attacks on every platform
+    // by resolving symlinks and .. components, regardless of this check.
     #[cfg(not(target_os = "linux"))]
     {
         let _ = path; // suppress unused-variable warning
@@ -20,6 +23,9 @@ pub fn check_in_home(path: &Path) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
+        if std::env::var("FLATPAK_ID").is_err() {
+            return Ok(());
+        }
         let home = home_dir()?;
         let canonical_home = std::fs::canonicalize(&home).unwrap_or(home);
         if path.starts_with(&canonical_home) {
@@ -89,10 +95,14 @@ fn atomic_write(dest: &std::path::Path, data: &[u8]) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    // These tests verify the Linux home-boundary logic using portable path
-    // construction. The Windows UNC-prefix tests have been removed: check_in_home
-    // is now a no-op on Windows (users may save anywhere), so those assertions
-    // are no longer meaningful.
+    // These tests verify the home-boundary logic used under Flatpak (see the
+    // FLATPAK_ID gate in check_in_home) using portable path construction. The
+    // Windows UNC-prefix tests have been removed: check_in_home is a no-op on
+    // Windows (users may save anywhere), so those assertions are no longer
+    // meaningful. The FLATPAK_ID env-var gate itself isn't unit tested here —
+    // consistent with the unguarded APPIMAGE-detection checks elsewhere
+    // (main.rs, lifecycle.rs) — since mutating process-global env vars in
+    // parallel test runs is inherently racy.
     #[cfg(target_os = "linux")]
     mod linux_home_boundary {
         use std::path::Path;

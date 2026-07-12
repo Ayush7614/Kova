@@ -49,7 +49,7 @@ const sl: DeepPartial<Messages> = {
     sectionTheme: 'Tema',
     sectionColours: 'Barve',
     sectionFonts: 'Pisave',
-    sectionBranding: 'Znamke',
+    sectionDocument: 'Dokument',
     fileLabel: 'Datoteka',
     slidesLabel: 'Diapozitivi',
     titleLabel: 'Naslov',

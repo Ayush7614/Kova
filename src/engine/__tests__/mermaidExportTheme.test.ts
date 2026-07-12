@@ -20,6 +20,21 @@ describe('buildExportMermaidInit', () => {
     expect(init).toContain('"xyChart"');
   });
 
+  // Regression test: this function used to omit the top-level fontFamily key
+  // (only setting it inside themeVariables), a drift from the live preview's
+  // copy of this same builder that could make exported diagrams render in a
+  // different font than what the user saw in the app. Parses the JSON out of
+  // the pragma and asserts on the object directly — a substring match like
+  // the assertion above would pass either way, since themeVariables.fontFamily
+  // always contained the string "fontFamily" regardless of the top-level key.
+  it('sets fontFamily on the top-level config object, not just themeVariables', () => {
+    const init = buildExportMermaidInit(DEFAULT_THEME);
+    const jsonStr = init.replace(/^%%\{init:\s*/, '').replace(/\}%%\n?$/, '');
+    const config = JSON.parse(jsonStr) as { fontFamily?: string; themeVariables?: { fontFamily?: string } };
+    expect(config.fontFamily).toBeTruthy();
+    expect(config.themeVariables?.fontFamily).toBe(config.fontFamily);
+  });
+
   it('uses chart_colors from the theme when provided', () => {
     const theme = {
       ...DEFAULT_THEME,

@@ -202,17 +202,12 @@ function normalise(geom: ShapeGeom, slideW: number, slideH: number) {
 // ── Placeholder type ──────────────────────────────────────────────────────────
 
 function getPhType(sp: Element): PhType | null {
+  // getElementsByTagNameNS searches the full descendant subtree, so this
+  // already finds a p:ph/a:ph anywhere under sp, including nvSpPr → nvPr → ph.
   const ph = sp.getElementsByTagNameNS(P, 'ph')[0]
           ?? sp.getElementsByTagNameNS(A, 'ph')[0]
           ?? null;
-  if (!ph) {
-    // Check via nvSpPr → nvPr → ph  (standard location)
-    const nvPr = sp.getElementsByTagNameNS(P, 'nvPr')[0] ?? null;
-    const ph2  = nvPr?.getElementsByTagNameNS(P, 'ph')[0] ?? null;
-    if (!ph2) return null;
-    const t = ph2.getAttribute('type') ?? 'body';
-    return mapPhType(t);
-  }
+  if (!ph) return null;
   return mapPhType(ph.getAttribute('type') ?? 'body');
 }
 

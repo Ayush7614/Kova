@@ -13,6 +13,7 @@ const bq:      SlideElement = { type: 'blockquote', text: 'Quote' };
 const table:   SlideElement = { type: 'table', headers: ['A', 'B'], rows: [['1', '2']] };
 const youtube: SlideElement = { type: 'youtube', label: 'Vid', url: 'https://youtu.be/abc' };
 const poll:    SlideElement = { type: 'poll', label: 'Vote', url: 'https://poll.io' };
+const video:   SlideElement = { type: 'video', label: 'Clip', src: 'media/demo.mp4' };
 const progress: SlideElement = { type: 'progress', label: 'Done', value: 75 };
 const colBreak: SlideElement = { type: 'column-break' };
 
@@ -65,6 +66,33 @@ describe('media layout', () => {
 
   it('media takes priority over column-break', () => {
     expect(detectLayout([youtube, colBreak, para], 2, true)).toBe('media');
+  });
+});
+
+// ── Video layout (issue #140) ─────────────────────────────────────────────────
+// Unlike youtube/poll, a video only forces the full-slide 'media' layout when
+// it's the slide's sole element — otherwise it joins the standard auto-layout
+// process alongside other content, same as an image would.
+
+describe('video layout', () => {
+  it('sole video, no title → media', () => {
+    expect(detectLayout([video], 2, false)).toBe('media');
+  });
+
+  it('sole video, with title → media', () => {
+    expect(detectLayout([video], 2, true)).toBe('media');
+  });
+
+  it('video + paragraph → NOT media (falls through to standard layout)', () => {
+    expect(detectLayout([video, para], 2, true)).not.toBe('media');
+  });
+
+  it('video + list, with title → bsp', () => {
+    expect(detectLayout([video, list], 2, true)).toBe('bsp');
+  });
+
+  it('video alongside text, no title → NOT media', () => {
+    expect(detectLayout([video, para], 2, false)).not.toBe('media');
   });
 });
 

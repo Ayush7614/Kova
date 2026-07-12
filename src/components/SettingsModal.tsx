@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { ModalShell, ModalCloseButton } from './ModalShell';
 import type { AppSettings, PresentationMode, NotesFontSize, LaserColor, StartupBehavior } from '../store/settings';
 import { EDITOR_FONT_OPTIONS, LASER_COLOR_OPTIONS } from '../store/settings';
 import type { Theme } from '../engine/theme';
@@ -241,50 +242,16 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, s
   }
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0,
-          background: 'var(--backdrop)',
-          zIndex: 1000,
-        }}
-      />
-
-      {/* Card */}
-      <div style={{
-        position: 'fixed',
-        top: '50%', left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: 480,
-        maxWidth: '92vw',
-        maxHeight: '85vh',
-        overflowY: 'auto',
-        background: 'var(--bg-elevated)',
-        border: '1px solid var(--border)',
-        borderRadius: 8,
-        boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-        zIndex: 1001,
-        padding: '20px 24px 24px',
-      }}>
-
+    <ModalShell
+      onClose={onClose}
+      width={480}
+      ariaLabel={t('modals.settingsTitle')}
+      cardStyle={{ maxHeight: '85vh', overflowY: 'auto', padding: '20px 24px 24px' }}
+    >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{t('modals.settingsTitle')}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-              padding: 4, borderRadius: 4, lineHeight: 1,
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12">
-              <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         {/* Appearance */}
@@ -420,6 +387,23 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, s
           description={t('settings.wordWrapDescription')}
           control={<Toggle checked={settings.editorWordWrap} onChange={(v) => set('editorWordWrap', v)} />}
         />
+
+        <div style={{ padding: '10px 0' }}>
+          <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>{t('settings.contentWidth')}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10, lineHeight: 1.5 }}>
+            {t('settings.contentWidthDescription')}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {([
+              { value: 'fixed', label: t('settings.contentWidthFixed') },
+              { value: 'full',  label: t('settings.contentWidthFull')  },
+            ] as { value: AppSettings['editorContentWidth']; label: string }[]).map(({ value, label }) => (
+              <button key={value} type="button" onClick={() => set('editorContentWidth', value)}
+                style={groupBtnStyle(settings.editorContentWidth === value)}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
 
         <div style={{ padding: '10px 0' }}>
           <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 8 }}>{t('settings.defaultTheme')}</div>
@@ -916,7 +900,6 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, s
           </div>
         )}
 
-      </div>
-    </>
+    </ModalShell>
   );
 }

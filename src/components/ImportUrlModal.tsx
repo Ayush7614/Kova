@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n';
+import { ModalShell } from './ModalShell';
 
 interface ImportUrlModalProps {
   onImported: (text: string) => void;
@@ -60,26 +61,21 @@ export function ImportUrlModal({ onImported, onClose }: ImportUrlModalProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Escape-to-close is now handled globally by ModalShell.
     if (e.key === 'Enter') handleImport();
-    if (e.key === 'Escape') onClose();
   };
 
   const resolvedUrl = toRawUrl(url.trim());
   const willRewrite = url.trim() && resolvedUrl !== url.trim();
 
   return (
-    <>
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }}
-      />
-      <div style={{
-        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-        background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
-        boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
-        width: 480, maxWidth: '94vw', padding: '20px 24px 24px',
-        display: 'flex', flexDirection: 'column', gap: 12,
-      }}>
+    <ModalShell
+      onClose={onClose}
+      width={480}
+      maxWidth="94vw"
+      ariaLabel={t('modals.importUrlTitle')}
+      cardStyle={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}
+    >
         <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
           {t('modals.importUrlTitle')}
         </div>
@@ -123,7 +119,6 @@ export function ImportUrlModal({ onImported, onClose }: ImportUrlModalProps) {
             {loading ? t('modals.importUrlFetching') : t('modals.importUrlImport')}
           </button>
         </div>
-      </div>
-    </>
+    </ModalShell>
   );
 }

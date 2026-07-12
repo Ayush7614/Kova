@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../../i18n';
+import { ModalShell, ModalCloseButton } from '../ModalShell';
 
 // Manifest is fetched from GitHub so the SHA-256 hashes come from a source
 // independent of the CDN server — a compromised themes.kova.md cannot forge
@@ -91,28 +92,12 @@ export function ThemeLibraryModal({ installedIds, onThemesChanged, onClose }: Pr
   }
 
   return (
-    <>
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 1000 }}
-      />
-
-      <div style={{
-        position: 'fixed',
-        top: '50%', left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: 520,
-        maxWidth: '92vw',
-        maxHeight: '80vh',
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--bg-elevated)',
-        border: '1px solid var(--border)',
-        borderRadius: 8,
-        boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-        zIndex: 1001,
-      }}>
-
+    <ModalShell
+      onClose={onClose}
+      width={520}
+      ariaLabel={t('inspector.themeLibraryTitle')}
+      cardStyle={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
+    >
         {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -123,19 +108,7 @@ export function ThemeLibraryModal({ installedIds, onThemesChanged, onClose }: Pr
           <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
             {t('inspector.themeLibraryTitle')}
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: 'none', border: 'none', color: 'var(--text-muted)',
-              cursor: 'pointer', padding: 4, borderRadius: 4, lineHeight: 1,
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12">
-              <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         {/* Body */}
@@ -270,8 +243,7 @@ export function ThemeLibraryModal({ installedIds, onThemesChanged, onClose }: Pr
           {' · '}{t('inspector.themeLibraryFooter')}
         </div>
 
-      </div>
-    </>
+    </ModalShell>
   );
 }
 

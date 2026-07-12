@@ -29,16 +29,24 @@ jobs:
           ## What's new
 
           ### New features
-          - **PDF export: "Match slide size" page option** — a new page-size choice for native PDF export that matches the slide's own aspect ratio exactly, instead of scaling it down inside an A4/Letter page with margins on every side (reported by @a1880, #129).
+          - **Table of contents entries now render as a plain hyperlinked list by default**, with a new per-document toggle (Inspector → Document → Table of Contents) to switch back to numbered — no more numbering restarting at 1 in the second column or landing on the wrong wrapped line (requested by @a1880, #127).
 
           ### Bug fixes
-          - **Fixed the "rescaled to fit" badge still showing on the audience/projector window** during a live presentation, and brought PowerPoint (.pptx) exports of a Table of Contents in line with the live preview — a long ToC now splits across two columns in the exported file too, with numbering continuing into the second column instead of restarting at 1 (reported by @a1880, #127).
-          - **Fixed math formulas being squeezed into a narrow side-by-side column** when paired with a callout, paragraph, list, or ToC — they now stack full-width instead (reported by @codingThome, #135).
-          - **Fixed Ctrl+V paste (and the right-click Paste menu item) not working on Linux/WebKitGTK** — clipboard text is now read natively via GTK instead of the webview's clipboard APIs, which WebKitGTK blocks regardless of user interaction (reported by @JustinKenpisi, #13).
-          - **Fixed a render crash leaving the presentation window stuck fullscreen with no way to close it** — the app now recovers gracefully instead of hanging (reported by @codingThome, #134).
+          - **Fixed** a video hiding every other element on the slide unless it was the only thing on it — video now shares the slide with text/images like any other element, and mixed video content is no longer silently dropped from PowerPoint (.pptx) exports (reported by @a1880, #140).
+          - **Fixed** duplicate copies of the same image piling up in the assets folder when re-adding a previously removed image (reported by @a1880, #141).
+          - **Fixed** links without a scheme (e.g. `google.de` instead of `https://google.de`) doing nothing when clicked — they now default to https and open in your system browser instead of dead-ending inside the app (reported by @a1880, #142).
+          - **Fixed** the footer's fallback date reverting to a hardcoded dash separator for some locales (German showed `DD-MM-YYYY` instead of `DD.MM.YYYY`) — a regression left over from the original fix for the footer-reset bug (reported by @a1880, #55).
+          - **Fixed** two-column layouts splitting unevenly once the renderer shrank the font to fit — a heavy column would shrink to a tiny font while its lighter neighbour sat mostly empty; both columns now balance and shrink together, in the live preview and in PowerPoint export alike (reported by @mdopp, #145).
+          - **Fixed** exported Mermaid diagrams occasionally rendering in a different font than the live preview showed.
+          - **Fixed** opening or saving files outside your home folder being blocked on every Linux build — that restriction is now scoped to actual Flatpak sandboxes, where it's needed.
+          - **Fixed** the app being able to get stuck after a single background task (e.g. font loading) failed, instead of recovering gracefully.
+
+          ### Performance
+          - Capped the Mermaid diagram render cache so long editing sessions on diagram-heavy decks no longer grow memory unboundedly.
+          - PDF and PowerPoint export libraries now load on demand instead of adding to the app's startup time.
 
           ### Packaging
-          - Fixed the self-hosted Flatpak publish pipeline: corrected the Flathub runtime repo URL, made the GPG key import more reliable, and gave the installed app a friendlier remote name instead of the generic `app-origin`.
+          - Windows `.msi`/`.exe` installers now go through [SignPath](https://signpath.io) as part of the release pipeline, using SignPath's test certificate while the production certificate application is pending — Windows SmartScreen will still show its "unrecognised publisher" warning for now.
 
           ---
 
@@ -47,7 +55,7 @@ jobs:
           | Platform | Download | Note |
           |---|---|---|
           | **macOS** (Apple Silicon + Intel) | `.dmg` | Signed and notarised — double-click to install |
-          | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Click **More info → Run anyway** if SmartScreen appears (app is unsigned) |
+          | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Test-signed via [SignPath](https://signpath.io) — SmartScreen warning still expected |
           | **Linux** | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), or `.flatpakref` | Install via your package manager |
           | **Linux AppImage** | `.AppImage` | Graphics libs stripped for compatibility with Arch/Fedora/etc. Supports auto-update. |
 
@@ -160,6 +168,90 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+      # Windows builds from tauri-action above are unsigned (Kova doesn't own an
+      # Authenticode certificate) — SignPath's OSS program signs them for us
+      # instead. Signing changes the exe/msi bytes, which invalidates the
+      # updater .sig tauri-action already computed on the unsigned bytes, so
+      # once SignPath returns the signed files we re-sign them with the
+      # updater key and patch latest.json — same pattern as the AppImage
+      # re-sign below, just for a different reason (external signing vs
+      # post-build stripping).
+      - name: Stage unsigned Windows binaries for SignPath
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/signpath-unsigned"
+          # The Rust build cache persists src-tauri/target/ across releases, so
+          # bundle/{msi,nsis} can accumulate old versions' installers alongside
+          # the one just built — glob by newest mtime, not just extension, or
+          # SignPath's exact-match artifact config chokes on multiple hits.
+          cp "$(ls -t src-tauri/target/release/bundle/msi/*.msi | head -1)" "$RUNNER_TEMP/signpath-unsigned/"
+          cp "$(ls -t src-tauri/target/release/bundle/nsis/*.exe | head -1)" "$RUNNER_TEMP/signpath-unsigned/"
+
+      # actions/upload-artifact already zips whatever path it's given — that
+      # zip is what SignPath's <zip-file> root matches against. Point it at
+      # the directory itself rather than a zip we made ourselves, or the two
+      # binaries end up nested one level too deep (inside our own zip, inside
+      # the zip upload-artifact makes of it) and no configured path matches.
+      - name: Upload unsigned Windows binaries as build artifact
+        if: matrix.platform == 'windows-latest'
+        id: upload-unsigned-windows
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: signpath-unsigned-windows
+          path: ${{ runner.temp }}/signpath-unsigned
+          retention-days: 1
+
+      - name: Submit Windows binaries to SignPath for signing
+        if: matrix.platform == 'windows-latest'
+        id: signpath
+        uses: signpath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2.2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: 6aea854d-5015-451b-80a3-a1031e70eb9e
+          project-slug: kova
+          # TODO: switch to 'release-signing' once SignPath's production
+          # certificate application is approved (see 0.6.17 release notes).
+          signing-policy-slug: test-signing
+          artifact-configuration-slug: Windows_Executable_Samples
+          github-artifact-id: ${{ steps.upload-unsigned-windows.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ${{ runner.temp }}/signpath-signed
+
+      - name: Replace unsigned binaries with SignPath-signed versions and refresh updater signature
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          MSI=$(ls -t src-tauri/target/release/bundle/msi/*.msi | head -1)
+          NSIS=$(ls -t src-tauri/target/release/bundle/nsis/*.exe | head -1)
+
+          cp "$RUNNER_TEMP/signpath-signed"/*.msi "$MSI"
+          cp "$RUNNER_TEMP/signpath-signed"/*.exe "$NSIS"
+
+          npm install -g @tauri-apps/cli@^2
+          tauri signer sign "$MSI"
+          tauri signer sign "$NSIS"
+          MSI_SIG=$(cat "$MSI.sig")
+          NSIS_SIG=$(cat "$NSIS.sig")
+
+          gh release upload "${{ github.ref_name }}" "$MSI" "$NSIS" --clobber
+
+          jq --arg sig "$MSI_SIG" \
+             '.platforms["windows-x86_64"].signature = $sig | .platforms["windows-x86_64-msi"].signature = $sig' \
+             latest.json > "$RUNNER_TEMP/latest.json.new"
+          mv "$RUNNER_TEMP/latest.json.new" latest.json
+
+          jq --arg sig "$NSIS_SIG" \
+             '.platforms["windows-x86_64-nsis"].signature = $sig' \
+             latest.json > "$RUNNER_TEMP/latest.json.new"
+          mv "$RUNNER_TEMP/latest.json.new" latest.json
+
       # Builds and signs the AppImage, then patches this platform's latest.json
       # (already written to the repo root by the step above) before it gets
       # copied into the cross-platform-merge artifact below — so the fix
@@ -236,13 +328,13 @@ jobs:
             echo "latest.json not found — skipping artifact upload"
             exit 0
           fi
-          mkdir -p /tmp/platform-latest
-          cp "$LATEST" /tmp/platform-latest/latest.json
+          mkdir -p "$RUNNER_TEMP/platform-latest"
+          cp "$LATEST" "$RUNNER_TEMP/platform-latest/latest.json"
           echo "Found: $LATEST"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: latest-json-${{ matrix.platform }}
-          path: /tmp/platform-latest/latest.json
+          path: ${{ runner.temp }}/platform-latest/latest.json
           if-no-files-found: warn
 
       # Submit the signed DMG to Apple, then wait up to 10 minutes for acceptance,

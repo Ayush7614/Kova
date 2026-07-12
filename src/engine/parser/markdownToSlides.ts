@@ -482,7 +482,7 @@ function inlineToHtml(children: Node[]): string {
       case 'emphasis':    return `<em>${inlineToHtml(node.children)}</em>`;
       case 'delete':      return `<del>${inlineToHtml(node.children)}</del>`;
       case 'inlineCode':  return `<code>${escHtml(node.value as string)}</code>`;
-      case 'link':        return `<a href="${escUrl(node.url as string)}">${inlineToHtml(node.children)}</a>`;
+      case 'link':        return `<a href="${escLinkUrl(node.url as string)}">${inlineToHtml(node.children)}</a>`;
       case 'image':       return `<img src="${escUrl(node.url as string)}" alt="${escHtml(node.alt ?? '')}" />`;
       case 'break':       return '<br>';
       case 'inlineMath': {
@@ -506,6 +506,26 @@ function escUrl(url: string): string {
   const ALLOWED = ['https:', 'http:', 'asset:', 'tauri:'];
   if (!ALLOWED.some(s => lower.startsWith(s))) return '#';
   return url.replace(/"/g, '%22');
+}
+
+// A bare host with no path (`google.de`) or a filename (`notes.md`) look
+// identical structurally, so this is inherently a guess — but links (unlike
+// image srcs) are never resolved against the document directory, so a
+// schemeless link target is assumed to be a web address rather than a local
+// file. Matches "word.tld" optionally followed by a path/query/fragment.
+const BARE_HOST_RE = /^[^\s/?#]+\.[a-z]{2,}(?:[/?#]|$)/i;
+
+// Links commonly omit a scheme (`google.de`, `//google.de`) and authors
+// expect them to just work (issue #142), unlike images which are normally
+// local files. Treat protocol-relative and bare-host links as https; anything
+// else unrecognised still falls through to escUrl's allow-list/strip.
+function escLinkUrl(url: string): string {
+  const trimmed = url.trim();
+  if (trimmed.startsWith('//')) return escUrl('https:' + trimmed);
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed) && BARE_HOST_RE.test(trimmed)) {
+    return escUrl('https://' + trimmed);
+  }
+  return escUrl(trimmed);
 }
 
 export type { Frontmatter };

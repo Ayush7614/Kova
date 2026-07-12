@@ -23,8 +23,8 @@ interface Props {
   onOpenLibrary: () => void;
 }
 
-type Section = 'format' | 'theme' | 'colours' | 'fonts' | 'branding';
-const ALL_SECTIONS: Section[] = ['format', 'theme', 'colours', 'fonts', 'branding'];
+type Section = 'format' | 'theme' | 'colours' | 'fonts' | 'document';
+const ALL_SECTIONS: Section[] = ['format', 'theme', 'colours', 'fonts', 'document'];
 
 export function InspectorPanel({
   filePath, slideCount, frontmatter,
@@ -153,18 +153,20 @@ export function InspectorPanel({
           />
         </Accordion>
 
-        <Accordion label={t('inspector.sectionBranding')} open={open.has('branding')} onToggle={() => toggle('branding')}>
+        <Accordion label={t('inspector.sectionDocument')} open={open.has('document')} onToggle={() => toggle('document')}>
           <LogoControls
             logo={theme.logo}
             logoPosition={theme.logo_position}
             logoOpacity={theme.logo_opacity}
             header={theme.header}
             footer={theme.footer}
+            toc={theme.toc}
             onLogoChange={(path) => onThemeChange({ logo: path })}
             onLogoPositionChange={(pos) => onThemeChange({ logo_position: pos })}
             onLogoOpacityChange={(opacity) => onThemeChange({ logo_opacity: opacity })}
             onHeaderChange={(header) => onThemeChange({ header })}
             onFooterChange={(footer) => onThemeChange({ footer })}
+            onTocChange={(toc) => onThemeChange({ toc })}
           />
         </Accordion>
 

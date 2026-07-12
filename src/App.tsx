@@ -7,8 +7,9 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, usePanelRef, useDefaultLayout } from 'react-resizable-panels';
 
 import { ThumbnailPanel } from './components/layout/ThumbnailPanel';
-import { EditorPanel, resolveImagePathForMarkdown } from './components/layout/EditorPanel';
+import { EditorPanel } from './components/layout/EditorPanel';
 import type { EditorHandle, FormatCmd } from './components/layout/EditorPanel';
+import { resolveImagePathForMarkdown } from './components/editor/mediaSnippet';
 import { InspectorPanel } from './components/layout/InspectorPanel';
 import { StatusBar } from './components/layout/StatusBar';
 import { PresentationOverlay } from './components/presentation/PresentationOverlay';
@@ -18,6 +19,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ThemeLibraryModal } from './components/inspector/ThemeLibraryModal';
 import { ImportPptxModal } from './components/ImportPptxModal';
 import { ImportUrlModal } from './components/ImportUrlModal';
+import { ModalShell } from './components/ModalShell';
 import { InfoBanner } from './components/InfoBanner';
 import { isMarp, importMarp } from './engine/import/marp';
 import { MissingThemeBanner } from './components/MissingThemeBanner';
@@ -35,18 +37,17 @@ import { parseDocument } from './engine/parser/markdownToSlides';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
 import { parseBgLine, formatBgLine } from './engine/parser/bgImage';
 import { fetchUpdate } from './engine/updater';
-import { normalizePath } from './engine/resolvePath';
 import { exportToPptx } from './engine/export/exportPptx';
 import { exportToPdf, printPresentation } from './engine/export/exportPdf';
 import { exportPdfNative, buildPrintDocument, type PdfExportOpts } from './engine/export/exportPdfNative';
 import { SlideRenderer } from './components/preview/SlideRenderer';
 import { BUILT_IN_THEMES, DEFAULT_THEME, parseThemeYaml, sanitiseThemeOverrides, type ThemeParseResult } from './engine/theme';
 import { registerBundledFonts, registerCachedFont } from './engine/bundledFonts';
-import type { Slide, Frontmatter, ListItem } from './engine/types';
+import type { Slide, Frontmatter } from './engine/types';
 import { parseAspectRatio } from './engine/types';
-import { detectLayout } from './engine/layout/autoLayout';
 import { imageMime } from './engine/export/imageMime';
 import type { Theme } from './engine/theme';
+import { useResolvedSlides } from './hooks/useResolvedSlides';
 
 import './styles/global.css';
 
@@ -54,38 +55,6 @@ import './styles/global.css';
 function dirOf(p: string): string {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
   return i >= 0 ? p.slice(0, i) : '';
-}
-
-function decodePathComponent(src: string): string {
-  try { return decodeURIComponent(src); } catch { return src; }
-}
-
-
-// Returns the resolved absolute local path for a src that points to a local
-// image file, or null if the src is a web URL, data URL, or non-image.
-function localPathFromImageSrc(src: string, docDir: string): string | null {
-  if (/^(https?|data|asset|tauri):\/\//i.test(src)) return null;
-  const p = decodePathComponent(src);
-  if (!/\.(avif|bmp|gif|ico|jpe?g|png|svg|tiff?|webp)(?:[?#].*)?$/i.test(p)) return null;
-  if (p.startsWith('/') || /^[A-Za-z]:[/\\]/.test(p)) return p.replace(/[?#].*$/, '');
-  if (!docDir) return null;
-  return normalizePath(docDir, p).replace(/[?#].*$/, '');
-}
-
-// localImageUrls maps absolute local paths → data: URLs loaded via read_file_b64.
-// Falls back to convertFileSrc (asset://) while the async load is in flight.
-function resolveImageSrc(src: string, docDir: string, localImageUrls: Map<string, string>): string {
-  const localPath = localPathFromImageSrc(src, docDir);
-  if (localPath) return localImageUrls.get(localPath) ?? convertFileSrc(localPath.replace(/\\/g, '/'));
-  if (/^(https?|data|asset|tauri):\/\//i.test(src)) return src;
-  const p = decodePathComponent(src);
-  if (p.startsWith('/') || /^[A-Za-z]:[/\\]/.test(p)) return convertFileSrc(p.replace(/\\/g, '/'));
-  if (!docDir) return p;
-  return convertFileSrc(normalizePath(docDir, p).replace(/\\/g, '/'));
-}
-
-function resolveHtmlSrcs(html: string, docDir: string, localImageUrls: Map<string, string>): string {
-  return html.replace(/src="([^"]*)"/g, (_, src) => `src="${resolveImageSrc(src, docDir, localImageUrls)}"`);
 }
 
 function makeStarter() {
@@ -127,7 +96,7 @@ export default function App() {
   const t = useLocaleTranslator(settings.locale);
   const [showSettings, setShowSettings]   = useState(false);
   const [settingsScrollToUpdates, setSettingsScrollToUpdates] = useState(false);
-  const [showThemeLibrary, setShowThemeMarketplace] = useState(false);
+  const [showThemeLibrary, setShowThemeLibrary] = useState(false);
   const [showImport, setShowImport]       = useState(false);
   const [showImportUrl, setShowImportUrl] = useState(false);
   const [marpPrompt, setMarpPrompt] = useState<{ text: string; dir: string } | null>(null);
@@ -197,6 +166,7 @@ export default function App() {
       fonts:  { ...base.fonts,  ...(themeOverrides.fonts  ?? {}) },
       header: { ...base.header, ...(themeOverrides.header ?? {}) },
       footer: { ...base.footer, ...(themeOverrides.footer ?? {}) },
+      toc: { ...base.toc, ...(themeOverrides.toc ?? {}) },
     };
     // Swap in the pre-resolved data URL for the logo. The asset protocol cannot
     // reliably serve absolute Windows paths outside the home directory, so we
@@ -340,130 +310,7 @@ export default function App() {
     return lastSlash >= 0 ? filePath!.substring(0, lastSlash) : importDir;
   }, [filePath, importDir]);
 
-  // Load all local images as base64 data URLs via IPC. convertFileSrc / the
-  // asset:// protocol is unreliable on Windows/WebView2, so we bypass it
-  // entirely for local image files — the same approach already used for logos.
-  const [localImageUrls, setLocalImageUrls] = useState<Map<string, string>>(() => new Map());
-
-  useEffect(() => {
-    const paths = new Set<string>();
-
-    function collectHtml(html: string) {
-      for (const match of html.matchAll(/src="([^"]*)"/g)) {
-        const p = localPathFromImageSrc(match[1], docDir);
-        if (p) paths.add(p);
-      }
-    }
-    function collectItem(item: ListItem) {
-      collectHtml(item.html);
-      item.children.forEach(collectItem);
-    }
-    for (const slide of rawSlides) {
-      if (slide.backgroundImage) {
-        const p = localPathFromImageSrc(slide.backgroundImage.src, docDir);
-        if (p) paths.add(p);
-      }
-      for (const el of slide.elements) {
-        if (el.type === 'image') {
-          const p = localPathFromImageSrc(el.src, docDir);
-          if (p) paths.add(p);
-        } else if (el.type === 'paragraph') {
-          collectHtml(el.html);
-        } else if (el.type === 'list') {
-          el.items.forEach(collectItem);
-        }
-      }
-    }
-
-    if (paths.size === 0) { setLocalImageUrls(new Map()); return; }
-
-    let cancelled = false;
-    Promise.all(Array.from(paths).map(async (path) => {
-      try {
-        const b64 = await invoke<string>('read_file_b64', { path });
-        return [path, `data:${imageMime(path)};base64,${b64}`] as [string, string];
-      } catch (e) { console.error('[Kova] read_file_b64 failed for', path, e); return null; }
-    })).then((entries) => {
-      if (!cancelled) setLocalImageUrls(new Map(entries.filter((e): e is [string, string] => e !== null)));
-    });
-
-    return () => { cancelled = true; };
-  }, [rawSlides, docDir]);
-
-  // Rewrite image srcs to data: URLs (or asset:// while loading) so Tauri's
-  // WebView can load them reliably on all platforms, including Windows/WebView2.
-  //
-  // resolvedSlidesCacheRef keys by the *input* Slide object's identity:
-  // parseDocument (markdownToSlides.ts) already reuses the previous Slide
-  // object for any slide whose raw text is unchanged, so caching this step
-  // the same way means an edit to one slide no longer produces a brand-new
-  // object for *every* slide in the deck — which in turn is what lets
-  // ThumbnailPanel's React.memo (below) actually skip re-rendering slides the
-  // user isn't currently editing. WeakMap so entries for slides that no
-  // longer exist (deleted, or shifted out of cache by an insertion) are
-  // garbage-collected rather than accumulating for the life of the session.
-  const resolvedSlidesCacheRef = useRef<{ docDir: string; localImageUrls: Map<string, string>; cache: WeakMap<Slide, Slide> }>({
-    docDir: '',
-    localImageUrls: new Map(),
-    cache: new WeakMap(),
-  });
-
-  const slides = useMemo<Slide[]>(() => {
-    function resolveItem(item: ListItem): ListItem {
-      return { ...item, html: resolveHtmlSrcs(item.html, docDir, localImageUrls), children: item.children.map(resolveItem) };
-    }
-
-    let cacheHolder = resolvedSlidesCacheRef.current;
-    if (cacheHolder.docDir !== docDir || cacheHolder.localImageUrls !== localImageUrls) {
-      // docDir or image cache changed — every resolved src would be wrong, start fresh.
-      cacheHolder = { docDir, localImageUrls, cache: new WeakMap() };
-      resolvedSlidesCacheRef.current = cacheHolder;
-    }
-    const { cache } = cacheHolder;
-
-    // Pre-compute TOC entries from all non-hidden, titled slides. Derived from
-    // rawSlides (titles are identical in raw vs resolved) so it's always current.
-    // TOC slides are excluded from the WeakMap cache below because their resolved
-    // content depends on other slides' titles, not just their own raw text.
-    // Exclude the first non-hidden H1 slide (the cover/title slide) from the TOC.
-    // Subsequent H1 hero slides within the deck are included.
-    const coverIndex = rawSlides.find((s) => !s.hidden && s.titleLevel === 1)?.index ?? -1;
-    const tocEntries = rawSlides
-      .filter((s) => !s.hidden && s.title && s.index !== coverIndex)
-      .map((s) => ({ title: s.title, index: s.index }));
-
-    return rawSlides.map((slide) => {
-      const hasToc = slide.elements.some((e) => e.type === 'toc');
-      if (!hasToc) {
-        const cached = cache.get(slide);
-        if (cached) return cached;
-      }
-      const resolvedElements = slide.elements.map((el) => {
-        if (el.type === 'image' || el.type === 'video') return { ...el, src: resolveImageSrc(el.src, docDir, localImageUrls) };
-        if (el.type === 'paragraph') return { ...el, html: resolveHtmlSrcs(el.html, docDir, localImageUrls) };
-        if (el.type === 'list')      return { ...el, items: el.items.map(resolveItem) };
-        if (el.type === 'toc')       return { ...el, entries: tocEntries.filter((e) => e.index !== slide.index) };
-        return el;
-      });
-      // detectLayout ran at parse time against a placeholder toc with zero
-      // entries (the real slide titles aren't known until this pass), so a
-      // long toc never tripped the two-column overflow guard. Re-run it now
-      // that entries are populated, unless the user pinned an explicit layout.
-      const layout = hasToc && !slide.layoutOverride
-        ? detectLayout(resolvedElements, slide.titleLevel, !!slide.title)
-        : slide.layout;
-      const resolved: Slide = {
-        ...slide,
-        elements: resolvedElements,
-        layout,
-        backgroundImage: slide.backgroundImage
-          ? { ...slide.backgroundImage, src: resolveImageSrc(slide.backgroundImage.src, docDir, localImageUrls) }
-          : undefined,
-      };
-      if (!hasToc) cache.set(slide, resolved);
-      return resolved;
-    });
-  }, [rawSlides, docDir, localImageUrls]);
+  const slides = useResolvedSlides(rawSlides, docDir);
 
   // Compute a safe index in the same render as slides so children never receive
   // an out-of-bounds value during the frame before the clamp useEffect fires.
@@ -490,7 +337,7 @@ export default function App() {
     [frontmatter.aspect_ratio],
   );
 
-  const wordCount = countWords(editorBody);
+  const wordCount = useMemo(() => countWords(editorBody), [editorBody]);
 
   // Count image references that live outside the document's own folder.
   // These display fine locally but break if the .md file is moved without its images.
@@ -901,13 +748,14 @@ export default function App() {
 
   const handleThemeSelect = useCallback((id: string) => {
     setActiveThemeId(id);
-    // Preserve user-configured values across theme switches: header/footer
+    // Preserve user-configured values across theme switches: header/footer/toc
     // content and any logo the user explicitly chose. Color/font overrides
     // are cleared since they were customising the old theme's palette.
     setThemeOverrides((prev) => {
       const preserved: Partial<Theme> = {};
       if (prev.header !== undefined) preserved.header = prev.header;
       if (prev.footer !== undefined) preserved.footer = prev.footer;
+      if (prev.toc !== undefined) preserved.toc = prev.toc;
       if ('logo' in prev) preserved.logo = prev.logo;
       if (prev.logo_position !== undefined) preserved.logo_position = prev.logo_position;
       if (prev.logo_opacity !== undefined) preserved.logo_opacity = prev.logo_opacity;
@@ -1134,6 +982,8 @@ export default function App() {
       overridePatch.header = themeOverrides.header;
     if (themeOverrides.footer !== undefined)
       overridePatch.footer = themeOverrides.footer;
+    if (themeOverrides.toc !== undefined)
+      overridePatch.toc = themeOverrides.toc;
     const hasOverrides = Object.keys(overridePatch).length > 0;
     return hasOverrides
       ? patchFrontmatter(content, { theme_overrides: overridePatch })
@@ -2131,6 +1981,7 @@ export default function App() {
               uiTheme={resolvedUiTheme}
               editorFontFamily={EDITOR_FONT_OPTIONS.find(o => o.value === settings.editorFont)?.family}
               wordWrap={settings.editorWordWrap}
+              contentWidth={settings.editorContentWidth}
               spellCheckEnabled={settings.spellCheckEnabled}
               spellCheckLanguage={settings.spellCheckLanguage}
             />
@@ -2150,7 +2001,7 @@ export default function App() {
                 onThemeChange={handleThemeChange}
                 onMetaChange={handleMetaChange}
                 onFormat={handleFormat}
-                onOpenLibrary={() => setShowThemeMarketplace(true)}
+                onOpenLibrary={() => setShowThemeLibrary(true)}
               />
             </Panel>
           )}
@@ -2307,7 +2158,7 @@ export default function App() {
         <ThemeLibraryModal
           installedIds={installedRemoteIds}
           onThemesChanged={reloadCustomThemes}
-          onClose={() => setShowThemeMarketplace(false)}
+          onClose={() => setShowThemeLibrary(false)}
         />
       )}
 
@@ -2372,14 +2223,15 @@ export default function App() {
       )}
 
       {showExternalChangeDialog && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }} />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
-            padding: '24px 28px', width: 340, maxWidth: '90vw',
-          }}>
+        <ModalShell
+          onClose={() => setShowExternalChangeDialog(false)}
+          dismissOnBackdropClick={false}
+          dismissOnEscape={false}
+          width={340}
+          maxWidth="90vw"
+          ariaLabel={t('app.fileChangedExternally')}
+          cardStyle={{ padding: '24px 28px' }}
+        >
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
               {t('app.fileChangedExternally')}
             </div>
@@ -2423,19 +2275,17 @@ export default function App() {
                 </button>
               )}
             </div>
-          </div>
-        </>
+        </ModalShell>
       )}
 
       {pdfOptionsOpen && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }} onClick={() => setPdfOptionsOpen(false)} />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
-            padding: '24px 28px', width: 360, maxWidth: '90vw',
-          }}>
+        <ModalShell
+          onClose={() => setPdfOptionsOpen(false)}
+          width={360}
+          maxWidth="90vw"
+          ariaLabel={t('app.exportPdfTitle')}
+          cardStyle={{ padding: '24px 28px' }}
+        >
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
               {t('app.exportPdfTitle')}
             </div>
@@ -2476,22 +2326,17 @@ export default function App() {
                 }}
               >{t('app.exportAction')}</button>
             </div>
-          </div>
-        </>
+        </ModalShell>
       )}
 
       {confirmCloseAction && (
-        <>
-          <div
-            onClick={() => setConfirmCloseAction(null)}
-            style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }}
-          />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
-            padding: '24px 28px', width: 320, maxWidth: '90vw',
-          }}>
+        <ModalShell
+          onClose={() => setConfirmCloseAction(null)}
+          width={320}
+          maxWidth="90vw"
+          ariaLabel={t('app.unsavedChangesTitle')}
+          cardStyle={{ padding: '24px 28px' }}
+        >
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
               {t('app.unsavedChangesTitle')}
             </div>
@@ -2520,22 +2365,17 @@ export default function App() {
                 }}
               >{t('common.save')}</button>
             </div>
-          </div>
-        </>
+        </ModalShell>
       )}
 
       {dropConfirmPath && (
-        <>
-          <div
-            onClick={() => setDropConfirmPath(null)}
-            style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 2000 }}
-          />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 2001,
-            padding: '24px 28px', width: 340, maxWidth: '90vw',
-          }}>
+        <ModalShell
+          onClose={() => setDropConfirmPath(null)}
+          width={340}
+          maxWidth="90vw"
+          ariaLabel={t('app.openFileTitle')}
+          cardStyle={{ padding: '24px 28px' }}
+        >
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
               {t('app.openFileTitle')}
             </div>
@@ -2560,8 +2400,7 @@ export default function App() {
                 }}
               >{t('common.open')}</button>
             </div>
-          </div>
-        </>
+        </ModalShell>
       )}
 
       {/* Off-screen slide rendering for Print */}
