@@ -1,6 +1,6 @@
 # Kova
 
-Kova turns plain Markdown into polished slides — with live preview, multiple layouts, theming, and PPTX export — all in a native desktop app.
+Kova turns plain Markdown into polished slides — with live preview, multiple layouts, theming, and PPTX, PDF, and HTML export — all in a native desktop app.
 
 [![Latest release](https://img.shields.io/github/v/release/KovaMD/Kova?label=release&color=orange)](https://github.com/KovaMD/Kova/releases/latest)
 [![Service status](https://status.kova.md/api/badge/1/status?style=flat&label=services)](https://status.kova.md/status/infra)
@@ -15,7 +15,7 @@ Kova turns plain Markdown into polished slides — with live preview, multiple l
 - **Math, code & diagrams** — KaTeX math, highlight.js syntax highlighting, and Mermaid charts
 - **Rich media** — images, local video, YouTube embeds, and polls
 - **Fullscreen presentation** — speaker notes, slide counter, keyboard and click navigation
-- **PPTX export** — export to PowerPoint (16:9 and 4:3)
+- **Export** — PowerPoint (16:9 and 4:3), PDF (with speaker notes), and standalone HTML
 
 ## Download
 
