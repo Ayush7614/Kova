@@ -55,8 +55,9 @@ export interface Slide {
     aspectRatio?: number;
   };
   /** Per-slide text colour override (e.g. `<!-- color: #ffffff -->` or Marp
-   *  `<!-- _color: white -->`). Applies to body content rendered over a
-   *  background image; falls back to the theme's `text` colour when absent. */
+   *  `<!-- _color: white -->`). Applied to the slide's content unconditionally
+   *  (not only over a background image); falls back to `invert`'s light
+   *  "text on dark" colour, then the theme's `text` colour, when absent. */
   textColor?: string;
   /** Marp `<!-- _class: invert -->` — swap to the deck's inverted palette for
    *  this slide (theme-defined or a sensible default). Implies a light-on-dark

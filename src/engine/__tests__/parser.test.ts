@@ -653,6 +653,18 @@ describe('per-slide text colour', () => {
     expect(slides[0].textColor).toBe('rgb(255,0,0)');
   });
 
+  it('functional colour with spaces inside parens is accepted', () => {
+    const { slides } = parseDocument(doc('<!-- color: rgb(255, 0, 0) -->\n\n## Slide\n'));
+    expect(slides[0].textColor).toBe('rgb(255, 0, 0)');
+  });
+
+  it('functional colour containing CSS metacharacters is rejected', () => {
+    // The validator must anchor the full value, not just the prefix, so a
+    // value like `rgb(0); color:red` can't inject extra declarations.
+    const { slides } = parseDocument(doc('<!-- color: rgb(0); color:red -->\n\n## Slide\n'));
+    expect(slides[0].textColor).toBeUndefined();
+  });
+
   it('colour directive is not emitted as a visible element', () => {
     const { slides } = parseDocument(doc('## Slide\n\n<!-- color: #fff -->\n\n- Item\n'));
     const paras = slides[0].elements.filter((e) => e.type === 'paragraph');

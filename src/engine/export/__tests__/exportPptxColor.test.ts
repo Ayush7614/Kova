@@ -10,6 +10,8 @@ import type { Slide, SlideElement } from '../../types';
 // split / two-column / bsp / grid were only recolouring the title, not the body).
 
 const OVERRIDE = '#ff0000'; // -> FF0000
+const NAMED = 'red';       // Marp `_color: red` -> FF0000 (no collision with light theme)
+const FUNCTIONAL = 'rgb(0, 128, 0)'; // -> 008000
 const INVERT = 'FFFFFF';   // light "text on dark" = theme title_text -> FFFFFF
 const DEFAULT_BODY = '1A1A1A'; // light theme text colour
 
@@ -82,6 +84,25 @@ describe('exportPptx per-slide text colour', () => {
   it('media placeholders honour per-slide color', async () => {
     const els: SlideElement[] = [{ type: 'youtube', label: 'Vid', url: 'https://example.com' }];
     const xml = await slideXml(makeSlide('media', els, { textColor: OVERRIDE }));
+    expect(hasColor(xml, 'FF0000')).toBe(true);
+  });
+
+  it('non-hex named color resolves to hex (regression: was silently black)', async () => {
+    const xml = await slideXml(makeSlide('title-content', [para('body text')], { textColor: NAMED }));
+    // `red` must become FF0000, not fall back to black (000000) like the old code did.
+    expect(hasColor(xml, 'FF0000')).toBe(true);
+    expect(hasColor(xml, '000000')).toBe(false);
+    const control = await slideXml(makeSlide('title-content', [para('body text')]));
+    expect(hasColor(control, 'FF0000')).toBe(false);
+  });
+
+  it('non-hex functional color resolves to hex', async () => {
+    const xml = await slideXml(makeSlide('title-content', [para('body text')], { textColor: FUNCTIONAL }));
+    expect(hasColor(xml, '008000')).toBe(true);
+  });
+
+  it('named color threads through split body', async () => {
+    const xml = await slideXml(makeSlide('split', [para('body text')], { textColor: NAMED }));
     expect(hasColor(xml, 'FF0000')).toBe(true);
   });
 });
