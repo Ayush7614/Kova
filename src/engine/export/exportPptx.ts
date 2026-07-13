@@ -611,7 +611,7 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
   if (poll && poll.type === 'poll') {
     const pollY = both ? bodyY + halfH + 0.2 : bodyY;
     s.addText([
-      { text: poll.label || 'Poll', options: { fontSize: 20, bold: true, breakLine: true } },
+      { text: poll.label || 'QR Code', options: { fontSize: 20, bold: true, breakLine: true } },
       { text: poll.url, options: { fontSize: 11, color: hex(t.colors.accent) } },
     ], {
       x: M, y: pollY, w: W - M * 2, h: both ? halfH : bodyH,

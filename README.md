@@ -13,7 +13,7 @@ Kova turns plain Markdown into polished slides — with live preview, multiple l
 - **Auto layout** — title, section, split, two-column, grid, quote, full-bleed, and more
 - **Themes** — 11 built-in themes, community themes, and custom YAML
 - **Math, code & diagrams** — KaTeX math, highlight.js syntax highlighting, and Mermaid charts
-- **Rich media** — images, local video, YouTube embeds, and polls
+- **Rich media** — images, local video, YouTube embeds, and QR codes
 - **Fullscreen presentation** — speaker notes, slide counter, keyboard and click navigation
 - **Export** — PowerPoint (16:9 and 4:3), PDF (with speaker notes), and standalone HTML
 - **Computed tables** — annotate a table with `!sheet` and write formulas in the cells (`=qty * unit`, `=sum(total)`); Kova computes them, the source keeps only the formulas. See [`examples/sheet-basics.md`](examples/sheet-basics.md)
