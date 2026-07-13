@@ -34,6 +34,7 @@ Kova turns plain Markdown into polished slides — with live preview, multiple l
 | **Windows 10/11** | [**Download .msi**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows.msi) · [Setup .exe](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows_setup.exe) |
 | **Linux (Debian/Ubuntu)** | [**.deb package**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.deb) · [or via package manager](#linux-package-managers) |
 | **Linux (Fedora/RHEL/openSUSE)** | [**.rpm package**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.rpm) · [or via package manager](#linux-package-managers) |
+| **Linux (Arch)** | [Install via AUR](#linux-package-managers) |
 | **Linux (AppImage)** | [**.AppImage**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.AppImage) |
 | **Linux (Flatpak)** | [Install via Flatpak](#linux-package-managers) |
 
@@ -70,6 +71,12 @@ nix profile install github:KovaMD/Kova   # install into your profile
 ```
 
 Or add `github:KovaMD/Kova` as a flake input and use `packages.<system>.default`.
+
+**Arch (AUR)**
+
+```bash
+yay -S kova-bin   # or: paru -S kova-bin
+```
 
 **Flatpak**
 
