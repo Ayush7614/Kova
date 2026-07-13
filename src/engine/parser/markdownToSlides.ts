@@ -96,9 +96,18 @@ function parseSlide(raw: string, index: number, constants: Map<string, Value>): 
 
 // ── Custom syntax pre-processor ──────────────────────────────────────────────
 
+// A caption never survives to the renderer as its own element — it is merged
+// into the image/mermaid/math element it directly follows (see convertRoot's
+// html-node handling) so it can never trip layout detection into treating it
+// as extra body content (e.g. forcing a split/two-column layout — issue #151).
+interface CaptionMarker {
+  type: 'caption';
+  text: string;
+}
+
 interface PreprocessResult {
   cleanContent: string;
-  placeholders: Map<number, SlideElement>;
+  placeholders: Map<number, SlideElement | CaptionMarker>;
   sheets: Map<number, SheetOpts>;
   references: string[];
 }
@@ -107,6 +116,7 @@ const YOUTUBE_RE      = /^!youtube\[([^\]]*)\]\(([^)]*)\)$/;
 const VIDEO_RE        = /^!video\[([^\]]*)\]\(([^)]*)\)$/;
 const POLL_RE         = /^!poll\[([^\]]*)\]\(([^)]*)\)$/;
 const PROGRESS_RE     = /^!progress\[([^\]]*)\]\((\d+(?:\.\d+)?)\)$/;
+const CAPTION_RE      = /^!caption\[([^\]]*)\]$/;
 const REF_RE          = /^!ref\[([^\]]*)\]$/;
 const TOC_RE          = /^!toc$/;
 const SHEET_RE        = /^!sheet\b(.*)$/;
@@ -117,7 +127,7 @@ const RESERVED_RE     = /^!(include|fmt|code)\b/;
 const DISPLAY_MATH_RE = /^\$\$(.+)\$\$\s*$/;
 
 function preprocess(content: string): PreprocessResult {
-  const placeholders = new Map<number, SlideElement>();
+  const placeholders = new Map<number, SlideElement | CaptionMarker>();
   const references: string[] = [];
   const sheets = new Map<number, SheetOpts>();
   let nextSheet = 0;
@@ -171,6 +181,14 @@ function preprocess(content: string): PreprocessResult {
     if (progress) {
       const idx = nextIdx++;
       placeholders.set(idx, { type: 'progress', label: progress[1], value: parseFloat(progress[2]) });
+      cleanLines.push(`<!-- kova-el:${idx} -->`);
+      continue;
+    }
+
+    const caption = t.match(CAPTION_RE);
+    if (caption) {
+      const idx = nextIdx++;
+      placeholders.set(idx, { type: 'caption', text: caption[1] });
       cleanLines.push(`<!-- kova-el:${idx} -->`);
       continue;
     }
@@ -241,7 +259,7 @@ interface ConvertResult {
 
 function convertRoot(
   tree: Root,
-  placeholders: Map<number, SlideElement>,
+  placeholders: Map<number, SlideElement | CaptionMarker>,
   sheets: Map<number, SheetOpts>,
   src: string,
   constants: Map<string, Value>,
@@ -371,7 +389,16 @@ function convertRoot(
           const m = v.match(/^<!-- kova-el:(\d+) -->$/);
           if (m) {
             const el = placeholders.get(Number(m[1]));
-            if (el) elements.push(el);
+            if (el?.type === 'caption') {
+              const prev = elements[elements.length - 1];
+              if (prev && (prev.type === 'image' || prev.type === 'mermaid' || prev.type === 'math')) {
+                elements[elements.length - 1] = { ...prev, caption: el.text };
+              } else {
+                elements.push({ type: 'paragraph', text: '', html: "#ERR !caption must directly follow an image, diagram, or formula" });
+              }
+            } else if (el) {
+              elements.push(el);
+            }
           } else if (v === '<hr>' || v === '<hr/>' || v === '<hr />') {
             elements.push({ type: 'paragraph', text: '', html: '<hr>' });
           }

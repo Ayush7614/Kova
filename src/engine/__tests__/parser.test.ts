@@ -493,6 +493,60 @@ describe('custom syntax pre-processor', () => {
   });
 });
 
+// ── Figure captions (!caption) ───────────────────────────────────────────────
+
+describe('!caption', () => {
+  it('attaches to the image it directly follows, without becoming its own element', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n![Arch](arch.png)\n!caption[Figure 1: architecture]\n'));
+    expect(slides[0].elements).toHaveLength(1);
+    const img = slides[0].elements.find((e) => e.type === 'image');
+    expect(img?.type === 'image' && img.caption).toBe('Figure 1: architecture');
+  });
+
+  it('attaches to the Mermaid diagram it directly follows', () => {
+    const input = doc('## Slide\n\n```mermaid\ngraph TD; A-->B;\n```\n!caption[Figure 2: flow]\n');
+    const { slides } = parseDocument(input);
+    expect(slides[0].elements).toHaveLength(1);
+    const mer = slides[0].elements.find((e) => e.type === 'mermaid');
+    expect(mer?.type === 'mermaid' && mer.caption).toBe('Figure 2: flow');
+  });
+
+  it('attaches to the math block it directly follows', () => {
+    const input = doc('## Slide\n\n$$\nE = mc^2\n$$\n!caption[Equation 1: mass-energy equivalence]\n');
+    const { slides } = parseDocument(input);
+    expect(slides[0].elements).toHaveLength(1);
+    const math = slides[0].elements.find((e) => e.type === 'math');
+    expect(math?.type === 'math' && math.caption).toBe('Equation 1: mass-energy equivalence');
+  });
+
+  it('attaches only to the nearest preceding image, not an earlier one', () => {
+    const input = doc('## Slide\n\n![A](a.png)\n\n![B](b.png)\n!caption[for B]\n');
+    const { slides } = parseDocument(input);
+    const imgs = slides[0].elements.filter((e) => e.type === 'image');
+    expect(imgs).toHaveLength(2);
+    expect(imgs[0].type === 'image' && imgs[0].caption).toBeUndefined();
+    expect(imgs[1].type === 'image' && imgs[1].caption).toBe('for B');
+  });
+
+  it('errors when not directly following an image, diagram, or formula', () => {
+    const { slides } = parseDocument(doc('## Slide\n\nJust text.\n!caption[orphaned]\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph' && e.html.includes('#ERR'));
+    expect(para?.type === 'paragraph' && para.html).toContain('!caption must directly follow');
+  });
+
+  it('errors when it is the first thing on a slide', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n!caption[orphaned]\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph' && e.html.includes('#ERR'));
+    expect(para).toBeDefined();
+  });
+
+  it('does not force a standalone captioned image into a split/column layout', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n![Arch](arch.png)\n!caption[Figure 1: architecture]\n'));
+    expect(slides[0].layout).not.toBe('split');
+    expect(slides[0].layout).not.toBe('two-column');
+  });
+});
+
 // ── Table of contents (!toc) ────────────────────────────────────────────────
 
 describe('!toc table of contents', () => {

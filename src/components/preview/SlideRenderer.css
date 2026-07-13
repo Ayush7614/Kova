@@ -159,6 +159,23 @@
 .sl-img-fill { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; align-self: center; }
 .sl-img-cover { display: block; max-width: 90%; max-height: 90%; width: auto; height: auto; object-fit: contain; align-self: center; }
 
+/* Figure caption (!caption) — shared by images, Mermaid diagrams, and math
+   blocks. Muted/italic like sl-quote__attr, not bold like the video/poll
+   label, since this reads as a figure caption rather than an embed title.
+   80% (not sl-quote__attr's 50%, or this file's more common 60%) is
+   deliberate: checked against every built-in theme's text/background pair,
+   60% drops as low as 3.15:1 on Grove/Horizon (WCAG AA needs 4.5:1 for text
+   this small) — 80% clears 5.1:1 on the worst of the eleven. */
+.sl-caption {
+  flex-shrink: 0;
+  width: 100%;
+  text-align: center;
+  font-style: italic;
+  font-size: clamp(7px, 1.6cqi, 14px);
+  color: color-mix(in srgb, var(--sl-text) 80%, transparent);
+  margin-top: 0.4em;
+}
+
 .sl-blockquote {
   border-left: 3px solid var(--sl-accent);
   padding: 0.4em 0.8em;
@@ -332,6 +349,8 @@
 
 .sl-title-image { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 .sl-ti-img { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 0 7% 5%; }
+.sl-ti-img__inner { display: flex; flex-direction: column; align-items: center; height: 100%; max-width: 100%; min-height: 0; }
+.sl-ti-img__inner .sl-img-fill { flex: 1; min-height: 0; }
 
 /* ── Split layout ────────────────────────────────────────────────────────── */
 
@@ -339,11 +358,29 @@
 .sl-split__title { padding-bottom: 2%; }
 .sl-split__body { flex: 1; display: flex; overflow: hidden; padding: 2% 4% 4%; gap: 3%; }
 .sl-split__left { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.sl-split__img-inner { display: flex; flex-direction: column; align-items: center; height: 100%; max-width: 100%; min-height: 0; }
+.sl-split__img-inner .sl-img-fill { flex: 1; min-height: 0; }
 .sl-split__right { flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start; font-size: clamp(8px, 2.5cqi, 24px); line-height: 1.6; font-family: var(--sl-font-body); padding: 0 2% 0; min-width: 0; position: relative; }
 
 /* ── Full-bleed image ────────────────────────────────────────────────────── */
 
 .sl-full-bleed { position: absolute; top: 0; right: 0; bottom: 0; left: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+/* Flat scrim, not a gradient: the box is only as tall as one line of text,
+   so a gradient's transparent end would sit right under the text baseline
+   and undermine the white-on-dark contrast this depends on regardless of
+   the underlying photo's own colors. */
+.sl-full-bleed__caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3% 6% 2%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  text-align: center;
+  font-style: italic;
+  font-size: clamp(8px, 1.8cqi, 16px);
+}
 
 /* ── Quote ───────────────────────────────────────────────────────────────── */
 

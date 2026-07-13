@@ -99,6 +99,12 @@ Use this form when the directive produces an actual slide element (an embed,
 a chart, a reference footnote) — as opposed to category 3, which only changes
 slide *behaviour*.
 
+`!caption[text]` is a variant of this form that never becomes its own slide
+element: it attaches to whichever image, Mermaid diagram, or math block it
+directly follows, merged in by the parser, and renders centered underneath
+that element. A `!caption` with no such element immediately above it (or
+following anything else) is a compile error, same as a misplaced `!sheet`.
+
 ### 5. Template variables
 
 `{title}`, `{date}`, `{slide_number}`, `{total}` — text substitution inside

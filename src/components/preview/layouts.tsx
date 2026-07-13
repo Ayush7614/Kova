@@ -192,7 +192,10 @@ function TitleImageLayout({ slide }: { slide: Slide }) {
       <div className="sl-heading">{slide.title}</div>
       <div className="sl-ti-img">
         {img && img.type === 'image' && (
-          <img src={img.src} alt={img.alt} className="sl-img-fill" />
+          <div className="sl-ti-img__inner">
+            <img src={img.src} alt={img.alt} className="sl-img-fill" />
+            {img.caption && <div className="sl-caption">{img.caption}</div>}
+          </div>
         )}
       </div>
     </div>
@@ -210,7 +213,10 @@ function SplitLayout({ slide }: { slide: Slide }) {
   const imgCol = (
     <div className="sl-split__left">
       {img && img.type === 'image' && (
-        <img src={img.src} alt={img.alt} className="sl-img-fill" />
+        <div className="sl-split__img-inner">
+          <img src={img.src} alt={img.alt} className="sl-img-fill" />
+          {img.caption && <div className="sl-caption">{img.caption}</div>}
+        </div>
       )}
     </div>
   );
@@ -230,7 +236,10 @@ function FullBleedLayout({ slide }: { slide: Slide }) {
   return (
     <div className="sl-full-bleed">
       {img && img.type === 'image' && (
-        <img src={img.src} alt={img.alt} className="sl-img-cover" />
+        <>
+          <img src={img.src} alt={img.alt} className="sl-img-cover" />
+          {img.caption && <div className="sl-full-bleed__caption">{img.caption}</div>}
+        </>
       )}
     </div>
   );
@@ -387,7 +396,7 @@ function CodeLayout({ slide }: { slide: Slide }) {
             </>
           )}
           {codeEl.type === 'mermaid' && (
-            <MermaidDiagram value={codeEl.value} />
+            <MermaidDiagram value={codeEl.value} caption={codeEl.caption} />
           )}
         </div>
       ))}
@@ -402,7 +411,7 @@ function MathLayout({ slide }: { slide: Slide }) {
       {slide.title && <div className="sl-heading sl-math-layout__title">{slide.title}</div>}
       <div className="sl-math-layout__body">
         {mathEls.map((el, i) => (
-          <MathBlock key={i} value={el.value} display={el.display} />
+          <MathBlock key={i} value={el.value} display={el.display} caption={el.caption} />
         ))}
       </div>
     </div>
