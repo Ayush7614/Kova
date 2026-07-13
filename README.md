@@ -6,6 +6,14 @@ Kova turns plain Markdown into polished slides — with live preview, multiple l
 [![Service status](https://status.kova.md/api/badge/1/status?style=flat&label=services)](https://status.kova.md/status/infra)
 [![Matrix](https://img.shields.io/matrix/kova-md%3Amatrix.org?server_fqdn=matrix.org&label=matrix&color=blue)](https://matrix.to/#/#kova-md:matrix.org)
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/readme/screenshot-dark.png" />
+    <source media="(prefers-color-scheme: light)" srcset="docs/readme/screenshot-light.png" />
+    <img src="docs/readme/screenshot-light.png" alt="Kova editor" width="80%" />
+  </picture>
+</p>
+
 ## Features
 
 - **Markdown-first** — write slides in plain text, separated by `---`
