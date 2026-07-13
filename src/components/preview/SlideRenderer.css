@@ -412,7 +412,9 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 0 2%;
+  /* 3% here + sl-bsp__body's 4% = 7%, matching sl-heading's left padding
+     (see sl-two-col__col, which uses the same 3%+4% split) — issue #140. */
+  padding: 0 3%;
   min-width: 0;
   position: relative;
 }
@@ -437,7 +439,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 0 2%;
+  padding: 0 3%;
   min-height: 0;
   position: relative;
 }
