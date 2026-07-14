@@ -1,7 +1,8 @@
 // ponytail: Tier 1 Marp import — maps the common-deck constructs onto Kova's
-// existing layout/theme primitives via text passes. Per-slide colors, real
-// image sizing, theme fidelity, and multi-bg tiling are deliberately dropped
-// (Tier 2). Add those only when a real deck needs them.
+// existing layout/theme primitives via text passes. Real image sizing, theme
+// fidelity, and multi-bg tiling are deliberately dropped (Tier 2). Per-slide
+// text colour (`_color` / `_class: invert`) is now mapped onto Kova's native
+// `<!-- color -->` / `<!-- _class: invert -->` directives.
 
 import yaml from 'js-yaml';
 
@@ -136,17 +137,24 @@ function transformSlide(slide: string, dropTag: (l: string) => string): string {
     return `![${alt.replace(SIZE_KW, '').replace(/\s+/g, ' ').trim()}]`;
   });
 
-  // Pass 3: comments. _class:lead → layout:title; other Marp directives
-  // dropped; our own/Kova directives kept; anything else = a Marp speaker note.
+  // Pass 3: comments. _class:lead → layout:title; _class:invert → color invert;
+  // _color → per-slide text colour. Other Marp directives dropped; our own/Kova
+  // directives kept; anything else = a Marp speaker note.
   text = text.replace(COMMENT, (full, inner: string) => {
     const c = inner.trim();
     const cls = c.match(/^_class\s*:\s*(.+)$/);
     if (cls) {
-      if (cls[1].trim().split(/\s+/).includes('lead')) return '<!-- layout:title -->';
+      const classes = cls[1].trim().split(/\s+/);
+      if (classes.includes('lead')) return '<!-- layout:title -->';
+      if (classes.includes('invert')) return '<!-- _class: invert -->';
       dropTag(`_class:${cls[1].trim()}`);
       return '';
     }
-    if (/^_/.test(c) || /^(paginate|theme|header|backgroundColor|color|backgroundImage)\b/.test(c)) {
+    const color = c.match(/^_?color\s*:\s*(.+)$/);
+    if (color) {
+      return `<!-- color: ${color[1].trim()} -->`;
+    }
+    if (/^_/.test(c) || /^(paginate|theme|header|backgroundColor|backgroundImage)\b/.test(c)) {
       dropTag(c.split(/[\s:]/)[0]);
       return '';
     }

@@ -440,18 +440,28 @@ export function isLightHex(hex: string): boolean {
   return hexToHsl(hex)[2] > 0.55; // hexToHsl returns [0,0,0] on malformed input
 }
 
-/** Returns an inline-style object that sets all --sl-* CSS custom properties. */
-export function themeToVars(theme: Theme): React.CSSProperties {
+/** Returns an inline-style object that sets all --sl-* CSS custom properties.
+ *  @param textOverride  Per-slide text colour (e.g. `<!-- color -->` / Marp
+ *                       `_class: invert`). When set, it replaces `--sl-text`
+ *                       and the code foreground is re-derived from `codeBgOverride`.
+ *  @param codeBgOverride  Per-slide code background (inverted decks); when set,
+ *                       the code foreground is chosen for that background. */
+export function themeToVars(
+  theme: Theme,
+  textOverride?: string,
+  codeBgOverride?: string,
+): React.CSSProperties {
   // Pick a legible foreground for code blocks based on code_bg luminance.
   // All built-in themes have dark code_bg; custom themes may not.
-  const codeText = isLightHex(theme.colors.code_bg) ? '#1a1a1a' : '#F0F0F0';
+  const codeBg  = codeBgOverride ?? theme.colors.code_bg;
+  const codeText = isLightHex(codeBg) ? '#1a1a1a' : '#F0F0F0';
 
   return {
     '--sl-bg':           theme.colors.background,
-    '--sl-text':         theme.colors.text,
+    '--sl-text':         textOverride ?? theme.colors.text,
     '--sl-primary':      theme.colors.primary,
     '--sl-accent':       theme.colors.accent,
-    '--sl-code-bg':      theme.colors.code_bg,
+    '--sl-code-bg':      codeBg,
     '--sl-code-text':    codeText,
     '--sl-title-text':   theme.colors.title_text,
     '--sl-section-bg':   theme.colors.section_bg,

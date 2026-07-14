@@ -688,6 +688,66 @@ describe('hidden slide marker', () => {
   });
 });
 
+// ── Per-slide text colour (issue #143) ───────────────────────────────────────
+
+describe('per-slide text colour', () => {
+  it('<!-- color: #fff --> sets textColor', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n<!-- color: #ffffff -->\n\n- Item\n'));
+    expect(slides[0].textColor).toBe('#ffffff');
+    expect(slides[0].invert).toBeFalsy();
+  });
+
+  it('Marp <!-- _color: white --> sets textColor (case-insensitive)', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n<!-- _COLOR: white -->\n\n- Item\n'));
+    expect(slides[0].textColor).toBe('white');
+  });
+
+  it('named and functional colour values are accepted', () => {
+    const { slides } = parseDocument(doc('<!-- color: rgb(255,0,0) -->\n\n## Slide\n'));
+    expect(slides[0].textColor).toBe('rgb(255,0,0)');
+  });
+
+  it('functional colour with spaces inside parens is accepted', () => {
+    const { slides } = parseDocument(doc('<!-- color: rgb(255, 0, 0) -->\n\n## Slide\n'));
+    expect(slides[0].textColor).toBe('rgb(255, 0, 0)');
+  });
+
+  it('functional colour containing CSS metacharacters is rejected', () => {
+    // The validator must anchor the full value, not just the prefix, so a
+    // value like `rgb(0); color:red` can't inject extra declarations.
+    const { slides } = parseDocument(doc('<!-- color: rgb(0); color:red -->\n\n## Slide\n'));
+    expect(slides[0].textColor).toBeUndefined();
+  });
+
+  it('colour directive is not emitted as a visible element', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n<!-- color: #fff -->\n\n- Item\n'));
+    const paras = slides[0].elements.filter((e) => e.type === 'paragraph');
+    expect(paras.every((p) => p.type === 'paragraph' && !p.text.includes('color'))).toBe(true);
+  });
+
+  it('<!-- _class: invert --> sets invert', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n<!-- _class: invert -->\n\n- Item\n'));
+    expect(slides[0].invert).toBe(true);
+  });
+
+  it('_class with other tokens is not treated as invert', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n<!-- _class: lead -->\n\n- Item\n'));
+    expect(slides[0].invert).toBeFalsy();
+  });
+
+  it('_class: invert directive is not emitted as a visible element', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n<!-- _class: invert -->\n\n- Item\n'));
+    const paras = slides[0].elements.filter((e) => e.type === 'paragraph');
+    expect(paras.every((p) => p.type === 'paragraph' && !p.text.includes('invert'))).toBe(true);
+  });
+
+  it('absent colour/invert leave fields undefined', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n- Item\n'));
+    expect(slides[0].textColor).toBeUndefined();
+    expect(slides[0].invert).toBeFalsy();
+  });
+});
+
 // ── Full document round-trip ──────────────────────────────────────────────────
 
 describe('full document', () => {

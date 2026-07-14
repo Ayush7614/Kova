@@ -248,6 +248,16 @@ function addSlide(
     });
   }
 
+  // Per-slide text colour may be a named colour (`white`, Marp `_color: white`)
+  // or a functional notation (`rgb(...)`). PptxGenJS only accepts 6-digit hex,
+  // so convert any CSS colour to hex before it reaches the layout renderers —
+  // otherwise pptxgenjs silently falls back to black (DEF_FONT_COLOR).
+  const slideTextColor = cssColorToHex(
+    slide.textColor
+      ?? (slide.invert ? t.colors.title_text : t.colors.text),
+  );
+  const slideCodeBg = slide.invert && !slide.textColor ? '#0D1117' : undefined;
+
   if (slide.backgroundImage) {
     const ar = slide.backgroundImage.size === 'contain' ? slide.backgroundImage.aspectRatio : undefined;
     tryAddImage(s, slide.backgroundImage.src, { x: 0, y: 0, w: W, h: H }, warnings, ar);
@@ -256,25 +266,25 @@ function addSlide(
   switch (slide.layout) {
     case 'title':         addTitleSlide(s, slide, t, cy, ch); break;
     case 'section':       addSectionSlide(s, slide, t, cy, ch); break;
-    case 'title-content': addTitleContentSlide(s, slide, t, cy, ch, warnings); break;
-    case 'title-image':   addTitleImageSlide(s, slide, t, cy, ch, warnings); break;
-    case 'split':         addSplitSlide(s, slide, t, cy, ch, warnings); break;
+    case 'title-content': addTitleContentSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg); break;
+    case 'title-image':   addTitleImageSlide(s, slide, t, cy, ch, warnings, slideTextColor); break;
+    case 'split':         addSplitSlide(s, slide, t, cy, ch, warnings, slideTextColor); break;
     case 'full-bleed':    addFullBleedSlide(s, slide, t, H, warnings); break;
-    case 'quote':         addQuoteSlide(s, slide, t, cy, ch); break;
-    case 'two-column':    addTwoColumnSlide(s, slide, t, cy, ch, warnings); break;
-    case 'bsp':           addBspSlide(s, slide, t, cy, ch, warnings); break;
-    case 'grid':          addGridSlide(s, slide, t, cy, ch, warnings); break;
-    case 'media':         addMediaSlide(s, slide, t, cy, ch); break;
-    case 'code':          addCodeSlide(s, slide, t, cy, ch, warnings); break;
-    case 'math':          addTitleContentSlide(s, slide, t, cy, ch, warnings); break;
+    case 'quote':         addQuoteSlide(s, slide, t, cy, ch, slideTextColor); break;
+    case 'two-column':    addTwoColumnSlide(s, slide, t, cy, ch, warnings, slideTextColor); break;
+    case 'bsp':           addBspSlide(s, slide, t, cy, ch, warnings, slideTextColor); break;
+    case 'grid':          addGridSlide(s, slide, t, cy, ch, warnings, slideTextColor); break;
+    case 'media':         addMediaSlide(s, slide, t, cy, ch, slideTextColor); break;
+    case 'code':          addCodeSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg); break;
+    case 'math':          addTitleContentSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg); break;
     case 'blank':         addBlankSlide(s, t); break;
-    default:              addTitleContentSlide(s, slide, t, cy, ch, warnings);
+    default:              addTitleContentSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg);
   }
 
   if (hasHead) addHeaderBar(s, t, meta);
   if (hasFoot) addFooterBar(s, t, meta, H);
   if (logoDataUrl) addLogo(s, logoDataUrl, logoAr, t.logo_position, t.logo_opacity, H);
-  if (slide.references.length > 0) addReferences(s, slide.references, t, H, hasFoot);
+  if (slide.references.length > 0) addReferences(s, slide.references, t, H, hasFoot, slideTextColor);
   if (slide.speakerNotes) s.addNotes(slide.speakerNotes);
 }
 
@@ -336,22 +346,22 @@ function addSectionSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) 
   }
 }
 
-function addTitleContentSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[]) {
+function addTitleContentSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), codeBg?: string) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.85 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 28, bold: true,
-      color: hex(t.colors.text),
+      color: tc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, valign: 'middle', wrap: true, shrinkText: true,
     });
   }
-  addElements(s, slide.elements, t, { x: M, y: cy + hh + 0.1, w: W - M * 2, h: ch - hh - 0.1 }, warnings);
+  addElements(s, slide.elements, t, { x: M, y: cy + hh + 0.1, w: W - M * 2, h: ch - hh - 0.1 }, warnings, tc, codeBg);
 }
 
-function addTitleImageSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[]) {
+function addTitleImageSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
   s.background = { fill: hex(t.colors.background) };
   // 3% gap mirrors .sl-split__body { gap: 3% } in CSS
   const GAP  = 0.3;
@@ -361,7 +371,7 @@ function addTitleImageSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: numbe
     s.addText(slide.title, {
       x: M, y: cy, w: colW, h: ch,
       fontSize: 26, bold: true,
-      color: hex(t.colors.text),
+      color: tc,
       fontFace: firstFont(t.fonts.title),
       align: 'left', valign: 'middle', wrap: true, shrinkText: true,
     });
@@ -374,14 +384,14 @@ function addTitleImageSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: numbe
   }
 }
 
-function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[]) {
+function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: hex(t.colors.text),
+      color: tc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -399,7 +409,7 @@ function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, wa
   const capH = img && img.type === 'image' && img.caption ? CAPTION_H : 0;
 
   if (imgOnRight) {
-    addElements(s, rest, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings);
+    addElements(s, rest, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, tc);
     if (img && img.type === 'image') {
       const imgX = M + colW + 0.3;
       tryAddImage(s, img.src, { x: imgX, y: bodyY, w: colW, h: bodyH - capH }, warnings, ar);
@@ -410,7 +420,7 @@ function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, wa
       tryAddImage(s, img.src, { x: M, y: bodyY, w: colW, h: bodyH - capH }, warnings, ar);
       addCaption(s, img.caption, t, M, bodyY + bodyH - capH, colW);
     }
-    addElements(s, rest, t, { x: M + colW + 0.3, y: bodyY, w: colW, h: bodyH }, warnings);
+    addElements(s, rest, t, { x: M + colW + 0.3, y: bodyY, w: colW, h: bodyH }, warnings, tc);
   }
 }
 
@@ -436,7 +446,7 @@ function addFullBleedSlide(s: PS, slide: Slide, t: Theme, H: number, warnings: s
   }
 }
 
-function addQuoteSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
+function addQuoteSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc: string = hex(t.colors.text)) {
   s.background = { fill: hex(t.colors.background) };
   const bq = slide.elements.find((e) => e.type === 'blockquote');
   if (!bq || bq.type !== 'blockquote') return;
@@ -446,7 +456,7 @@ function addQuoteSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
   s.addText(`“${bq.text}”`, {
     x: M + 0.5, y: cy, w: W - M * 2 - 1, h: quoteH,
     fontSize: 24, italic: true,
-    color: hex(t.colors.text),
+    color: tc,
     fontFace: firstFont(t.fonts.body),
     align: 'center', valign: 'middle', wrap: true,
   });
@@ -461,14 +471,14 @@ function addQuoteSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
   }
 }
 
-function addTwoColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[]) {
+function addTwoColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: hex(t.colors.text),
+      color: tc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -487,18 +497,18 @@ function addTwoColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number
     [left, right] = autoSplitElements(slide.elements);
   }
 
-  addElements(s, left,  t, { x: M,               y: bodyY, w: colW, h: bodyH }, warnings);
-  addElements(s, right, t, { x: M + colW + 0.3,  y: bodyY, w: colW, h: bodyH }, warnings);
+  addElements(s, left,  t, { x: M,               y: bodyY, w: colW, h: bodyH }, warnings, tc);
+  addElements(s, right, t, { x: M + colW + 0.3,  y: bodyY, w: colW, h: bodyH }, warnings, tc);
 }
 
-function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[]) {
+function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: hex(t.colors.text),
+      color: tc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -511,7 +521,7 @@ function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warn
   // Mirror preview: group consecutive progress bars, then apply same placement logic
   const groups = groupProgressRuns(slide.elements);
   if (groups.length < 2) {
-    addElements(s, slide.elements, t, { x: M, y: bodyY, w: W - M * 2, h: bodyH }, warnings);
+    addElements(s, slide.elements, t, { x: M, y: bodyY, w: W - M * 2, h: bodyH }, warnings, tc);
     return;
   }
 
@@ -534,27 +544,27 @@ function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warn
     rightGroups = groups.slice(1);
   }
 
-  addElements(s, leftGroup, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings);
+  addElements(s, leftGroup, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, tc);
 
   if (rightGroups.length === 1) {
-    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY, w: colW, h: bodyH }, warnings);
+    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY, w: colW, h: bodyH }, warnings, tc);
   } else {
     const subH = (bodyH - 0.2) / 2;
-    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY,              w: colW, h: subH }, warnings);
+    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY,              w: colW, h: subH }, warnings, tc);
     if (rightGroups[1]) {
-      addElements(s, rightGroups[1], t, { x: M + colW + GAP, y: bodyY + subH + 0.2, w: colW, h: subH }, warnings);
+      addElements(s, rightGroups[1], t, { x: M + colW + GAP, y: bodyY + subH + 0.2, w: colW, h: subH }, warnings, tc);
     }
   }
 }
 
-function addGridSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[]) {
+function addGridSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: hex(t.colors.text),
+      color: tc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -576,18 +586,18 @@ function addGridSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, war
       x: M + col * (cellW + GAP),
       y: bodyY + row * (cellH + GAP),
       w: cellW, h: cellH,
-    }, warnings);
+    }, warnings, tc);
   });
 }
 
-function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
+function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc: string = hex(t.colors.text)) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: hex(t.colors.text),
+      color: tc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -607,7 +617,7 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
       { text: vid.src, options: { fontSize: 11, color: hex(t.colors.accent) } },
     ], {
       x: M, y: bodyY, w: W - M * 2, h: bodyH,
-      color: hex(t.colors.text), fontFace: firstFont(t.fonts.body),
+      color: tc, fontFace: firstFont(t.fonts.body),
       align: 'center', valign: 'middle', wrap: true,
     });
   }
@@ -622,7 +632,7 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
       { text: yt.url, options: { fontSize: 11, color: hex(t.colors.accent) } },
     ], {
       x: M, y: bodyY, w: W - M * 2, h: both ? halfH : bodyH,
-      color: hex(t.colors.text), fontFace: firstFont(t.fonts.body),
+      color: tc, fontFace: firstFont(t.fonts.body),
       align: 'center', valign: 'middle', wrap: true,
     });
   }
@@ -633,20 +643,20 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) {
       { text: poll.url, options: { fontSize: 11, color: hex(t.colors.accent) } },
     ], {
       x: M, y: pollY, w: W - M * 2, h: both ? halfH : bodyH,
-      color: hex(t.colors.text), fontFace: firstFont(t.fonts.body),
+      color: tc, fontFace: firstFont(t.fonts.body),
       align: 'center', valign: 'middle', wrap: true,
     });
   }
 }
 
-function addCodeSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[]) {
+function addCodeSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), codeBg?: string) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: hex(t.colors.text),
+      color: tc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -669,7 +679,7 @@ function addCodeSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, war
   if (!codeEl) return;
 
   addCodeBlock(s, codeEl.value, codeEl.type === 'code' ? codeEl.lang : undefined, t,
-    { x: M, y: codeY, w: W - M * 2, h: codeH });
+    { x: M, y: codeY, w: W - M * 2, h: codeH }, codeBg);
 }
 
 function addBlankSlide(s: PS, t: Theme) {
@@ -687,10 +697,10 @@ function blendColor(fg: string, bg: string, alpha: number): string {
   return [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
 
-function addReferences(s: PS, refs: string[], t: Theme, H: number, hasFoot: boolean) {
+function addReferences(s: PS, refs: string[], t: Theme, H: number, hasFoot: boolean, tc: string = hex(t.colors.text)) {
   const REF_H = Math.min(0.06 + refs.length * 0.17, H * 0.35);
   const bottomPad = hasFoot ? FOOT_H + 0.08 : 0.15;
-  const color = blendColor(t.colors.text, t.colors.background, 0.60);
+  const color = blendColor(tc, t.colors.background, 0.60);
   const runs = refs.map((ref, i) => ({
     text: ref,
     options: { fontSize: 7, breakLine: i < refs.length - 1, color },
@@ -936,7 +946,7 @@ const CALLOUT_COLORS: Record<string, string> = {
   danger: '#FF5252',
 };
 
-function addCalloutBlock(s: PS, el: Extract<SlideElement, { type: 'blockquote' }>, t: Theme, area: Area) {
+function addCalloutBlock(s: PS, el: Extract<SlideElement, { type: 'blockquote' }>, t: Theme, area: Area, tc: string = hex(t.colors.text)) {
   const color = CALLOUT_COLORS[el.calloutType ?? 'note'] ?? CALLOUT_COLORS.note;
   const BAR_W = 0.06;
   const PAD   = 0.15;
@@ -965,7 +975,7 @@ function addCalloutBlock(s: PS, el: Extract<SlideElement, { type: 'blockquote' }
     s.addText(el.text, {
       x: area.x + BAR_W + PAD, y: area.y + PAD * 0.5 + titleH, w: area.w - BAR_W - PAD * 1.5, h: area.h - titleH - PAD,
       fontSize: 14,
-      color: hex(t.colors.text),
+      color: tc,
       fontFace: firstFont(t.fonts.body),
       valign: 'top', wrap: true,
       shrinkText: true,
@@ -975,7 +985,7 @@ function addCalloutBlock(s: PS, el: Extract<SlideElement, { type: 'blockquote' }
 
 // ── Styled code block (reused by addCodeSlide and addElements) ────────────────
 
-function addCodeBlock(s: PS, value: string, lang: string | undefined, t: Theme, area: Area) {
+function addCodeBlock(s: PS, value: string, lang: string | undefined, t: Theme, area: Area, codeBgOverride?: string) {
   const OUTER_PAD = 0.15;
   const LANG_H    = 0.25;
   const INNER_PAD = 0.15;
@@ -999,9 +1009,10 @@ function addCodeBlock(s: PS, value: string, lang: string | undefined, t: Theme, 
   const blockY = area.y + (area.h - blockH) / 2;
 
   // Outer area — code_bg background, no border (mirrors .sl-code)
+  const codeBg = codeBgOverride ?? t.colors.code_bg;
   s.addShape('rect', {
     x: area.x, y: blockY, w: area.w, h: blockH,
-    fill: { color: hex(t.colors.code_bg) },
+    fill: { color: hex(codeBg) },
     line: { type: 'none' },
   });
 
@@ -1055,7 +1066,7 @@ function addCodeBlock(s: PS, value: string, lang: string | undefined, t: Theme, 
 
 // ── Element renderer ──────────────────────────────────────────────────────────
 
-function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warnings: string[] = []) {
+function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warnings: string[] = [], tc: string = hex(t.colors.text), codeBg?: string) {
   if (elements.length === 0) return;
 
   // Single image fills the area
@@ -1071,13 +1082,13 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
   // Single code element — render with full dark-background styling
   if (elements.length === 1 && elements[0].type === 'code') {
     const el = elements[0];
-    addCodeBlock(s, el.value, el.lang, t, area);
+    addCodeBlock(s, el.value, el.lang, t, area, codeBg);
     return;
   }
 
   // Single callout — render as a bordered/accent-barred box, not a plain quote
   if (elements.length === 1 && elements[0].type === 'blockquote' && elements[0].calloutType) {
-    addCalloutBlock(s, elements[0], t, area);
+    addCalloutBlock(s, elements[0], t, area, tc);
     return;
   }
 
@@ -1088,7 +1099,7 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
     switch (el.type) {
       case 'paragraph':
         if (el.text.trim()) {
-          const paraRuns = htmlToInlineRuns(el.html, hex(t.colors.text), firstFont(t.fonts.code), hex(t.colors.accent));
+          const paraRuns = htmlToInlineRuns(el.html, tc, firstFont(t.fonts.code), hex(t.colors.accent));
           paraRuns.forEach((run, ri) => {
             runs.push({ text: run.text, options: { fontSize: 18, ...run.options, breakLine: ri === paraRuns.length - 1 } });
           });
@@ -1102,14 +1113,14 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
             fontSize: 18,
             paraSpaceAfter: 4,
           };
-          const itemRuns = htmlToInlineRuns(item.html, hex(t.colors.text), firstFont(t.fonts.code), hex(t.colors.accent));
+          const itemRuns = htmlToInlineRuns(item.html, tc, firstFont(t.fonts.code), hex(t.colors.accent));
           runs.push({ text: itemRuns[0].text, options: { ...itemRuns[0].options, ...bulletBase } });
           for (let ri = 1; ri < itemRuns.length; ri++) {
             runs.push({ text: itemRuns[ri].text, options: { fontSize: 18, ...itemRuns[ri].options } });
           }
           for (const child of item.children) {
             const childBase = { bullet: true as const, indentLevel: 1, fontSize: 16, paraSpaceAfter: 3 };
-            const childRuns = htmlToInlineRuns(child.html, hex(t.colors.text), firstFont(t.fonts.code), hex(t.colors.accent));
+            const childRuns = htmlToInlineRuns(child.html, tc, firstFont(t.fonts.code), hex(t.colors.accent));
             runs.push({ text: childRuns[0].text, options: { ...childRuns[0].options, ...childBase } });
             for (let ri = 1; ri < childRuns.length; ri++) {
               runs.push({ text: childRuns[ri].text, options: { fontSize: 16, ...childRuns[ri].options } });
@@ -1187,7 +1198,7 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
   if (runs.length > 0) {
     s.addText(runs, {
       x: area.x, y: area.y, w: area.w, h: area.h,
-      fontSize: 18, color: hex(t.colors.text),
+      fontSize: 18, color: tc,
       fontFace: firstFont(t.fonts.body),
       valign: 'top', wrap: true,
       // Unlike the live preview's OverflowPane (which measures real DOM height
@@ -1217,7 +1228,7 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
       s.addText(el.label, {
         x: area.x, y, w: area.w * 0.78, h: labelH,
         fontSize: 13, bold: true,
-        color: hex(t.colors.text), fontFace: firstFont(t.fonts.body),
+        color: tc, fontFace: firstFont(t.fonts.body),
         valign: 'bottom',
       });
       s.addText(`${el.value}%`, {
@@ -1240,7 +1251,7 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
     const textFrac = runs.length > 0 ? Math.min(0.5, 0.15 + runs.length * 0.08) : 0;
     const tableY = area.y + area.h * textFrac;
     const tableH = area.h * (1 - textFrac - 0.02);
-    addTable(s, tableEl, t, { x: area.x, y: tableY, w: area.w, h: tableH });
+    addTable(s, tableEl, t, { x: area.x, y: tableY, w: area.w, h: tableH }, tc);
   }
 }
 
@@ -1249,6 +1260,7 @@ function addTable(
   el: Extract<SlideElement, { type: 'table' }>,
   t: Theme,
   area: Area,
+  tc: string = hex(t.colors.text),
 ) {
   const colAlign = (i: number): 'left' | 'center' | 'right' =>
     (el.align?.[i] as 'left' | 'center' | 'right' | null | undefined) ?? 'left';
@@ -1263,7 +1275,7 @@ function addTable(
     },
   }));
   const bodyRows = el.rows.map((row) =>
-    row.map((cell, i) => ({ text: stripHtml(cell), options: { color: hex(t.colors.text), fontSize: 14, align: colAlign(i) } }))
+    row.map((cell, i) => ({ text: stripHtml(cell), options: { color: tc, fontSize: 14, align: colAlign(i) } }))
   );
 
   s.addTable([headerRow, ...bodyRows], {
@@ -1335,6 +1347,140 @@ function hex(color: string): string {
   const h = color.replace('#', '').toUpperCase();
   return h.length === 3 ? h[0]+h[0]+h[1]+h[1]+h[2]+h[2] : h;
 }
+
+// Convert any CSS colour value accepted by the parser into the 6-digit hex
+// string PptxGenJS requires. `parseColorValue` in the parser already blocks
+// injection-y values, so only legit colours reach here.
+//
+// Resolution order (per review of #150): resolve via the DOM first. A browser
+// (and jsdom) normalises every sRGB-compatible colour — hex, named colours,
+// `hsl()`/`hwb()`, and all modern notations like `lab()/lch()/oklab()/oklch()`
+// — to `rgb(...)`, so this single path covers far more than a hand-maintained
+// table ever could (and survives future CSS additions). We fall back to a local
+// converter for exotic notations the DOM left unresolved (e.g. `oklch()` under
+// jsdom) or for DOM-less contexts.
+function cssColorToHex(color: string, fallback = '000000'): string {
+  const v = (color ?? '').trim();
+  if (!v) return hex(fallback);
+
+  // 1) DOM resolution — normalises to `rgb(...)` wherever the engine supports it.
+  if (typeof document !== 'undefined' && typeof getComputedStyle === 'function') {
+    const el = document.createElement('div');
+    el.style.color = v;
+    document.body.appendChild(el);
+    const resolved = getComputedStyle(el).color;
+    document.body.removeChild(el);
+    const fromDom = rgbToHex(resolved);
+    if (fromDom) return fromDom;
+  }
+
+  // 2) Local fallback: hex handling, then the functional/colour notations the
+  //    parser accepts, then the named-colour table.
+
+  // #rgb / #rrggbb (with or without leading #) → 6-digit hex
+  const h = v.replace(/^#/, '').toUpperCase();
+  if (/^[0-9A-F]{3}$/.test(h)) return h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  if (/^[0-9A-F]{6}$/.test(h)) return h;
+  // #rrggbbaa → drop alpha
+  if (/^[0-9A-F]{8}$/.test(h)) return h.slice(0, 6);
+
+  // functional notations rgb()/rgba()/hsl()/hsla()/color()/hwb()/lab()/lch()/oklab()/oklch()
+  const fn = v.match(/^(rgb|rgba|hsl|hsla|color|hwb|lab|lch|oklab|oklch)\(\s*(.*?)\s*\)$/i);
+  if (fn) {
+    const args = fn[2].split(/[\s,/]+/).filter(Boolean);
+    const rgb = fn[1].toLowerCase();
+    // rgb()/rgba() and hsl()/hsla() with numeric channels → hex.
+    if ((rgb === 'rgb' || rgb === 'rgba' || rgb === 'hsl' || rgb === 'hsla') && args.length >= 3) {
+      const r = parseCssChannel(args[0], 255);
+      const g = parseCssChannel(args[1], 255);
+      const b = parseCssChannel(args[2], 255);
+      if (r !== null && g !== null && b !== null) {
+        return [r, g, b].map((c) => c.toString(16).padStart(2, '0').toUpperCase()).join('');
+      }
+    }
+    // For `color(...)` with three 0–255-style sRGB channels, keep them.
+    if (rgb === 'color') {
+      const nums = args.map((a) => parseFloat(a)).filter((n) => !Number.isNaN(n));
+      if (nums.length >= 3 && nums.every((n) => n >= 0 && n <= 255)) {
+        return nums.slice(0, 3).map((c) => Math.round(c).toString(16).padStart(2, '0').toUpperCase()).join('');
+      }
+    }
+  }
+
+  // named colours
+  const named = NAMED_COLORS[v.toLowerCase()];
+  if (named) return named;
+
+  return hex(fallback);
+}
+
+// Extract a 6-digit hex from a `rgb(...)` / `rgba(...)` computed-style string.
+// Returns null for anything that isn't an rgb family value (e.g. an unresolved
+// `oklch(...)`), so the caller can fall through to the local converter.
+function rgbToHex(resolved: string): string | null {
+  const m = resolved.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i);
+  if (!m) return null;
+  const toHex = (n: string) => Math.round(Number(n)).toString(16).padStart(2, '0').toUpperCase();
+  return toHex(m[1]) + toHex(m[2]) + toHex(m[3]);
+}
+
+// Map a single rgb() channel value: integer 0–255 or percentage 0–100%.
+// Returns null when the value isn't a plain channel (e.g. an hsl angle).
+function parseCssChannel(token: string | undefined, max: number): number | null {
+  if (!token) return null;
+  if (/^\d+(\.\d+)?%$/.test(token)) {
+    return Math.round((parseFloat(token) / 100) * max);
+  }
+  if (/^\d+(\.\d+)?$/.test(token)) {
+    return Math.round(Math.min(max, Math.max(0, parseFloat(token))));
+  }
+  return null;
+}
+
+// CSS named colours commonly used for slide text. Marp decks frequently use
+// bare names like `white`/`red`; the parser's colour validator already blocks
+// anything containing spaces/quotes/`;{}/`, so this only resolves valid names.
+const NAMED_COLORS: Record<string, string> = {
+  black: '000000', white: 'FFFFFF', red: 'FF0000', green: '008000', lime: '00FF00',
+  blue: '0000FF', yellow: 'FFFF00', cyan: '00FFFF', aqua: '00FFFF', magenta: 'FF00FF',
+  fuchsia: 'FF00FF', silver: 'C0C0C0', gray: '808080', grey: '808080', maroon: '800000',
+  olive: '808000', purple: '800080', teal: '008080', navy: '000080', orange: 'FFA500',
+  pink: 'FFC0CB', brown: 'A52A2A', gold: 'FFD700', indigo: '4B0082', violet: 'EE82EE',
+  turquoise: '40E0D0', salmon: 'FA8072', crimson: 'DC143C', tomato: 'FF6347',
+  coral: 'FF7F50', khaki: 'F0E68C', plum: 'DDA0DD', orchid: 'DA70D6', slateblue: '6A5ACD',
+  steelblue: '4682B4', skyblue: '87CEEB', lightblue: 'ADD8E6', darkblue: '00008B',
+  darkgreen: '006400', darkred: '8B0000', darkgray: 'A9A9A9', darkgrey: 'A9A9A9',
+  lightgray: 'D3D3D3', lightgrey: 'D3D3D3', midnightblue: '191970', rebeccapurple: '663399',
+  dodgerblue: '1E90FF', forestgreen: '228B22', firebrick: 'B22222', hotpink: 'FF69B4',
+  chocolate: 'D2691E', peru: 'CD853F', saddlebrown: '8B4513', sienna: 'A0522D',
+  indianred: 'CD5C5C', rosybrown: 'BC8F8F', dimgray: '696969', dimgrey: '696969',
+  lightslategray: '778899', lightslategrey: '778899', slategray: '708090', slategrey: '708090',
+  darkslategray: '2F4F4F', darkslategrey: '2F4F4F', whitesmoke: 'F5F5F5', snow: 'FFFAFA',
+  gainsboro: 'DCDCDC', lightcoral: 'F08080', palevioletred: 'DB7093', mediumvioletred: 'C71585',
+  deeppink: 'FF1493', orangered: 'FF4500', darkorange: 'FF8C00', darkgoldenrod: 'B8860B',
+  goldenrod: 'DAA520', darkkhaki: 'BDB76B', yellowgreen: '9ACD32', lawngreen: '7CFC00',
+  chartreuse: '7FFF00', greenyellow: 'ADFF2F', springgreen: '00FF7F', mediumspringgreen: '00FA9A',
+  aquamarine: '7FFFD4', mediumaquamarine: '66CDAA', lightseagreen: '20B2AA',
+  cadetblue: '5F9EA0', darkturquoise: '00CED1', mediumturquoise: '48D1CC', powderblue: 'B0E0E6',
+  lightcyan: 'E0FFFF', paleturquoise: 'AFEEEE', lightsteelblue: 'B0C4DE', cornflowerblue: '6495ED',
+  royalblue: '4169E1', mediumblue: '0000CD', mediumslateblue: '7B68EE', blueviolet: '8A2BE2',
+  darkviolet: '9400D3', darkorchid: '9932CC', mediumorchid: 'BA55D3', thistle: 'D8BFD8',
+  lavender: 'E6E6FA', mistyrose: 'FFE4E1', antiquewhite: 'FAEBD7', linen: 'FAF0E6',
+  oldlace: 'FDF5E6', floralwhite: 'FFFAF0', ivory: 'FFFFF0', beige: 'F5F5DC', wheat: 'F5DEB3',
+  burlywood: 'DEB887', tan: 'D2B48C', moccasin: 'FFE4B5', navajowhite: 'FFDEAD',
+  peachpuff: 'FFDAB9', bisque: 'FFE4C4', blanchedalmond: 'FFEBCD', cornsilk: 'FFF8DC',
+  lemonchiffon: 'FFFACD', lightgoldenrodyellow: 'FAFAD2', palegoldenrod: 'EEE8AA',
+  darkolivegreen: '556B2F', olivedrab: '6B8E23', seagreen: '2E8B57', mediumseagreen: '3CB371',
+  lightgreen: '90EE90', darkseagreen: '8FBC8F', darkcyan: '008B8B',
+  lightyellow: 'FFFFE0', honeydew: 'F0FFF0', mintcream: 'F5FFFA', azure: 'F0FFFF',
+  aliceblue: 'F0F8FF', ghostwhite: 'F8F8FF', lavenderblush: 'FFF0F5', seashell: 'FFF5EE',
+  mediumpurple: '9370DB', darkslateblue: '483D8B',
+  // Remaining standard CSS keyword names (the DOM path resolves these in a
+  // real browser; listed here so the local fallback stays complete).
+  darkmagenta: '8B008B', darksalmon: 'E9967A', deepskyblue: '00BFFF',
+  lightpink: 'FFB6C1', lightsalmon: 'FFA07A', lightskyblue: '87CEFA',
+  limegreen: '32CD32', palegreen: '98FB98', papayawhip: 'FFEFD5', sandybrown: 'F4A460',
+};
 
 function firstFont(stack: string): string {
   return stack.split(',')[0].trim().replace(/['"]/g, '');

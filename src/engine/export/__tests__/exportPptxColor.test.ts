@@ -1,0 +1,134 @@
+// @vitest-environment jsdom
+import { describe, it, expect } from 'vitest';
+import JSZip from 'jszip';
+import { exportToPptx } from '../exportPptx';
+import { DEFAULT_THEME } from '../../theme';
+import type { Slide, SlideElement } from '../../types';
+
+// Per-slide text colour / invert must thread through to the body runs of every
+// content layout in the PPTX export (regression guard for issue #143 review:
+// split / two-column / bsp / grid were only recolouring the title, not the body).
+
+const OVERRIDE = '#ff0000'; // -> FF0000
+const NAMED = 'red';       // Marp `_color: red` -> FF0000 (no collision with light theme)
+const FUNCTIONAL = 'rgb(0, 128, 0)'; // -> 008000
+const HSL_WHITE = 'hsl(0, 0%, 100%)';   // -> FFFFFF (DOM-resolves to rgb(255,255,255))
+const HSL_GREEN = 'hsl(120, 100%, 25%)'; // -> 008000 (dark green, DOM-resolves to rgb(0,128,0))
+const INVERT = 'FFFFFF';   // light "text on dark" = theme title_text -> FFFFFF
+const DEFAULT_BODY = '1A1A1A'; // light theme text colour
+
+function para(text: string): SlideElement {
+  return { type: 'paragraph', text, html: text };
+}
+function progress(label: string, value: number): SlideElement {
+  return { type: 'progress', label, value };
+}
+
+function makeSlide(layout: Slide['layout'], elements: SlideElement[], extra: Partial<Slide> = {}): Slide {
+  return {
+    index: 0, raw: '', title: '', titleLevel: 0,
+    elements, speakerNotes: '', references: [], layout, hidden: false,
+    ...extra,
+  };
+}
+
+async function slideXml(slide: Slide): Promise<string> {
+  const res = await exportToPptx([slide], {}, DEFAULT_THEME, 'en');
+  const zip = await JSZip.loadAsync(res.base64, { base64: true });
+  const xml = await zip.file('ppt/slides/slide1.xml')!.async('string');
+  return xml;
+}
+
+function hasColor(xml: string, hex: string): boolean {
+  return xml.includes(`<a:srgbClr val="${hex}"/>`);
+}
+
+describe('exportPptx per-slide text colour', () => {
+  // Each affected layout with NO title: the only coloured runs are the body,
+  // so a hit on OVERRIDE proves the override reaches body text (not just title).
+  const layouts: Slide['layout'][] = ['split', 'two-column', 'bsp', 'grid'];
+
+  for (const layout of layouts) {
+    it(`applies explicit color to body in ${layout}`, async () => {
+      const xml = await slideXml(makeSlide(layout, [para('body text')], { textColor: OVERRIDE }));
+      expect(hasColor(xml, 'FF0000')).toBe(true);
+      // Without the override the body would be the theme default, so a default-only
+      // slide must NOT contain the override colour.
+      const control = await slideXml(makeSlide(layout, [para('body text')]));
+      expect(hasColor(control, 'FF0000')).toBe(false);
+      expect(hasColor(control, DEFAULT_BODY)).toBe(true);
+    });
+
+    it(`applies invert to body in ${layout}`, async () => {
+      const xml = await slideXml(makeSlide(layout, [para('body text')], { invert: true }));
+      expect(hasColor(xml, INVERT)).toBe(true);
+    });
+  }
+
+  it('two-column colours both columns via column-break', async () => {
+    const els: SlideElement[] = [para('left'), { type: 'column-break' }, para('right')];
+    const xml = await slideXml(makeSlide('two-column', els, { textColor: OVERRIDE }));
+    // Two paragraphs => two runs, both should be FF0000 (body of each column).
+    const matches = xml.match(/<a:srgbClr val="FF0000"\/>/g) ?? [];
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('bsp colours body in the progress-bar grouped path', async () => {
+    const els: SlideElement[] = [
+      para('intro'),
+      progress('A', 40),
+      progress('B', 60),
+    ];
+    const xml = await slideXml(makeSlide('bsp', els, { textColor: OVERRIDE }));
+    expect(hasColor(xml, 'FF0000')).toBe(true);
+  });
+
+  it('media placeholders honour per-slide color', async () => {
+    const els: SlideElement[] = [{ type: 'youtube', label: 'Vid', url: 'https://example.com' }];
+    const xml = await slideXml(makeSlide('media', els, { textColor: OVERRIDE }));
+    expect(hasColor(xml, 'FF0000')).toBe(true);
+  });
+
+  it('non-hex named color resolves to hex (regression: was silently black)', async () => {
+    const xml = await slideXml(makeSlide('title-content', [para('body text')], { textColor: NAMED }));
+    // `red` must become FF0000, not fall back to black (000000) like the old code did.
+    expect(hasColor(xml, 'FF0000')).toBe(true);
+    expect(hasColor(xml, '000000')).toBe(false);
+    const control = await slideXml(makeSlide('title-content', [para('body text')]));
+    expect(hasColor(control, 'FF0000')).toBe(false);
+  });
+
+  it('non-hex functional color resolves to hex', async () => {
+    const xml = await slideXml(makeSlide('title-content', [para('body text')], { textColor: FUNCTIONAL }));
+    expect(hasColor(xml, '008000')).toBe(true);
+  });
+
+  it('hsl() color resolves to hex via DOM (regression: was silently black)', async () => {
+    // The gap that bit first in review: hsl() is valid CSS but the old table
+    // only handled rgb()/color(), so it fell through to 000000 in the PPTX.
+    const white = await slideXml(makeSlide('title-content', [para('body text')], { textColor: HSL_WHITE }));
+    expect(hasColor(white, 'FFFFFF')).toBe(true);
+    expect(hasColor(white, '000000')).toBe(false);
+
+    const green = await slideXml(makeSlide('title-content', [para('body text')], { textColor: HSL_GREEN }));
+    expect(hasColor(green, '008000')).toBe(true);
+  });
+
+  it('hsl() color threads through split body', async () => {
+    const xml = await slideXml(makeSlide('split', [para('body text')], { textColor: HSL_GREEN }));
+    expect(hasColor(xml, '008000')).toBe(true);
+  });
+
+  it('missing named color (darkmagenta) resolves to hex', async () => {
+    // darkmagenta was one of the 10 standard CSS names missing from the table;
+    // the DOM path resolves it in a real browser, but the fallback table must
+    // also carry it so DOM-less contexts don't silently fall back to black.
+    const xml = await slideXml(makeSlide('title-content', [para('body text')], { textColor: 'darkmagenta' }));
+    expect(hasColor(xml, '8B008B')).toBe(true);
+  });
+
+  it('named color threads through split body', async () => {
+    const xml = await slideXml(makeSlide('split', [para('body text')], { textColor: NAMED }));
+    expect(hasColor(xml, 'FF0000')).toBe(true);
+  });
+});
