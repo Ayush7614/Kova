@@ -258,6 +258,18 @@ function addSlide(
   );
   const slideCodeBg = slide.invert && !slide.textColor ? '#0D1117' : undefined;
 
+  // A per-slide override (explicit colour or invert) wins for heading/bold
+  // too, mirroring the live preview's `themeToVars` precedence; otherwise
+  // each falls back to its own theme colour, then the deck's text colour.
+  const slideHeadingColor = cssColorToHex(
+    slide.textColor
+      ?? (slide.invert ? t.colors.title_text : (t.colors.heading ?? t.colors.text)),
+  );
+  const slideBoldColor = cssColorToHex(
+    slide.textColor
+      ?? (slide.invert ? t.colors.title_text : (t.colors.bold ?? t.colors.text)),
+  );
+
   if (slide.backgroundImage) {
     const ar = slide.backgroundImage.size === 'contain' ? slide.backgroundImage.aspectRatio : undefined;
     tryAddImage(s, slide.backgroundImage.src, { x: 0, y: 0, w: W, h: H }, warnings, ar);
@@ -266,19 +278,19 @@ function addSlide(
   switch (slide.layout) {
     case 'title':         addTitleSlide(s, slide, t, cy, ch); break;
     case 'section':       addSectionSlide(s, slide, t, cy, ch); break;
-    case 'title-content': addTitleContentSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg); break;
-    case 'title-image':   addTitleImageSlide(s, slide, t, cy, ch, warnings, slideTextColor); break;
-    case 'split':         addSplitSlide(s, slide, t, cy, ch, warnings, slideTextColor); break;
+    case 'title-content': addTitleContentSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg, slideHeadingColor, slideBoldColor); break;
+    case 'title-image':   addTitleImageSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor); break;
+    case 'split':         addSplitSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor); break;
     case 'full-bleed':    addFullBleedSlide(s, slide, t, H, warnings); break;
     case 'quote':         addQuoteSlide(s, slide, t, cy, ch, slideTextColor); break;
-    case 'two-column':    addTwoColumnSlide(s, slide, t, cy, ch, warnings, slideTextColor); break;
-    case 'bsp':           addBspSlide(s, slide, t, cy, ch, warnings, slideTextColor); break;
-    case 'grid':          addGridSlide(s, slide, t, cy, ch, warnings, slideTextColor); break;
-    case 'media':         addMediaSlide(s, slide, t, cy, ch, slideTextColor); break;
-    case 'code':          addCodeSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg); break;
-    case 'math':          addTitleContentSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg); break;
+    case 'two-column':    addTwoColumnSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor); break;
+    case 'bsp':           addBspSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor); break;
+    case 'grid':          addGridSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor); break;
+    case 'media':         addMediaSlide(s, slide, t, cy, ch, slideTextColor, slideHeadingColor); break;
+    case 'code':          addCodeSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg, slideHeadingColor); break;
+    case 'math':          addTitleContentSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg, slideHeadingColor, slideBoldColor); break;
     case 'blank':         addBlankSlide(s, t); break;
-    default:              addTitleContentSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg);
+    default:              addTitleContentSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg, slideHeadingColor, slideBoldColor);
   }
 
   if (hasHead) addHeaderBar(s, t, meta);
@@ -346,22 +358,22 @@ function addSectionSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number) 
   }
 }
 
-function addTitleContentSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), codeBg?: string) {
+function addTitleContentSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), codeBg?: string, hc: string = tc, boldColor: string = tc) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.85 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 28, bold: true,
-      color: tc,
+      color: hc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, valign: 'middle', wrap: true, shrinkText: true,
     });
   }
-  addElements(s, slide.elements, t, { x: M, y: cy + hh + 0.1, w: W - M * 2, h: ch - hh - 0.1 }, warnings, tc, codeBg);
+  addElements(s, slide.elements, t, { x: M, y: cy + hh + 0.1, w: W - M * 2, h: ch - hh - 0.1 }, warnings, tc, codeBg, boldColor);
 }
 
-function addTitleImageSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
+function addTitleImageSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), hc: string = tc) {
   s.background = { fill: hex(t.colors.background) };
   // 3% gap mirrors .sl-split__body { gap: 3% } in CSS
   const GAP  = 0.3;
@@ -371,7 +383,7 @@ function addTitleImageSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: numbe
     s.addText(slide.title, {
       x: M, y: cy, w: colW, h: ch,
       fontSize: 26, bold: true,
-      color: tc,
+      color: hc,
       fontFace: firstFont(t.fonts.title),
       align: 'left', valign: 'middle', wrap: true, shrinkText: true,
     });
@@ -384,14 +396,14 @@ function addTitleImageSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: numbe
   }
 }
 
-function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
+function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), hc: string = tc, boldColor: string = tc) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: tc,
+      color: hc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -409,7 +421,7 @@ function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, wa
   const capH = img && img.type === 'image' && img.caption ? CAPTION_H : 0;
 
   if (imgOnRight) {
-    addElements(s, rest, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, tc);
+    addElements(s, rest, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, tc, undefined, boldColor);
     if (img && img.type === 'image') {
       const imgX = M + colW + 0.3;
       tryAddImage(s, img.src, { x: imgX, y: bodyY, w: colW, h: bodyH - capH }, warnings, ar);
@@ -420,7 +432,7 @@ function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, wa
       tryAddImage(s, img.src, { x: M, y: bodyY, w: colW, h: bodyH - capH }, warnings, ar);
       addCaption(s, img.caption, t, M, bodyY + bodyH - capH, colW);
     }
-    addElements(s, rest, t, { x: M + colW + 0.3, y: bodyY, w: colW, h: bodyH }, warnings, tc);
+    addElements(s, rest, t, { x: M + colW + 0.3, y: bodyY, w: colW, h: bodyH }, warnings, tc, undefined, boldColor);
   }
 }
 
@@ -471,14 +483,14 @@ function addQuoteSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc
   }
 }
 
-function addTwoColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
+function addTwoColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), hc: string = tc, boldColor: string = tc) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: tc,
+      color: hc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -497,18 +509,18 @@ function addTwoColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number
     [left, right] = autoSplitElements(slide.elements);
   }
 
-  addElements(s, left,  t, { x: M,               y: bodyY, w: colW, h: bodyH }, warnings, tc);
-  addElements(s, right, t, { x: M + colW + 0.3,  y: bodyY, w: colW, h: bodyH }, warnings, tc);
+  addElements(s, left,  t, { x: M,               y: bodyY, w: colW, h: bodyH }, warnings, tc, undefined, boldColor);
+  addElements(s, right, t, { x: M + colW + 0.3,  y: bodyY, w: colW, h: bodyH }, warnings, tc, undefined, boldColor);
 }
 
-function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
+function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), hc: string = tc, boldColor: string = tc) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: tc,
+      color: hc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -521,7 +533,7 @@ function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warn
   // Mirror preview: group consecutive progress bars, then apply same placement logic
   const groups = groupProgressRuns(slide.elements);
   if (groups.length < 2) {
-    addElements(s, slide.elements, t, { x: M, y: bodyY, w: W - M * 2, h: bodyH }, warnings, tc);
+    addElements(s, slide.elements, t, { x: M, y: bodyY, w: W - M * 2, h: bodyH }, warnings, tc, undefined, boldColor);
     return;
   }
 
@@ -544,27 +556,27 @@ function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warn
     rightGroups = groups.slice(1);
   }
 
-  addElements(s, leftGroup, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, tc);
+  addElements(s, leftGroup, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, tc, undefined, boldColor);
 
   if (rightGroups.length === 1) {
-    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY, w: colW, h: bodyH }, warnings, tc);
+    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY, w: colW, h: bodyH }, warnings, tc, undefined, boldColor);
   } else {
     const subH = (bodyH - 0.2) / 2;
-    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY,              w: colW, h: subH }, warnings, tc);
+    addElements(s, rightGroups[0], t, { x: M + colW + GAP, y: bodyY,              w: colW, h: subH }, warnings, tc, undefined, boldColor);
     if (rightGroups[1]) {
-      addElements(s, rightGroups[1], t, { x: M + colW + GAP, y: bodyY + subH + 0.2, w: colW, h: subH }, warnings, tc);
+      addElements(s, rightGroups[1], t, { x: M + colW + GAP, y: bodyY + subH + 0.2, w: colW, h: subH }, warnings, tc, undefined, boldColor);
     }
   }
 }
 
-function addGridSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text)) {
+function addGridSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), hc: string = tc, boldColor: string = tc) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: tc,
+      color: hc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -586,18 +598,18 @@ function addGridSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, war
       x: M + col * (cellW + GAP),
       y: bodyY + row * (cellH + GAP),
       w: cellW, h: cellH,
-    }, warnings, tc);
+    }, warnings, tc, undefined, boldColor);
   });
 }
 
-function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc: string = hex(t.colors.text)) {
+function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc: string = hex(t.colors.text), hc: string = tc) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: tc,
+      color: hc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -649,14 +661,14 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc
   }
 }
 
-function addCodeSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), codeBg?: string) {
+function addCodeSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), codeBg?: string, hc: string = tc) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
     s.addText(slide.title, {
       x: M, y: cy, w: W - M * 2, h: hh,
       fontSize: 24, bold: true,
-      color: tc,
+      color: hc,
       fontFace: firstFont(t.fonts.title),
       align: t.layout.heading_align, wrap: true, shrinkText: true,
     });
@@ -851,6 +863,7 @@ function htmlToInlineRuns(
   defaultColor: string,
   codeFont: string,
   accentColor: string,
+  boldColor: string = defaultColor,
 ): PptxRun[] {
   const div = document.createElement('div');
   div.innerHTML = html;
@@ -873,16 +886,23 @@ function htmlToInlineRuns(
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const el = node as Element;
       const tag = el.tagName.toLowerCase();
+      const isBold = tag === 'strong' || tag === 'b';
       // '#' is escUrl's sentinel for a stripped/invalid href (see markdownToSlides.ts) — never link to it.
       const linkHref = tag === 'a' ? el.getAttribute('href') : null;
       const nextHref = linkHref && linkHref !== '#' ? linkHref : href;
       for (const child of node.childNodes) {
         walk(
           child,
-          bold   || tag === 'strong' || tag === 'b',
-          italic || tag === 'em'     || tag === 'i',
+          bold   || isBold,
+          italic || tag === 'em' || tag === 'i',
           isCode || tag === 'code',
-          tag === 'a' ? accentColor : color,
+          // Link colour wins over bold colour when both apply (e.g. a bolded
+          // link, or bold text nested inside a link), matching the existing
+          // precedent that link text always takes accentColor regardless of
+          // surrounding formatting. `nextHref` stays truthy for every
+          // descendant of an `<a>`, so this holds even past an intervening
+          // <strong>.
+          (tag === 'a' || nextHref) ? accentColor : (isBold ? boldColor : color),
           nextHref,
         );
       }
@@ -1066,7 +1086,7 @@ function addCodeBlock(s: PS, value: string, lang: string | undefined, t: Theme, 
 
 // ── Element renderer ──────────────────────────────────────────────────────────
 
-function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warnings: string[] = [], tc: string = hex(t.colors.text), codeBg?: string) {
+function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warnings: string[] = [], tc: string = hex(t.colors.text), codeBg?: string, boldColor: string = tc) {
   if (elements.length === 0) return;
 
   // Single image fills the area
@@ -1099,7 +1119,7 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
     switch (el.type) {
       case 'paragraph':
         if (el.text.trim()) {
-          const paraRuns = htmlToInlineRuns(el.html, tc, firstFont(t.fonts.code), hex(t.colors.accent));
+          const paraRuns = htmlToInlineRuns(el.html, tc, firstFont(t.fonts.code), hex(t.colors.accent), boldColor);
           paraRuns.forEach((run, ri) => {
             runs.push({ text: run.text, options: { fontSize: 18, ...run.options, breakLine: ri === paraRuns.length - 1 } });
           });
@@ -1113,14 +1133,14 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
             fontSize: 18,
             paraSpaceAfter: 4,
           };
-          const itemRuns = htmlToInlineRuns(item.html, tc, firstFont(t.fonts.code), hex(t.colors.accent));
+          const itemRuns = htmlToInlineRuns(item.html, tc, firstFont(t.fonts.code), hex(t.colors.accent), boldColor);
           runs.push({ text: itemRuns[0].text, options: { ...itemRuns[0].options, ...bulletBase } });
           for (let ri = 1; ri < itemRuns.length; ri++) {
             runs.push({ text: itemRuns[ri].text, options: { fontSize: 18, ...itemRuns[ri].options } });
           }
           for (const child of item.children) {
             const childBase = { bullet: true as const, indentLevel: 1, fontSize: 16, paraSpaceAfter: 3 };
-            const childRuns = htmlToInlineRuns(child.html, tc, firstFont(t.fonts.code), hex(t.colors.accent));
+            const childRuns = htmlToInlineRuns(child.html, tc, firstFont(t.fonts.code), hex(t.colors.accent), boldColor);
             runs.push({ text: childRuns[0].text, options: { ...childRuns[0].options, ...childBase } });
             for (let ri = 1; ri < childRuns.length; ri++) {
               runs.push({ text: childRuns[ri].text, options: { fontSize: 16, ...childRuns[ri].options } });

@@ -2,6 +2,8 @@
 .slide-frame {
   --sl-bg:          #ffffff;
   --sl-text:        #1a1a1a;
+  --sl-heading-text: #1a1a1a;
+  --sl-bold-text:   #1a1a1a;
   --sl-primary:     #1B3A5C;
   --sl-accent:      #2563EB;
   --sl-code-bg:     #1e1e1e;
@@ -118,10 +120,21 @@
   font-family: var(--sl-font-title);
   font-size: clamp(12px, 4cqi, 36px);
   font-weight: 700;
-  color: var(--sl-text);
+  color: var(--sl-heading-text);
   line-height: 1.2;
   padding: 4% 7% 2%;
   text-align: var(--sl-heading-ta, left);
+}
+
+/* Applies to every content layout's body text; reset back to `inherit` on
+   title/section slides below so their own title_text-based palette (already
+   applied via ancestor inheritance) still wins for bold spans in those. */
+.slide-frame strong, .slide-frame b {
+  color: var(--sl-bold-text);
+}
+.sl-title strong, .sl-title b,
+.sl-section strong, .sl-section b {
+  color: inherit;
 }
 
 .sl-body {

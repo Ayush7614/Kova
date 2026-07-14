@@ -9,6 +9,8 @@ export interface ThemeColors {
   title_text: string;    // text on title/section slides (usually white)
   section_bg: string;    // section divider background
   chart_colors?: string[]; // optional palette override for diagrams (pie, xychart, timeline…)
+  heading?: string;       // content-slide heading colour (falls back to `text` when unset)
+  bold?: string;          // inline **bold**/<strong> colour (falls back to `text` when unset)
 }
 
 export interface ThemeFonts {
@@ -459,6 +461,11 @@ export function themeToVars(
   return {
     '--sl-bg':           theme.colors.background,
     '--sl-text':         textOverride ?? theme.colors.text,
+    // A per-slide override (explicit colour or invert) wins for heading/bold
+    // too, so a slide's text stays legible together; otherwise each falls
+    // back to its own theme colour, then the deck's plain text colour.
+    '--sl-heading-text': textOverride ?? theme.colors.heading ?? theme.colors.text,
+    '--sl-bold-text':    textOverride ?? theme.colors.bold ?? theme.colors.text,
     '--sl-primary':      theme.colors.primary,
     '--sl-accent':       theme.colors.accent,
     '--sl-code-bg':      codeBg,
@@ -605,6 +612,8 @@ function sanitiseColors(c: Partial<ThemeColors>, base: ThemeColors): ThemeColors
       (x): x is string => typeof x === 'string' && !/[;{}]/.test(x),
     );
   }
+  if (typeof c.heading === 'string' && !/[;{}]/.test(c.heading.trim())) result.heading = c.heading.trim();
+  if (typeof c.bold === 'string' && !/[;{}]/.test(c.bold.trim())) result.bold = c.bold.trim();
   return result;
 }
 

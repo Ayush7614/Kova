@@ -44,13 +44,15 @@ interface Props {
 export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, totalSlides, docTitle = '', docDate = '', scale = 1, isThumbnail: isThumbnailProp, hideOverflowBadge = false, onAllDiagramsReady, onNavigateTo }: Props) {
   // Per-slide text colour: explicit `<!-- color -->` wins; otherwise a Marp
   // `<!-- _class: invert -->` swaps to the theme's light "text on dark" colour
-  // (title_text). Falls back to the deck text colour. Drives both the content
-  // area's `--sl-text` override and the QR/poll foreground colour in context.
-  const slideTextColor = slide.textColor
-    ?? (slide.invert ? theme.colors.title_text : theme.colors.text);
+  // (title_text). `slideTextOverride` stays undefined when neither applies, so
+  // themeToVars can fall back to the theme's own heading/bold colours instead
+  // of forcing them to match plain body text (issue #146).
+  const slideTextOverride = slide.textColor
+    ?? (slide.invert ? theme.colors.title_text : undefined);
+  const slideTextColor = slideTextOverride ?? theme.colors.text;
   const slideCodeBg = slide.invert && !slide.textColor ? '#0d1117' : undefined;
 
-  const vars = themeToVars(theme, slideTextColor, slideCodeBg);
+  const vars = themeToVars(theme, slideTextOverride, slideCodeBg);
 
   // Signal export-readiness when all Mermaid diagrams on this slide have rendered.
   const mermaidCount = useMemo(() => slide.elements.filter((e) => e.type === 'mermaid').length, [slide.elements]);
