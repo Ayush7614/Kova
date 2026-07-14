@@ -10,6 +10,7 @@ import {
   sanitiseThemeOverrides,
   DEFAULT_THEME,
   BUILT_IN_THEMES,
+  type Theme,
 } from '../theme';
 
 // ── themeToVars ───────────────────────────────────────────────────────────────
@@ -77,6 +78,28 @@ describe('themeToVars', () => {
     const pitchTheme = BUILT_IN_THEMES.find((t) => t.id === 'pitch')!;
     const pitchVars = themeToVars(pitchTheme) as Record<string, string>;
     expect(pitchVars['--sl-title-ay']).toBe('flex-end');
+  });
+
+  // ── Per-slide heading/bold colour (issue #146) ──────────────────────────────
+
+  it('heading/bold fall back to the theme text colour when unset', () => {
+    expect(vars['--sl-heading-text']).toBe(DEFAULT_THEME.colors.text);
+    expect(vars['--sl-bold-text']).toBe(DEFAULT_THEME.colors.text);
+  });
+
+  it('theme.colors.heading/bold override the text-colour fallback', () => {
+    const themed: Theme = { ...DEFAULT_THEME, colors: { ...DEFAULT_THEME.colors, heading: '#FF00FF', bold: '#00FFAA' } };
+    const themedVars = themeToVars(themed) as Record<string, string>;
+    expect(themedVars['--sl-heading-text']).toBe('#FF00FF');
+    expect(themedVars['--sl-bold-text']).toBe('#00FFAA');
+  });
+
+  it('a per-slide textOverride wins over theme.colors.heading/bold', () => {
+    const themed: Theme = { ...DEFAULT_THEME, colors: { ...DEFAULT_THEME.colors, heading: '#FF00FF', bold: '#00FFAA' } };
+    const overridden = themeToVars(themed, '#123456') as Record<string, string>;
+    expect(overridden['--sl-text']).toBe('#123456');
+    expect(overridden['--sl-heading-text']).toBe('#123456');
+    expect(overridden['--sl-bold-text']).toBe('#123456');
   });
 });
 
@@ -215,6 +238,22 @@ describe('sanitiseThemeOverrides', () => {
     expect(result.logo).toBeUndefined();
     expect(result.logo_position).toBeUndefined();
   });
+
+  it('passes through heading/bold color overrides (issue #146)', () => {
+    const result = sanitiseThemeOverrides({
+      colors: { heading: '#FF00FF', bold: 'rebeccapurple' },
+    });
+    expect(result.colors?.heading).toBe('#FF00FF');
+    expect(result.colors?.bold).toBe('rebeccapurple');
+  });
+
+  it('drops CSS injection attempts in heading/bold color values', () => {
+    const result = sanitiseThemeOverrides({
+      colors: { heading: '#fff; background: red', bold: '#000{}' },
+    });
+    expect(result.colors?.heading).toBeUndefined();
+    expect(result.colors?.bold).toBeUndefined();
+  });
 });
 
 // ── resolveTemplate ───────────────────────────────────────────────────────────
@@ -286,6 +325,24 @@ colors:
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.theme.fonts.body).toBe(DEFAULT_THEME.fonts.body);
+  });
+
+  it('accepts custom heading/bold colors (issue #146)', () => {
+    const yaml = 'name: Headings\ncolors:\n  primary: "#123456"\n  heading: "#FF00FF"\n  bold: "#00FFAA"\n';
+    const result = parseThemeYaml('headings', yaml);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.theme.colors.heading).toBe('#FF00FF');
+    expect(result.theme.colors.bold).toBe('#00FFAA');
+  });
+
+  it('leaves heading/bold undefined (falls back to text) when not specified', () => {
+    const yaml = 'name: Partial\n';
+    const result = parseThemeYaml('partial', yaml);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.theme.colors.heading).toBeUndefined();
+    expect(result.theme.colors.bold).toBeUndefined();
   });
 
   it('overrides header and footer settings', () => {

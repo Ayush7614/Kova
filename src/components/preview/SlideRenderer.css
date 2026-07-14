@@ -2,6 +2,8 @@
 .slide-frame {
   --sl-bg:          #ffffff;
   --sl-text:        #1a1a1a;
+  --sl-heading-text: #1a1a1a;
+  --sl-bold-text:   #1a1a1a;
   --sl-primary:     #1B3A5C;
   --sl-accent:      #2563EB;
   --sl-code-bg:     #1e1e1e;
@@ -118,10 +120,27 @@
   font-family: var(--sl-font-title);
   font-size: clamp(12px, 4cqi, 36px);
   font-weight: 700;
-  color: var(--sl-text);
+  color: var(--sl-heading-text);
   line-height: 1.2;
   padding: 4% 7% 2%;
   text-align: var(--sl-heading-ta, left);
+}
+
+/* Applies to every content layout's body text; reset back to `inherit` on
+   title/section slides, and on Mermaid diagrams, so their own colour systems
+   still win for bold spans in those. Title/section already apply their own
+   title_text-based palette via ancestor inheritance; Mermaid's foreignObject
+   node/edge labels (markdown-string `**bold**` syntax) get an inline colour
+   from mermaid's own theme init (primaryTextColor etc.) on an ancestor, which
+   this rule would otherwise clobber since a direct strong/b match beats plain
+   inheritance regardless of the ancestor's inline style. */
+.slide-frame strong, .slide-frame b {
+  color: var(--sl-bold-text);
+}
+.sl-title strong, .sl-title b,
+.sl-section strong, .sl-section b,
+.sl-mermaid strong, .sl-mermaid b {
+  color: inherit;
 }
 
 .sl-body {
