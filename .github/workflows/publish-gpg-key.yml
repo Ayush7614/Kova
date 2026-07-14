@@ -1,0 +1,23 @@
+name: Publish GPG key to keyserver
+
+# The signing key already signs the deb/rpm repos and the AUR tar.gz, and its
+# fingerprint is baked into packaging/arch/kova-bin/PKGBUILD's validpgpkeys —
+# but the key itself was never pushed to a keyserver, so `makepkg`'s automatic
+# `gpg --recv-keys` (which every AUR helper triggers when the key isn't
+# already in the user's local keyring) fails with "keyserver receive failed:
+# No data". Manual, idempotent — safe to re-run if a keyserver drops the key.
+on:
+  workflow_dispatch:
+
+jobs:
+  publish-key:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Import and publish key
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          GPG_KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/{print $5; exit}')
+          echo "Publishing $GPG_KEY_ID"
+          gpg --keyserver hkps://keyserver.ubuntu.com --send-keys "$GPG_KEY_ID"
+          gpg --keyserver hkps://keys.openpgp.org --send-keys "$GPG_KEY_ID"
