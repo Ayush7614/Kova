@@ -1307,14 +1307,34 @@ function hex(color: string): string {
   return h.length === 3 ? h[0]+h[0]+h[1]+h[1]+h[2]+h[2] : h;
 }
 
-// Convert any CSS colour value accepted by the parser (6/8-digit hex, named
-// colour like `white`, or functional notations like `rgb(...)`) into the
-// 6-digit hex string PptxGenJS requires. Falls back to the supplied fallback
-// (or black) when the value can't be resolved — `parseColorValue` in the
-// parser already blocks injection-y values, so this only resolves legit colours.
+// Convert any CSS colour value accepted by the parser into the 6-digit hex
+// string PptxGenJS requires. `parseColorValue` in the parser already blocks
+// injection-y values, so only legit colours reach here.
+//
+// Resolution order (per review of #150): resolve via the DOM first. A browser
+// (and jsdom) normalises every sRGB-compatible colour — hex, named colours,
+// `hsl()`/`hwb()`, and all modern notations like `lab()/lch()/oklab()/oklch()`
+// — to `rgb(...)`, so this single path covers far more than a hand-maintained
+// table ever could (and survives future CSS additions). We fall back to a local
+// converter for exotic notations the DOM left unresolved (e.g. `oklch()` under
+// jsdom) or for DOM-less contexts.
 function cssColorToHex(color: string, fallback = '000000'): string {
   const v = (color ?? '').trim();
   if (!v) return hex(fallback);
+
+  // 1) DOM resolution — normalises to `rgb(...)` wherever the engine supports it.
+  if (typeof document !== 'undefined' && typeof getComputedStyle === 'function') {
+    const el = document.createElement('div');
+    el.style.color = v;
+    document.body.appendChild(el);
+    const resolved = getComputedStyle(el).color;
+    document.body.removeChild(el);
+    const fromDom = rgbToHex(resolved);
+    if (fromDom) return fromDom;
+  }
+
+  // 2) Local fallback: hex handling, then the functional/colour notations the
+  //    parser accepts, then the named-colour table.
 
   // #rgb / #rrggbb (with or without leading #) → 6-digit hex
   const h = v.replace(/^#/, '').toUpperCase();
@@ -1327,10 +1347,9 @@ function cssColorToHex(color: string, fallback = '000000'): string {
   const fn = v.match(/^(rgb|rgba|hsl|hsla|color|hwb|lab|lch|oklab|oklch)\(\s*(.*?)\s*\)$/i);
   if (fn) {
     const args = fn[2].split(/[\s,/]+/).filter(Boolean);
-    // rgb()/rgba() with integer or percentage channels → hex (alpha/hsl/hwab/oklab etc.
-    // keep their sRGB-ish first three numeric channels where possible; otherwise fall back).
     const rgb = fn[1].toLowerCase();
-    if (rgb === 'rgb' || rgb === 'rgba') {
+    // rgb()/rgba() and hsl()/hsla() with numeric channels → hex.
+    if ((rgb === 'rgb' || rgb === 'rgba' || rgb === 'hsl' || rgb === 'hsla') && args.length >= 3) {
       const r = parseCssChannel(args[0], 255);
       const g = parseCssChannel(args[1], 255);
       const b = parseCssChannel(args[2], 255);
@@ -1352,6 +1371,16 @@ function cssColorToHex(color: string, fallback = '000000'): string {
   if (named) return named;
 
   return hex(fallback);
+}
+
+// Extract a 6-digit hex from a `rgb(...)` / `rgba(...)` computed-style string.
+// Returns null for anything that isn't an rgb family value (e.g. an unresolved
+// `oklch(...)`), so the caller can fall through to the local converter.
+function rgbToHex(resolved: string): string | null {
+  const m = resolved.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i);
+  if (!m) return null;
+  const toHex = (n: string) => Math.round(Number(n)).toString(16).padStart(2, '0').toUpperCase();
+  return toHex(m[1]) + toHex(m[2]) + toHex(m[3]);
 }
 
 // Map a single rgb() channel value: integer 0–255 or percentage 0–100%.
@@ -1405,6 +1434,11 @@ const NAMED_COLORS: Record<string, string> = {
   lightyellow: 'FFFFE0', honeydew: 'F0FFF0', mintcream: 'F5FFFA', azure: 'F0FFFF',
   aliceblue: 'F0F8FF', ghostwhite: 'F8F8FF', lavenderblush: 'FFF0F5', seashell: 'FFF5EE',
   mediumpurple: '9370DB', darkslateblue: '483D8B',
+  // Remaining standard CSS keyword names (the DOM path resolves these in a
+  // real browser; listed here so the local fallback stays complete).
+  darkmagenta: '8B008B', darksalmon: 'E9967A', deepskyblue: '00BFFF',
+  lightpink: 'FFB6C1', lightsalmon: 'FFA07A', lightskyblue: '87CEFA',
+  limegreen: '32CD32', palegreen: '98FB98', papayawhip: 'FFEFD5', sandybrown: 'F4A460',
 };
 
 function firstFont(stack: string): string {
