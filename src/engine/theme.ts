@@ -404,24 +404,29 @@ export function piePaletteFromAccent(accent: string): Record<string, string> {
 
 function decorationVars(d: ThemeLayout['decoration']): Record<string, string> {
   switch (d) {
+    // Gradient stops are fully opaque (blended against --sl-primary via color-mix)
+    // rather than using `transparent`, because WKWebView's native PDF snapshot
+    // path (createPDFWithConfiguration, used on macOS PDF export) does not
+    // alpha-composite a `transparent` gradient stop against the background-color
+    // layer beneath it — it rasterizes it as opaque black instead (issue #152).
     case 'dots':
       return {
-        '--sl-deco-img':  'radial-gradient(circle, rgba(255,255,255,0.18) 1.5px, transparent 1.5px)',
+        '--sl-deco-img':  'radial-gradient(circle, color-mix(in srgb, white 18%, var(--sl-primary)) 1.5px, var(--sl-primary) 1.5px)',
         '--sl-deco-size': '28px 28px',
       };
     case 'grid':
       return {
-        '--sl-deco-img':  'repeating-linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)',
+        '--sl-deco-img':  'repeating-linear-gradient(color-mix(in srgb, white 6%, var(--sl-primary)) 1px, var(--sl-primary) 1px), repeating-linear-gradient(90deg, color-mix(in srgb, white 6%, var(--sl-primary)) 1px, var(--sl-primary) 1px)',
         '--sl-deco-size': '48px 48px',
       };
     case 'diagonal':
       return {
-        '--sl-deco-img':  'repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0, rgba(255,255,255,0.05) 1px, transparent 0, transparent 50%)',
+        '--sl-deco-img':  'repeating-linear-gradient(45deg, color-mix(in srgb, white 5%, var(--sl-primary)) 0, color-mix(in srgb, white 5%, var(--sl-primary)) 1px, var(--sl-primary) 0, var(--sl-primary) 50%)',
         '--sl-deco-size': '24px 24px',
       };
     case 'bar-left':
       return {
-        '--sl-deco-img':  'linear-gradient(90deg, var(--sl-accent) 6px, transparent 6px)',
+        '--sl-deco-img':  'linear-gradient(90deg, var(--sl-accent) 6px, var(--sl-primary) 6px)',
         '--sl-deco-size': 'auto',
       };
     default:
