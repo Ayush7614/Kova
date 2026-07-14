@@ -1389,8 +1389,13 @@ function cssColorToHex(color: string, fallback = '000000'): string {
   if (fn) {
     const args = fn[2].split(/[\s,/]+/).filter(Boolean);
     const rgb = fn[1].toLowerCase();
-    // rgb()/rgba() and hsl()/hsla() with numeric channels → hex.
-    if ((rgb === 'rgb' || rgb === 'rgba' || rgb === 'hsl' || rgb === 'hsla') && args.length >= 3) {
+    // rgb()/rgba() with numeric channels → hex. hsl()/hsla() are deliberately
+    // NOT handled here: their h/s/l channels aren't 0-255 RGB values, so
+    // reusing parseCssChannel on them would produce a wrong colour rather than
+    // a safe fallback (e.g. hsl(0,100%,50%) red → 00FF80, not FF0000). The DOM
+    // resolution path above already covers hsl() correctly for every real
+    // call site; this branch only needs rgb()/rgba().
+    if ((rgb === 'rgb' || rgb === 'rgba') && args.length >= 3) {
       const r = parseCssChannel(args[0], 255);
       const g = parseCssChannel(args[1], 255);
       const b = parseCssChannel(args[2], 255);
