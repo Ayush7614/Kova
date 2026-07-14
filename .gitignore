@@ -34,3 +34,7 @@ npm-debug.log*
 TESTING_PLAN.md
 testing/
 test-export.md
+
+# AUR .SRCINFO is generated at publish time and lives in the AUR git repo,
+# not here
+packaging/arch/kova-bin/.SRCINFO

@@ -129,7 +129,7 @@ async function resolveSlideImages(slides: Slide[], theme: Theme, warnings: strin
       } else if (el.type === 'mermaid') {
         const result = await mermaidToDataUrl(el.value, theme);
         if (result) {
-          elements.push({ type: 'image' as const, src: result.dataUrl, alt: 'Diagram', title: String(result.aspectRatio) });
+          elements.push({ type: 'image' as const, src: result.dataUrl, alt: 'Diagram', title: String(result.aspectRatio), caption: el.caption });
         } else {
           warnings.push(`Mermaid diagram could not be rendered and was skipped (slide: "${slide.title ?? 'untitled'}")`);
           elements.push(el);
@@ -378,7 +378,9 @@ function addTitleImageSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: numbe
   }
   const img = slide.elements.find((e) => e.type === 'image');
   if (img && img.type === 'image') {
-    tryAddImage(s, img.src, { x: M + colW + GAP, y: cy, w: colW, h: ch }, warnings, imgAr(img));
+    const capH = img.caption ? CAPTION_H : 0;
+    tryAddImage(s, img.src, { x: M + colW + GAP, y: cy, w: colW, h: ch - capH }, warnings, imgAr(img));
+    addCaption(s, img.caption, t, M + colW + GAP, cy + ch - capH, colW);
   }
 }
 
@@ -404,15 +406,19 @@ function addSplitSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, wa
   const imgOnRight = imgIdx > 0;
 
   const ar = img && img.type === 'image' ? imgAr(img) : undefined;
+  const capH = img && img.type === 'image' && img.caption ? CAPTION_H : 0;
 
   if (imgOnRight) {
     addElements(s, rest, t, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, tc);
     if (img && img.type === 'image') {
-      tryAddImage(s, img.src, { x: M + colW + 0.3, y: bodyY, w: colW, h: bodyH }, warnings, ar);
+      const imgX = M + colW + 0.3;
+      tryAddImage(s, img.src, { x: imgX, y: bodyY, w: colW, h: bodyH - capH }, warnings, ar);
+      addCaption(s, img.caption, t, imgX, bodyY + bodyH - capH, colW);
     }
   } else {
     if (img && img.type === 'image') {
-      tryAddImage(s, img.src, { x: M, y: bodyY, w: colW, h: bodyH }, warnings, ar);
+      tryAddImage(s, img.src, { x: M, y: bodyY, w: colW, h: bodyH - capH }, warnings, ar);
+      addCaption(s, img.caption, t, M, bodyY + bodyH - capH, colW);
     }
     addElements(s, rest, t, { x: M + colW + 0.3, y: bodyY, w: colW, h: bodyH }, warnings, tc);
   }
@@ -425,6 +431,18 @@ function addFullBleedSlide(s: PS, slide: Slide, t: Theme, H: number, warnings: s
   const img = slide.elements.find((e) => e.type === 'image');
   if (img && img.type === 'image') {
     tryAddImage(s, img.src, { x: 0, y: 0, w: W, h: H }, warnings);
+    // Overlay bar, mirroring .sl-full-bleed__caption — the image fills the
+    // whole slide edge-to-edge so the caption can't just sit "below" it.
+    if (img.caption) {
+      const barH = 0.5;
+      s.addText(img.caption, {
+        x: 0, y: H - barH, w: W, h: barH,
+        fontSize: 12, italic: true, color: 'FFFFFF',
+        fontFace: firstFont(t.fonts.body),
+        fill: { color: '000000', transparency: 35 },
+        align: 'center', valign: 'middle',
+      });
+    }
   }
 }
 
@@ -621,7 +639,7 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc
   if (poll && poll.type === 'poll') {
     const pollY = both ? bodyY + halfH + 0.2 : bodyY;
     s.addText([
-      { text: poll.label || 'Poll', options: { fontSize: 20, bold: true, breakLine: true } },
+      { text: poll.label || 'QR Code', options: { fontSize: 20, bold: true, breakLine: true } },
       { text: poll.url, options: { fontSize: 11, color: hex(t.colors.accent) } },
     ], {
       x: M, y: pollY, w: W - M * 2, h: both ? halfH : bodyH,
@@ -651,7 +669,9 @@ function addCodeSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, war
   const imgEl = slide.elements.find((e) => e.type === 'image');
   if (imgEl && imgEl.type === 'image') {
     const ar = imgEl.title ? parseFloat(imgEl.title) : NaN;
-    tryAddImage(s, imgEl.src, { x: M, y: codeY, w: W - M * 2, h: codeH }, warnings, isFinite(ar) ? ar : undefined);
+    const capH = imgEl.caption ? CAPTION_H : 0;
+    tryAddImage(s, imgEl.src, { x: M, y: codeY, w: W - M * 2, h: codeH - capH }, warnings, isFinite(ar) ? ar : undefined);
+    addCaption(s, imgEl.caption, t, M, codeY + codeH - capH, W - M * 2);
     return;
   }
 
@@ -1053,7 +1073,9 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
   if (elements.length === 1 && elements[0].type === 'image') {
     const el = elements[0];
     const ar = el.title ? parseFloat(el.title) : NaN;
-    tryAddImage(s, el.src, area, warnings, isFinite(ar) ? ar : undefined);
+    const capH = el.caption ? CAPTION_H : 0;
+    tryAddImage(s, el.src, { ...area, h: area.h - capH }, warnings, isFinite(ar) ? ar : undefined);
+    addCaption(s, el.caption, t, area.x, area.y + area.h - capH, area.w);
     return;
   }
 
@@ -1155,6 +1177,9 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
 
       case 'math':
         runs.push({ text: el.value, options: { fontFace: firstFont(t.fonts.code), fontSize: 15, breakLine: true } });
+        if (el.caption) {
+          runs.push({ text: el.caption, options: { fontSize: 11, italic: true, breakLine: true, paraSpaceAfter: 4 } });
+        }
         break;
 
       case 'video':
@@ -1267,6 +1292,22 @@ function addTable(
 function imgAr(el: Extract<SlideElement, { type: 'image' }>): number | undefined {
   const v = el.title ? parseFloat(el.title) : NaN;
   return isFinite(v) ? v : undefined;
+}
+
+// Height reserved below an image/diagram for its !caption text, mirroring
+// the web renderer's .sl-caption. Callers shrink the image area by this much
+// before placing the caption in the freed strip.
+const CAPTION_H = 0.28;
+
+function addCaption(s: PS, caption: string | undefined, t: Theme, x: number, y: number, w: number) {
+  if (!caption) return;
+  s.addText(caption, {
+    x, y, w, h: CAPTION_H,
+    fontSize: 10, italic: true,
+    color: hex(t.colors.text),
+    fontFace: firstFont(t.fonts.body),
+    align: 'center', valign: 'top',
+  });
 }
 
 function containArea(area: Area, aspectRatio: number): Area {

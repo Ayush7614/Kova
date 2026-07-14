@@ -23,10 +23,10 @@ export interface ListItem {
 export type SlideElement =
   | { type: 'paragraph'; text: string; html: string }
   | { type: 'list'; ordered: boolean; items: ListItem[] }
-  | { type: 'image'; src: string; alt: string; title?: string }
+  | { type: 'image'; src: string; alt: string; title?: string; caption?: string }
   | { type: 'code'; lang: string; value: string }
-  | { type: 'mermaid'; value: string }
-  | { type: 'math'; value: string; display: boolean }
+  | { type: 'mermaid'; value: string; caption?: string }
+  | { type: 'math'; value: string; display: boolean; caption?: string }
   | { type: 'blockquote'; text: string; attribution?: string; html?: string; calloutType?: string; title?: string }
   | { type: 'table'; headers: string[]; rows: string[][]; align?: ('left' | 'right' | 'center' | null)[] }
   | { type: 'youtube';  label: string; url: string }

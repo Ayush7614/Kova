@@ -403,6 +403,25 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Detached PGP signature for the tar.gz, verified by makepkg via the
+      # AUR PKGBUILD's validpgpkeys — same signing key as the deb/rpm repos,
+      # so AUR installs trust the same identity as the apt/dnf ones.
+      - name: Sign Linux tar.gz for AUR
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          GPG_KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/{print $5; exit}')
+          VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          OUTNAME="Kova_${VERSION}_x86_64.tar.gz"
+          gpg --batch \
+            --local-user "$GPG_KEY_ID" \
+            --passphrase "${{ secrets.GPG_PASSPHRASE }}" \
+            --pinentry-mode loopback \
+            --detach-sign --armor "$OUTNAME"
+          gh release upload "${{ github.ref_name }}" "$OUTNAME.sig" --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # Runs after all platform builds. Adds stable-named (version-free) download
   # aliases so README links never need updating, then removes .sig files to
   # keep the release page clean for non-technical users.
@@ -478,9 +497,12 @@ jobs:
           gh release upload "$TAG" -R KovaMD/Kova "${PATHS[@]}" --clobber
           { echo 'paths<<EOF'; printf '%s\n' "${PATHS[@]}"; echo 'EOF'; } >> "$GITHUB_OUTPUT"
 
-          # Remove .sig files — signatures are embedded in latest.json.
+          # Remove Tauri updater .sig files — those signatures are embedded in
+          # latest.json. Keep the tar.gz's PGP .sig: that's a detached GPG
+          # signature (not a Tauri updater one), and AUR's PKGBUILD downloads
+          # it directly for makepkg's validpgpkeys check.
           gh release view "$TAG" -R KovaMD/Kova --json assets \
-            --jq '.assets[] | select(.name | endswith(".sig")) | .name' \
+            --jq '.assets[] | select((.name | endswith(".sig")) and (.name | endswith("_x86_64.tar.gz.sig") | not)) | .name' \
             | xargs -r -I{} gh release delete-asset "$TAG" {} -R KovaMD/Kova --yes
 
       # Cryptographic provenance tying each release binary to this commit + run.

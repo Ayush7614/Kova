@@ -493,6 +493,60 @@ describe('custom syntax pre-processor', () => {
   });
 });
 
+// ── Figure captions (!caption) ───────────────────────────────────────────────
+
+describe('!caption', () => {
+  it('attaches to the image it directly follows, without becoming its own element', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n![Arch](arch.png)\n!caption[Figure 1: architecture]\n'));
+    expect(slides[0].elements).toHaveLength(1);
+    const img = slides[0].elements.find((e) => e.type === 'image');
+    expect(img?.type === 'image' && img.caption).toBe('Figure 1: architecture');
+  });
+
+  it('attaches to the Mermaid diagram it directly follows', () => {
+    const input = doc('## Slide\n\n```mermaid\ngraph TD; A-->B;\n```\n!caption[Figure 2: flow]\n');
+    const { slides } = parseDocument(input);
+    expect(slides[0].elements).toHaveLength(1);
+    const mer = slides[0].elements.find((e) => e.type === 'mermaid');
+    expect(mer?.type === 'mermaid' && mer.caption).toBe('Figure 2: flow');
+  });
+
+  it('attaches to the math block it directly follows', () => {
+    const input = doc('## Slide\n\n$$\nE = mc^2\n$$\n!caption[Equation 1: mass-energy equivalence]\n');
+    const { slides } = parseDocument(input);
+    expect(slides[0].elements).toHaveLength(1);
+    const math = slides[0].elements.find((e) => e.type === 'math');
+    expect(math?.type === 'math' && math.caption).toBe('Equation 1: mass-energy equivalence');
+  });
+
+  it('attaches only to the nearest preceding image, not an earlier one', () => {
+    const input = doc('## Slide\n\n![A](a.png)\n\n![B](b.png)\n!caption[for B]\n');
+    const { slides } = parseDocument(input);
+    const imgs = slides[0].elements.filter((e) => e.type === 'image');
+    expect(imgs).toHaveLength(2);
+    expect(imgs[0].type === 'image' && imgs[0].caption).toBeUndefined();
+    expect(imgs[1].type === 'image' && imgs[1].caption).toBe('for B');
+  });
+
+  it('errors when not directly following an image, diagram, or formula', () => {
+    const { slides } = parseDocument(doc('## Slide\n\nJust text.\n!caption[orphaned]\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph' && e.html.includes('#ERR'));
+    expect(para?.type === 'paragraph' && para.html).toContain('!caption must directly follow');
+  });
+
+  it('errors when it is the first thing on a slide', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n!caption[orphaned]\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph' && e.html.includes('#ERR'));
+    expect(para).toBeDefined();
+  });
+
+  it('does not force a standalone captioned image into a split/column layout', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n![Arch](arch.png)\n!caption[Figure 1: architecture]\n'));
+    expect(slides[0].layout).not.toBe('split');
+    expect(slides[0].layout).not.toBe('two-column');
+  });
+});
+
 // ── Table of contents (!toc) ────────────────────────────────────────────────
 
 describe('!toc table of contents', () => {
@@ -787,5 +841,149 @@ describe('![bg] slide backgrounds', () => {
     expect(slides[0].backgroundImage).toBeUndefined();
     const code = slides[0].elements.find((e) => e.type === 'code');
     expect(code?.type === 'code' && code.value).toContain('![bg]');
+  });
+});
+
+// ── Sheet tables (!sheet) ────────────────────────────────────────────────────
+
+describe('sheet tables', () => {
+  it('counts a line item whose label starts with an escaped !', () => {
+    const { slides } = parseDocument(doc(
+      '!sheet\n' +
+      '| item           | price       |\n' +
+      '|----------------|------------:|\n' +
+      '| motor          |          30 |\n' +
+      '| \\!brand widget |          30 |\n' +
+      '| ESC            |          35 |\n' +
+      '| !Total         | =sum(price) |\n'
+    ));
+    const table = slides[0].elements.find((e) => e.type === 'table') as any;
+    expect(table.rows[3][1]).toBe('95');            // not 65 — the row is not a footer
+    expect(table.rows[1][0]).toBe('!brand widget'); // the escape does not survive into the cell
+  });
+
+  it('computes row formulas and footer aggregates', () => {
+    const { slides } = parseDocument(doc(
+      '!let vat = 0.255\n\n' +
+      '!sheet bom\n' +
+      '| item  | qty | unit  | total       |\n' +
+      '|-------|----:|------:|------------:|\n' +
+      '| motor |   2 | 12.50 | =qty * unit |\n' +
+      '| ESC   |   2 |  8.00 | =qty * unit |\n' +
+      '| !**Total** |  |    | =sum(total) * (1 + vat) |\n'
+    ));
+    const table = slides[0].elements.find((e) => e.type === 'table') as any;
+    expect(table.rows[0][3]).toBe('25');
+    expect(table.rows[1][3]).toBe('16');
+    // 41 * 1.255 is 51.454999… as a double, but render() rounds away the float
+    // artifact so this reads as the correct decimal value, 51.46.
+    expect(table.rows[2][3]).toBe('51.46');
+    // the footer marker is consumed, the bold survives
+    expect(table.rows[2][0]).toBe('<strong>Total</strong>');
+  });
+
+  it('reads the formula from the raw source, so * is not parsed as emphasis', () => {
+    const { slides } = parseDocument(doc(
+      '!sheet t\n' +
+      '| a | b | c | out   |\n' +
+      '|--:|--:|--:|------:|\n' +
+      '| 2 | 3 | 4 | =a*b*c |\n'
+    ));
+    const table = slides[0].elements.find((e) => e.type === 'table') as any;
+    expect(table.rows[0][3]).toBe('24');
+  });
+
+  it('leaves a table with no !sheet line completely alone', () => {
+    const { slides } = parseDocument(doc(
+      '| key      | value       |\n' +
+      '|----------|-------------|\n' +
+      '| formula? | =qty * unit |\n'
+    ));
+    const table = slides[0].elements.find((e) => e.type === 'table') as any;
+    expect(table.rows[0][1]).toBe('=qty * unit');
+  });
+
+  it('renders a broken cell as #ERR without killing the slide', () => {
+    const { slides } = parseDocument(doc(
+      '# Title\n\n' +
+      '!sheet t\n' +
+      '| qty | unit  | total        |\n' +
+      '|----:|------:|-------------:|\n' +
+      '|   2 | 12.50 | =qty * untis |\n'
+    ));
+    const table = slides[0].elements.find((e) => e.type === 'table') as any;
+    expect(slides[0].title).toBe('Title');
+    expect(table.rows[0][2]).toContain('#ERR');
+  });
+
+  it('errors when !sheet is not followed by a table', () => {
+    const { slides } = parseDocument(doc('!sheet t\n\njust a paragraph\n'));
+    const html = slides[0].elements.map((e: any) => e.html ?? '').join(' ');
+    expect(html).toContain('#ERR');
+  });
+
+  it('errors when a !sheet is the last block on the slide', () => {
+    const { slides } = parseDocument(doc('# t\n\n!sheet\n'));
+    const html = slides[0].elements.map((e: any) => e.html ?? '').join(' ');
+    expect(html).toContain('#ERR');
+  });
+
+  it('never throws on hostile or half-typed sheet input', () => {
+    const hostile = [
+      // a prototype-chain function name in a footer cell
+      '!sheet t\n| qty |\n|----:|\n| 1 |\n| !=valueOf(qty) |\n',
+      // a ragged row
+      '!sheet t\n| a | b | c |\n|--:|--:|--:|\n| 1 |\n| 1 | 2 | 3 | 4 |\n',
+      // an empty header cell
+      '!sheet t\n| a |  |\n|--:|--:|\n| 1 | =a + 1 |\n',
+      // a half-typed directive, mid-slide and as the last line
+      '!sheet\n\ntext after\n',
+      '# t\n\n!sheet\n',
+      // a header that slugifies to the empty string
+      '!sheet t\n| €€ | b |\n|--:|--:|\n| 1 | =1 + 1 |\n',
+    ];
+    for (const body of hostile) {
+      expect(() => parseDocument(doc(body))).not.toThrow();
+    }
+  });
+
+  it('HTML-escapes a computed value and an #ERR message', () => {
+    const payload = '<img src=x onerror=alert(1)>';
+    const { slides } = parseDocument(doc(
+      '!sheet t\n' +
+      '| val | out | msg |\n' +
+      '|-----|-----|-----|\n' +
+      `| ${payload} | =val + 1 | =concat("${payload}") |\n`
+    ));
+    const table = slides[0].elements.find((e) => e.type === 'table') as any;
+    expect(table.rows[0][1]).toContain('#ERR');
+    expect(table.rows[0][1]).toContain('&lt;img');
+    expect(table.rows[0][1]).not.toContain('<img');
+    expect(table.rows[0][2]).toContain('&lt;img');
+    expect(table.rows[0][2]).not.toContain('<img');
+  });
+
+  it('errors on a reserved directive', () => {
+    const { slides } = parseDocument(doc('!code python\n'));
+    const html = slides[0].elements.map((e: any) => e.html ?? '').join(' ');
+    expect(html).toContain('reserved');
+  });
+
+  it('does not render the !let line', () => {
+    const { slides } = parseDocument(doc('!let vat = 0.255\n\ntext\n'));
+    const texts = slides[0].elements.map((e: any) => e.text ?? '');
+    expect(texts.join(' ')).not.toContain('!let');
+  });
+
+  it('re-renders a later slide when a constant on an earlier slide changes', () => {
+    const body = (vat: string) =>
+      `!let vat = ${vat}\n\n---\n\n!sheet t\n| net | gross |\n|----:|------:|\n| 100 | =net * (1 + vat) |\n`;
+    const first = parseDocument(doc(body('0.10'))).slides[1].elements.find((e) => e.type === 'table') as any;
+    // 100 * 1.1 is 110.00000000000001 as a double, but render() rounds away the
+    // float artifact so this still renders as the bare integer 110.
+    expect(first.rows[0][1]).toBe('110');
+    // same slide 2 text, different constant — the cache must not serve the stale slide
+    const second = parseDocument(doc(body('0.20'))).slides[1].elements.find((e) => e.type === 'table') as any;
+    expect(second.rows[0][1]).toBe('120');
   });
 });

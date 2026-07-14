@@ -1,10 +1,18 @@
 # Kova
 
-Kova turns plain Markdown into polished slides — with live preview, multiple layouts, theming, and PPTX export — all in a native desktop app.
+Kova turns plain Markdown into polished slides — with live preview, multiple layouts, theming, and PPTX, PDF, and HTML export — all in a native desktop app.
 
 [![Latest release](https://img.shields.io/github/v/release/KovaMD/Kova?label=release&color=orange)](https://github.com/KovaMD/Kova/releases/latest)
 [![Service status](https://status.kova.md/api/badge/1/status?style=flat&label=services)](https://status.kova.md/status/infra)
 [![Matrix](https://img.shields.io/matrix/kova-md%3Amatrix.org?server_fqdn=matrix.org&label=matrix&color=blue)](https://matrix.to/#/#kova-md:matrix.org)
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/readme/screenshot-dark.png" />
+    <source media="(prefers-color-scheme: light)" srcset="docs/readme/screenshot-light.png" />
+    <img src="docs/readme/screenshot-light.png" alt="Kova editor" width="80%" />
+  </picture>
+</p>
 
 ## Features
 
@@ -13,9 +21,10 @@ Kova turns plain Markdown into polished slides — with live preview, multiple l
 - **Auto layout** — title, section, split, two-column, grid, quote, full-bleed, and more
 - **Themes** — 11 built-in themes, community themes, and custom YAML
 - **Math, code & diagrams** — KaTeX math, highlight.js syntax highlighting, and Mermaid charts
-- **Rich media** — images, local video, YouTube embeds, and polls
+- **Rich media** — images, local video, YouTube embeds, and QR codes
 - **Fullscreen presentation** — speaker notes, slide counter, keyboard and click navigation
-- **PPTX export** — export to PowerPoint (16:9 and 4:3)
+- **Export** — PowerPoint (16:9 and 4:3), PDF (with speaker notes), and standalone HTML
+- **Computed tables** — annotate a table with `!sheet` and write formulas in the cells (`=qty * unit`, `=sum(total)`); Kova computes them, the source keeps only the formulas. See [`examples/sheet-basics.md`](examples/sheet-basics.md)
 
 ## Download
 
@@ -25,6 +34,7 @@ Kova turns plain Markdown into polished slides — with live preview, multiple l
 | **Windows 10/11** | [**Download .msi**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows.msi) · [Setup .exe](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows_setup.exe) |
 | **Linux (Debian/Ubuntu)** | [**.deb package**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.deb) · [or via package manager](#linux-package-managers) |
 | **Linux (Fedora/RHEL/openSUSE)** | [**.rpm package**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.rpm) · [or via package manager](#linux-package-managers) |
+| **Linux (Arch)** | [Install via AUR](#linux-package-managers) |
 | **Linux (AppImage)** | [**.AppImage**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.AppImage) |
 | **Linux (Flatpak)** | [Install via Flatpak](#linux-package-managers) |
 
@@ -61,6 +71,12 @@ nix profile install github:KovaMD/Kova   # install into your profile
 ```
 
 Or add `github:KovaMD/Kova` as a flake input and use `packages.<system>.default`.
+
+**Arch (AUR)**
+
+```bash
+yay -S kova-bin   # or: paru -S kova-bin
+```
 
 **Flatpak**
 

@@ -11,6 +11,9 @@ import { detectLayout } from '../layout/autoLayout';
 import { extractFrontmatter } from './frontmatter';
 import { extractSpeakerNotes } from './speakerNotes';
 import { extractBgImage } from './bgImage';
+import { collectConstants } from '../sheet/constants';
+import { evaluateSheet, isFooterRow, parseSheetDirective, type SheetOpts } from '../sheet/sheet';
+import type { Value } from '../sheet/evaluate';
 
 const processor = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
 
@@ -28,22 +31,30 @@ const processor = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
 // mermaidSvgCache pattern elsewhere in this codebase.
 let prevRawSlides: string[] = [];
 let prevParsedSlides: Slide[] = [];
+// A !let on slide 1 can change a sheet on slide 7, so an unchanged slide is
+// only safe to reuse while the constants are unchanged too.
+let prevConstKey = '';
 
 export function parseDocument(rawContent: string): ParsedDocument {
   const normalised = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const { frontmatter, body } = extractFrontmatter(normalised);
+  const constants = collectConstants(body);
+  const constKey = JSON.stringify([...constants]);
   const rawSlides = body.split(/^---$/m).map((s) => s.trim()).filter(Boolean);
   const slides = rawSlides.map((raw, index) =>
-    raw === prevRawSlides[index] && prevParsedSlides[index] ? prevParsedSlides[index] : parseSlide(raw, index),
+    raw === prevRawSlides[index] && prevParsedSlides[index] && constKey === prevConstKey
+      ? prevParsedSlides[index]
+      : parseSlide(raw, index, constants),
   );
   prevRawSlides = rawSlides;
   prevParsedSlides = slides;
+  prevConstKey = constKey;
   return { slides, frontmatter };
 }
 
 // ── Per-slide parser ─────────────────────────────────────────────────────────
 
-function parseSlide(raw: string, index: number): Slide {
+function parseSlide(raw: string, index: number, constants: Map<string, Value>): Slide {
   const { body: rawWithoutBg, bg: bgImage } = extractBgImage(raw);
 
   // Extract layout override from HTML comment before anything else
@@ -66,11 +77,11 @@ function parseSlide(raw: string, index: number): Slide {
   // Preprocess before speaker-notes extraction so ??? inside custom URLs is not
   // misinterpreted as speaker-note markers. Custom elements become inline HTML
   // comment placeholders so remark preserves their position in the element list.
-  const { cleanContent, placeholders, references } = preprocess(rawWithoutBg);
+  const { cleanContent, placeholders, sheets, references } = preprocess(rawWithoutBg);
   const { content, notes } = extractSpeakerNotes(cleanContent);
 
   const tree = processor.parse(content) as Root;
-  let { title, titleLevel, elements } = convertRoot(tree, placeholders);
+  let { title, titleLevel, elements } = convertRoot(tree, placeholders, sheets, content, constants);
 
   let layout = layoutOverride ?? detectLayout(elements, titleLevel, !!title);
   let backgroundImage: Slide['backgroundImage'];
@@ -94,9 +105,19 @@ function parseSlide(raw: string, index: number): Slide {
 
 // ── Custom syntax pre-processor ──────────────────────────────────────────────
 
+// A caption never survives to the renderer as its own element — it is merged
+// into the image/mermaid/math element it directly follows (see convertRoot's
+// html-node handling) so it can never trip layout detection into treating it
+// as extra body content (e.g. forcing a split/two-column layout — issue #151).
+interface CaptionMarker {
+  type: 'caption';
+  text: string;
+}
+
 interface PreprocessResult {
   cleanContent: string;
-  placeholders: Map<number, SlideElement>;
+  placeholders: Map<number, SlideElement | CaptionMarker>;
+  sheets: Map<number, SheetOpts>;
   references: string[];
 }
 
@@ -104,15 +125,21 @@ const YOUTUBE_RE      = /^!youtube\[([^\]]*)\]\(([^)]*)\)$/;
 const VIDEO_RE        = /^!video\[([^\]]*)\]\(([^)]*)\)$/;
 const POLL_RE         = /^!poll\[([^\]]*)\]\(([^)]*)\)$/;
 const PROGRESS_RE     = /^!progress\[([^\]]*)\]\((\d+(?:\.\d+)?)\)$/;
+const CAPTION_RE      = /^!caption\[([^\]]*)\]$/;
 const REF_RE          = /^!ref\[([^\]]*)\]$/;
 const TOC_RE          = /^!toc$/;
+const SHEET_RE        = /^!sheet\b(.*)$/;
+const LET_RE          = /^!let\b/;
+const RESERVED_RE     = /^!(include|fmt|code)\b/;
 // remark-math v6 only recognises block math when $$ appears on its own line.
 // Normalise single-line $$...$$ → multi-line so it is parsed as a math block.
 const DISPLAY_MATH_RE = /^\$\$(.+)\$\$\s*$/;
 
 function preprocess(content: string): PreprocessResult {
-  const placeholders = new Map<number, SlideElement>();
+  const placeholders = new Map<number, SlideElement | CaptionMarker>();
   const references: string[] = [];
+  const sheets = new Map<number, SheetOpts>();
+  let nextSheet = 0;
   let nextIdx = 0;
   const cleanLines: string[] = [];
   let inFencedCode = false;
@@ -167,6 +194,40 @@ function preprocess(content: string): PreprocessResult {
       continue;
     }
 
+    const caption = t.match(CAPTION_RE);
+    if (caption) {
+      const idx = nextIdx++;
+      placeholders.set(idx, { type: 'caption', text: caption[1] });
+      cleanLines.push(`<!-- kova-el:${idx} -->`);
+      continue;
+    }
+
+    // Constants are collected document-wide by collectConstants; the line itself
+    // never renders.
+    if (LET_RE.test(t)) continue;
+
+    const reserved = t.match(RESERVED_RE);
+    if (reserved) {
+      const idx = nextIdx++;
+      placeholders.set(idx, {
+        type: 'paragraph',
+        text: '',
+        html: `#ERR '!${reserved[1]}' is reserved for a future release`,
+      });
+      cleanLines.push(`<!-- kova-el:${idx} -->`);
+      continue;
+    }
+
+    const sheet = t.match(SHEET_RE);
+    if (sheet) {
+      const idx = nextSheet++;
+      sheets.set(idx, parseSheetDirective(sheet[1]));
+      // The blank line closes the HTML block, so the table below still parses
+      // as a table rather than being swallowed into it.
+      cleanLines.push(`<!-- kova-sheet:${idx} -->`, '');
+      continue;
+    }
+
     const ref = t.match(REF_RE);
     if (ref) {
       if (ref[1].trim()) references.push(ref[1]);
@@ -197,7 +258,7 @@ function preprocess(content: string): PreprocessResult {
     cleanLines.push(line);
   }
 
-  return { cleanContent: cleanLines.join('\n').trim(), placeholders, references };
+  return { cleanContent: cleanLines.join('\n').trim(), placeholders, sheets, references };
 }
 
 // ── mdast → SlideElement converter ───────────────────────────────────────────
@@ -208,12 +269,25 @@ interface ConvertResult {
   elements: SlideElement[];
 }
 
-function convertRoot(tree: Root, placeholders: Map<number, SlideElement>): ConvertResult {
+function convertRoot(
+  tree: Root,
+  placeholders: Map<number, SlideElement | CaptionMarker>,
+  sheets: Map<number, SheetOpts>,
+  src: string,
+  constants: Map<string, Value>,
+): ConvertResult {
   let title = '';
   let titleLevel = 0;
   const elements: SlideElement[] = [];
+  let pendingSheet: SheetOpts | undefined;
 
   for (const node of tree.children) {
+    // A !sheet annotates the table on the very next line and nothing else.
+    if (pendingSheet && node.type !== 'table') {
+      elements.push({ type: 'paragraph', text: '', html: '#ERR !sheet must sit directly above a table' });
+      pendingSheet = undefined;
+    }
+
     switch (node.type) {
       case 'heading': {
         const h = node as Heading;
@@ -290,7 +364,25 @@ function convertRoot(tree: Root, placeholders: Map<number, SlideElement>): Conve
         const t = node as Table;
         const [headerRow, ...bodyRows] = t.children;
         const headers = (headerRow?.children ?? []).map((cell) => inlineToHtml(cell.children as Node[]));
-        const rows = bodyRows.map((row) => row.children.map((cell) => inlineToHtml(cell.children as Node[])));
+        let rows = bodyRows.map((row) => row.children.map((cell) => inlineToHtml(cell.children as Node[])));
+
+        if (pendingSheet) {
+          // Raw source, not mdast: remark reads `=a*b*c` as `a<em>b</em>c`.
+          const rawCells = t.children.map((row) => row.children.map((cell) => rawText(src, cell)));
+          const computed = evaluateSheet(rawCells, pendingSheet, constants);
+          rows = bodyRows.map((row, r) =>
+            row.children.map((cell, c) => {
+              const value = computed[r + 1]?.[c];
+              if (value != null) return escHtml(value);
+              // A literal cell keeps the HTML remark already built for it, so
+              // `| !**Total** |` stays bold — minus the footer marker.
+              const html = inlineToHtml(cell.children as Node[]);
+              return c === 0 && isFooterRow(rawCells[r + 1] ?? []) ? html.replace(/^!\s*/, '') : html;
+            }),
+          );
+          pendingSheet = undefined;
+        }
+
         elements.push({ type: 'table', headers, rows, align: t.align ?? undefined });
         break;
       }
@@ -301,10 +393,24 @@ function convertRoot(tree: Root, placeholders: Map<number, SlideElement>): Conve
         if (v === '<!-- column-break -->') {
           elements.push({ type: 'column-break' });
         } else {
+          const sheetMatch = v.match(/^<!-- kova-sheet:(\d+) -->$/);
+          if (sheetMatch) {
+            pendingSheet = sheets.get(Number(sheetMatch[1]));
+            break;
+          }
           const m = v.match(/^<!-- kova-el:(\d+) -->$/);
           if (m) {
             const el = placeholders.get(Number(m[1]));
-            if (el) elements.push(el);
+            if (el?.type === 'caption') {
+              const prev = elements[elements.length - 1];
+              if (prev && (prev.type === 'image' || prev.type === 'mermaid' || prev.type === 'math')) {
+                elements[elements.length - 1] = { ...prev, caption: el.text };
+              } else {
+                elements.push({ type: 'paragraph', text: '', html: "#ERR !caption must directly follow an image, diagram, or formula" });
+              }
+            } else if (el) {
+              elements.push(el);
+            }
           } else if (v === '<hr>' || v === '<hr/>' || v === '<hr />') {
             elements.push({ type: 'paragraph', text: '', html: '<hr>' });
           }
@@ -323,6 +429,12 @@ function convertRoot(tree: Root, placeholders: Map<number, SlideElement>): Conve
       default:
         break;
     }
+  }
+
+  // A !sheet as the last block on the slide has no following node to trip the
+  // check above, so report it here instead of dropping it silently.
+  if (pendingSheet) {
+    elements.push({ type: 'paragraph', text: '', html: '#ERR !sheet must sit directly above a table' });
   }
 
   return { title, titleLevel, elements };
@@ -470,6 +582,19 @@ function listToHtml(l: List): string {
     return `<li>${inner}${sub ? listToHtml(sub) : ''}</li>`;
   }).join('');
   return `<${tag}>${items}</${tag}>`;
+}
+
+// ── Raw-source slicing ───────────────────────────────────────────────────────
+
+// A sheet cell's formula must come from the source text, not from the parsed
+// mdast: `=a*b*c` parses as `a<em>b</em>c` and would be silently corrupted.
+// A tableCell's position spans its delimiting `|` characters too, so strip them
+// (an unescaped `|` cannot occur inside a GFM cell).
+function rawText(src: string, node: Node): string {
+  const start = node.position?.start.offset;
+  const end = node.position?.end.offset;
+  if (start === undefined || end === undefined) return '';
+  return src.slice(start, end).replace(/^\s*\|/, '').replace(/(?<!\\)\|\s*$/, '').replace(/\\\|/g, '|').trim();
 }
 
 // ── Inline node → HTML ───────────────────────────────────────────────────────

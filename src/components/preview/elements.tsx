@@ -103,9 +103,12 @@ function ElementNode({ el }: { el: SlideElement }) {
     case 'image': {
       const size = parseSizeHint(el.title);
       return (
-        <div className={`sl-img-wrap${size ? ' sl-img-wrap--user' : ''}`}>
-          <img src={el.src} alt={el.alt} className="sl-img" style={size ?? undefined} />
-        </div>
+        <>
+          <div className={`sl-img-wrap${size ? ' sl-img-wrap--user' : ''}`}>
+            <img src={el.src} alt={el.alt} className="sl-img" style={size ?? undefined} />
+          </div>
+          {el.caption && <div className="sl-caption">{el.caption}</div>}
+        </>
       );
     }
 
@@ -173,10 +176,10 @@ function ElementNode({ el }: { el: SlideElement }) {
       return <TocElement el={el} />;
 
     case 'mermaid':
-      return <MermaidDiagram value={el.value} />;
+      return <MermaidDiagram value={el.value} caption={el.caption} />;
 
     case 'math':
-      return <MathBlock value={el.value} display={el.display} />;
+      return <MathBlock value={el.value} display={el.display} caption={el.caption} />;
 
     default:
       return null;
@@ -360,7 +363,7 @@ function ProgressBar({ el }: { el: Extract<SlideElement, { type: 'progress' }> }
 
 // ── Math block ────────────────────────────────────────────────────────────────
 
-export function MathBlock({ value, display }: { value: string; display: boolean }) {
+export function MathBlock({ value, display, caption }: { value: string; display: boolean; caption?: string }) {
   const html = useMemo(() => {
     try {
       return katex.renderToString(value, { displayMode: display, throwOnError: false });
@@ -370,16 +373,19 @@ export function MathBlock({ value, display }: { value: string; display: boolean 
   }, [value, display]);
 
   return (
-    <div
-      className={`sl-math${display ? ' sl-math--display' : ''}`}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <>
+      <div
+        className={`sl-math${display ? ' sl-math--display' : ''}`}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {caption && <div className="sl-caption">{caption}</div>}
+    </>
   );
 }
 
 // ── Mermaid diagram ───────────────────────────────────────────────────────────
 
-export function MermaidDiagram({ value }: { value: string }) {
+export function MermaidDiagram({ value, caption }: { value: string; caption?: string }) {
   const { mermaidInit, onDiagramReady } = useContext(SlideCtx);
   const onDiagramReadyRef = useRef(onDiagramReady);
   useEffect(() => { onDiagramReadyRef.current = onDiagramReady; });
@@ -467,25 +473,31 @@ export function MermaidDiagram({ value }: { value: string }) {
 
   if (!svg) {
     return (
-      <div
-        data-mermaid-src={value}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          height: '100%', fontSize: 'clamp(7px, 1.5cqi, 12px)',
-          color: mermaidError ? 'var(--sl-text)' : 'var(--sl-accent)', opacity: 0.7,
-        }}
-      >
-        {mermaidError ? `⚠ ${mermaidError}` : '◇ Diagram'}
-      </div>
+      <>
+        <div
+          data-mermaid-src={value}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flex: 1, minHeight: 0, fontSize: 'clamp(7px, 1.5cqi, 12px)',
+            color: mermaidError ? 'var(--sl-text)' : 'var(--sl-accent)', opacity: 0.7,
+          }}
+        >
+          {mermaidError ? `⚠ ${mermaidError}` : '◇ Diagram'}
+        </div>
+        {caption && <div className="sl-caption">{caption}</div>}
+      </>
     );
   }
 
   return (
-    <div
-      ref={containerRef}
-      data-mermaid-src={value}
-      className="sl-mermaid"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        data-mermaid-src={value}
+        className="sl-mermaid"
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+      {caption && <div className="sl-caption">{caption}</div>}
+    </>
   );
 }
