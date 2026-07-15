@@ -54,7 +54,7 @@ describe('createTranslator', () => {
 
   it('interpolates variables through a resolved key', () => {
     const t = createTranslator(null, 'en');
-    expect(t('layout.wordCount', { count: 7 })).toBe('7 words');
+    expect(t('layout.wordCount', { count: 7, formatted: '7' })).toBe('7 words');
   });
 });
 
@@ -71,7 +71,7 @@ describe('createTranslator — pluralization (Intl.PluralRules)', () => {
     // English CLDR resolves count=0 to 'other', but estimatedMinutes defines
     // an explicit `zero` form that should win instead.
     expect(t('layout.estimatedMinutes', { count: 0 })).toBe('Est. 0 min');
-    expect(t('layout.wordCount', { count: 0 })).toBe('0 words');
+    expect(t('layout.wordCount', { count: 0, formatted: '0' })).toBe('0 words');
   });
 
   // Russian CLDR rule: one -> n%10=1 & n%100!=11; few -> n%10=2..4 & n%100 not 12..14;

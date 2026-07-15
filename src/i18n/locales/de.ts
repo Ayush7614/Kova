@@ -130,7 +130,7 @@ const de: DeepPartial<Messages> = {
       one: 'Geschätzt {{count}} Minute', // Est. {{count}} min
       other: 'Geschätzt {{count}} Minuten', // Est. {{count}} mins
     },
-    wordCount: '{{count}} Wörter', // {{count}} words
+    wordCount: '{{formatted}} Wörter', // {{formatted}} words
     aspectRatioTooltip: 'Seitenverhältnis: {{current}} — klicken für {{next}}', // Aspect ratio: {{current}} — click for {{next}}
     externalImageWarning: {
       one: '{{count}} Bild liegt außerhalb des Ordners dieser Datei — es wird nicht angezeigt, wenn die Datei verschoben wird', // {{count}} image is outside this file's folder — it won't appear if the file is moved

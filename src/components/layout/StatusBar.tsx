@@ -45,7 +45,7 @@ export function StatusBar({ currentSlide, totalSlides, wordCount, isDirty, fileP
       <Divider />
       <Cell>{t('layout.estimatedMinutes', { count: minutes })}</Cell>
       <Divider />
-      <Cell>{t('layout.wordCount', { count: formattedWordCount })}</Cell>
+      <Cell>{t('layout.wordCount', { count: wordCount, formatted: formattedWordCount })}</Cell>
       <Divider />
       <button
         type="button"

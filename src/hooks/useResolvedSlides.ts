@@ -29,6 +29,14 @@ export function useResolvedSlides(rawSlides: Slide[], docDir: string): Slide[] {
   // asset:// protocol is unreliable on Windows/WebView2, so we bypass it
   // entirely for local media files — the same approach already used for logos.
   const [localImageUrls, setLocalImageUrls] = useState<Map<string, string>>(() => new Map());
+  // parseDocument always returns a new *array* reference for rawSlides (even
+  // when individual Slide objects are reused), so this effect re-runs on
+  // every keystroke, not just when media actually changes. Track the last
+  // resolved contents here so a re-run that resolves to identical data can
+  // skip setLocalImageUrls — otherwise a fresh Map reference on every
+  // keystroke fails the `cacheHolder.localImageUrls !== localImageUrls` check
+  // below and discards the entire per-slide WeakMap cache for nothing.
+  const resolvedRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     const paths = new Set<string>();
@@ -60,7 +68,16 @@ export function useResolvedSlides(rawSlides: Slide[], docDir: string): Slide[] {
       }
     }
 
-    if (paths.size === 0) { setLocalImageUrls(new Map()); return; }
+    const setIfChanged = (next: Map<string, string>) => {
+      const prev = resolvedRef.current;
+      const unchanged = next.size === prev.size
+        && Array.from(next).every(([k, v]) => prev.get(k) === v);
+      if (unchanged) return;
+      resolvedRef.current = next;
+      setLocalImageUrls(next);
+    };
+
+    if (paths.size === 0) { setIfChanged(new Map()); return; }
 
     let cancelled = false;
     Promise.all(Array.from(paths).map(async (path) => {
@@ -70,7 +87,7 @@ export function useResolvedSlides(rawSlides: Slide[], docDir: string): Slide[] {
         return [path, `data:${mime};base64,${b64}`] as [string, string];
       } catch (e) { console.error('[Kova] read_file_b64 failed for', path, e); return null; }
     })).then((entries) => {
-      if (!cancelled) setLocalImageUrls(new Map(entries.filter((e): e is [string, string] => e !== null)));
+      if (!cancelled) setIfChanged(new Map(entries.filter((e): e is [string, string] => e !== null)));
     });
 
     return () => { cancelled = true; };

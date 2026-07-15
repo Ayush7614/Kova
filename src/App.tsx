@@ -291,6 +291,9 @@ export default function App() {
   // Last content known to be persisted on disk for the currently watched file.
   // External-change events that do not alter this snapshot are ignored.
   const diskContentRef = useRef(content);
+  // Monotonically increasing counter guarding handleMarkdownDrop's doOpen —
+  // see the comment at its call site.
+  const loadGenerationRef = useRef(0);
   // Updated in render body (not useEffect) so the file-changed listener always
   // sees the current dirty state when it fires synchronously after a watcher event.
   const isDirtyRef = useRef(isDirty);
@@ -872,9 +875,16 @@ export default function App() {
 
   const handleMarkdownDrop = useCallback((path: string) => {
     const doOpen = async () => {
+      const myGeneration = ++loadGenerationRef.current;
       try {
         await invoke('stop_watching').catch(() => {});
         const text: string = await invoke('read_file', { path });
+        // Two fast, overlapping triggers (drag-drop or Open Recent) would
+        // otherwise race independently through applyFileContent, and
+        // whichever IPC call happens to resolve last "wins" per state field —
+        // possibly mixing one file's content with another's path. Bail if a
+        // newer load has started since this one began.
+        if (loadGenerationRef.current !== myGeneration) return;
         await applyFileContent(text, path);
       } catch (err) {
         console.error('Drop open failed:', err);
@@ -1079,7 +1089,7 @@ export default function App() {
       console.error('Export failed:', err);
       window.alert(t('app.pptxExportFailed', { error: String(err) }));
     }
-  }, [visibleSlides, frontmatter, activeTheme, filePath]);
+  }, [visibleSlides, frontmatter, activeTheme, filePath, settings.locale, t]);
 
   // Called by each SlideRenderer when all its Mermaid diagrams have rendered.
   const onPdfSlideReady = useRef(() => {
@@ -1106,6 +1116,11 @@ export default function App() {
 
   const handleExportPdf = useCallback(async (opts: PdfExportOpts = {}) => {
     if (visibleSlides.length === 0) return;
+    // The in-window buttons disable while an export is already in flight, but
+    // the macOS native menu bar has no such guard (its items are always
+    // enabled) — without this, triggering a second export via the menu while
+    // one is running clobbers the first's shared in-flight refs/state.
+    if (pdfExportContext !== null || printContext !== null) return;
     const defaultPath = filePath
       ? filePath.replace(/\.(md|markdown)$/i, '.pdf')
       : 'presentation.pdf';
@@ -1153,10 +1168,11 @@ export default function App() {
       };
       setPdfExportContext({ slides: visSlides, savePath });
     });
-  }, [visibleSlides, filePath, activeTheme, aspectRatio]);
+  }, [visibleSlides, filePath, activeTheme, aspectRatio, t, pdfExportContext, printContext]);
 
   const handleExportHtml = useCallback(async () => {
     if (visibleSlides.length === 0) return;
+    if (pdfExportContext !== null || printContext !== null) return;
     const defaultPath = filePath
       ? filePath.replace(/\.(md|markdown)$/i, '.html')
       : 'presentation.html';
@@ -1192,10 +1208,11 @@ export default function App() {
       };
       setPdfExportContext({ slides: visSlides, savePath });
     });
-  }, [visibleSlides, filePath, aspectRatio]);
+  }, [visibleSlides, filePath, aspectRatio, t, pdfExportContext, printContext]);
 
   const handlePrint = useCallback(async () => {
     if (visibleSlides.length === 0) return;
+    if (pdfExportContext !== null || printContext !== null) return;
     const visSlides = [...visibleSlides];
     printSlideRefs.current.clear();
     printSlideReadyCount.current = 0;
@@ -1222,7 +1239,7 @@ export default function App() {
       };
       setPrintContext({ slides: visSlides });
     });
-  }, [visibleSlides, activeTheme, aspectRatio]);
+  }, [visibleSlides, activeTheme, aspectRatio, t, pdfExportContext, printContext]);
 
   const handleCopyWithAssets = useCallback(async () => {
     if (!filePath) return;
@@ -1596,6 +1613,12 @@ export default function App() {
     const sc = (id: string) => getCombo(keybindings.combos, id);
     const handler = (e: KeyboardEvent) => {
       if (presentMode) return;
+      // Default keybindings all require a modifier, but keybindings.combos is
+      // loaded from a user-editable file with no enforcement that a binding
+      // include one — a bare-key rebind must not fire while the user is
+      // typing into an input (mirrors the same guard in PresentationOverlay/
+      // PresenterOverlay).
+      if (e.target instanceof HTMLInputElement) return;
       if (e.key === 'F5') { e.preventDefault(); void handlePresentEnter(e.shiftKey); return; }
       if (matchShortcut(e, sc('newFile')))   { e.preventDefault(); handleNewFile(); }
       if (matchShortcut(e, sc('openFile')))  { e.preventDefault(); handleOpenFile(); }

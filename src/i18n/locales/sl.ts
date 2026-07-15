@@ -127,7 +127,7 @@ const sl: DeepPartial<Messages> = {
       few: 'Pribl. {{count}} minute',
       other: 'Pribl. {{count}} minut',
     },
-    wordCount: '{{count}} besed',
+    wordCount: '{{formatted}} besed',
     aspectRatioTooltip: 'Razmerje: {{current}} — klikni za {{next}}',
     externalImageWarning: {
       one: '{{count}} slika je zunaj mape te datoteke – ne bo se prikazala, če datoteko premaknete.',

@@ -126,7 +126,7 @@ const en = {
     slideCountStatus: 'Slide {{current}} of {{total}}',
     noSlides: 'No slides',
     estimatedMinutes: { zero: 'Est. {{count}} min', one: 'Est. {{count}} min', other: 'Est. {{count}} mins' },
-    wordCount: '{{count}} words',
+    wordCount: '{{formatted}} words',
     aspectRatioTooltip: 'Aspect ratio: {{current}} — click for {{next}}',
     externalImageWarning: {
       one: '{{count}} image is outside this file\'s folder — it won\'t appear if the file is moved',
