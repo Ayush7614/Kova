@@ -5,7 +5,7 @@ import { svgToPngDataUrl } from './svgToPng';
 import { queuedMermaidRender } from './mermaidRenderQueue';
 import { imageMime } from './imageMime';
 import { buildExportMermaidInit, parseChannels } from './mermaidExportTheme';
-import { autoSplitElements, groupProgressRuns } from '../layout/elementGrouping';
+import { autoSplitElements, groupProgressRuns, splitByColumnBreaks } from '../layout/elementGrouping';
 import mermaid from 'mermaid';
 import hljs from 'highlight.js';
 import type { Slide, SlideElement, Frontmatter } from '../types';
@@ -283,7 +283,8 @@ function addSlide(
     case 'split':         addSplitSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor); break;
     case 'full-bleed':    addFullBleedSlide(s, slide, t, H, warnings); break;
     case 'quote':         addQuoteSlide(s, slide, t, cy, ch, slideTextColor); break;
-    case 'two-column':    addTwoColumnSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor); break;
+    case 'two-column':    addMultiColumnSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor, 2); break;
+    case 'three-column':  addMultiColumnSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor, 3); break;
     case 'bsp':           addBspSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor); break;
     case 'grid':          addGridSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor); break;
     case 'media':         addMediaSlide(s, slide, t, cy, ch, slideTextColor, slideHeadingColor); break;
@@ -483,7 +484,7 @@ function addQuoteSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc
   }
 }
 
-function addTwoColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), hc: string = tc, boldColor: string = tc) {
+function addMultiColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), hc: string = tc, boldColor: string = tc, columns: 2 | 3 = 2) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
@@ -497,20 +498,16 @@ function addTwoColumnSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number
   }
   const bodyY = cy + hh + 0.1;
   const bodyH = ch - hh - 0.1;
-  const colW  = (W - M * 2 - 0.3) / 2;
-  const bi    = slide.elements.findIndex((e) => e.type === 'column-break');
+  const GAP   = 0.3;
+  const colW  = (W - M * 2 - GAP * (columns - 1)) / columns;
+  const hasBreak = slide.elements.some((e) => e.type === 'column-break');
+  const groups = hasBreak
+    ? splitByColumnBreaks(slide.elements, columns)
+    : [...autoSplitElements(slide.elements), ...Array(columns - 2).fill([])];
 
-  let left: SlideElement[];
-  let right: SlideElement[];
-  if (bi >= 0) {
-    left  = slide.elements.slice(0, bi);
-    right = slide.elements.slice(bi + 1);
-  } else {
-    [left, right] = autoSplitElements(slide.elements);
-  }
-
-  addElements(s, left,  t, { x: M,               y: bodyY, w: colW, h: bodyH }, warnings, tc, undefined, boldColor);
-  addElements(s, right, t, { x: M + colW + 0.3,  y: bodyY, w: colW, h: bodyH }, warnings, tc, undefined, boldColor);
+  groups.forEach((group, i) => {
+    addElements(s, group, t, { x: M + i * (colW + GAP), y: bodyY, w: colW, h: bodyH }, warnings, tc, undefined, boldColor);
+  });
 }
 
 function addBspSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), hc: string = tc, boldColor: string = tc) {

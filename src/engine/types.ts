@@ -7,6 +7,7 @@ export type LayoutType =
   | 'full-bleed'
   | 'quote'
   | 'two-column'
+  | 'three-column'
   | 'bsp'
   | 'grid'
   | 'media'

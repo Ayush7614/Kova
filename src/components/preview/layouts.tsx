@@ -1,6 +1,6 @@
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Slide, SlideElement } from '../../engine/types';
-import { autoSplitElements, groupProgressRuns } from '../../engine/layout/elementGrouping';
+import { autoSplitElements, groupProgressRuns, splitByColumnBreaks } from '../../engine/layout/elementGrouping';
 import { useT } from '../../i18n';
 import { SlideCtx } from './slideContext';
 import { Elements, CodeBlock, MermaidDiagram, YoutubeEmbed, VideoEmbed, PollEmbed, MathBlock } from './elements';
@@ -11,7 +11,7 @@ import { Elements, CodeBlock, MermaidDiagram, YoutubeEmbed, VideoEmbed, PollEmbe
 // the measurement and style update both happen inside useLayoutEffect (before paint).
 //
 // `minScale`/`onNaturalScale` are an opt-in pair that let a parent (e.g.
-// TwoColumnLayout) synchronise the shrink across sibling panes: each pane
+// MultiColumnLayout) synchronise the shrink across sibling panes: each pane
 // reports its own unclamped ("natural") fit scale via onNaturalScale, and the
 // parent feeds back the smallest of its children's scales as minScale so a
 // lightly filled column shrinks in lockstep with a heavily overflowing
@@ -133,7 +133,8 @@ export function SlideLayout({ slide }: { slide: Slide }) {
     case 'split':         return <SplitLayout slide={slide} />;
     case 'full-bleed':    return <FullBleedLayout slide={slide} />;
     case 'quote':         return <QuoteLayout slide={slide} />;
-    case 'two-column':    return <TwoColumnLayout slide={slide} />;
+    case 'two-column':    return <MultiColumnLayout slide={slide} columns={2} />;
+    case 'three-column':  return <MultiColumnLayout slide={slide} columns={3} />;
     case 'bsp':           return <BspLayout slide={slide} />;
     case 'grid':          return <GridLayout slide={slide} />;
     case 'media':         return <MediaLayout slide={slide} />;
@@ -264,33 +265,37 @@ function QuoteLayout({ slide }: { slide: Slide }) {
   );
 }
 
-function TwoColumnLayout({ slide }: { slide: Slide }) {
-  const breakIdx = slide.elements.findIndex((e) => e.type === 'column-break');
+function MultiColumnLayout({ slide, columns }: { slide: Slide; columns: 2 | 3 }) {
+  const hasBreak = slide.elements.some((e) => e.type === 'column-break');
+  const groups = hasBreak
+    ? splitByColumnBreaks(slide.elements, columns)
+    : [...autoSplitElements(slide.elements), ...Array(columns - 2).fill([])];
 
-  let left: SlideElement[];
-  let right: SlideElement[];
-
-  if (breakIdx >= 0) {
-    left  = slide.elements.slice(0, breakIdx);
-    right = slide.elements.slice(breakIdx + 1);
-  } else {
-    [left, right] = autoSplitElements(slide.elements);
-  }
-
-  // Shrink both columns in lockstep: without this, a lightly filled column
+  // Shrink all columns in lockstep: without this, a lightly filled column
   // sits at full size (with dead space below it) next to a sibling that had
   // to shrink heavily to fit its share of the content — issue #145.
-  const [leftScale, setLeftScale] = useState(1);
-  const [rightScale, setRightScale] = useState(1);
-  const syncedScale = Math.min(leftScale, rightScale);
+  const [scales, setScales] = useState<number[]>(() => Array(columns).fill(1));
+  const syncedScale = Math.min(...scales);
+  // Stable per-index setter identities (memoized on `columns`, fixed for a
+  // mounted instance) — OverflowPane's loop-proof effect relies on
+  // onNaturalScale having a stable identity across renders.
+  const setScaleAt = useMemo(
+    () => Array.from({ length: columns }, (_, i) => (s: number) =>
+      setScales((prev) => (prev[i] === s ? prev : prev.map((v, j) => (j === i ? s : v)))),
+    ),
+    [columns],
+  );
 
   return (
     <div className="sl-two-col">
       {slide.title && <div className="sl-heading sl-two-col__title">{slide.title}</div>}
       <div className="sl-two-col__body">
-        <OverflowPane className="sl-two-col__col" elements={left} minScale={syncedScale} onNaturalScale={setLeftScale} />
-        <div className="sl-two-col__divider" />
-        <OverflowPane className="sl-two-col__col" elements={right} minScale={syncedScale} onNaturalScale={setRightScale} />
+        {groups.map((g, i) => (
+          <Fragment key={i}>
+            {i > 0 && <div className="sl-two-col__divider" />}
+            <OverflowPane className="sl-two-col__col" elements={g} minScale={syncedScale} onNaturalScale={setScaleAt[i]} />
+          </Fragment>
+        ))}
       </div>
     </div>
   );

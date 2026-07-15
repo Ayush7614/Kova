@@ -109,7 +109,9 @@ export function detectLayout(
   // ── Highest-priority special types ───────────────────────────────────────
 
   if (has('youtube') || has('poll')) return 'media';
-  if (has('column-break')) return 'two-column';
+  const columnBreakCount = elements.filter((e) => e.type === 'column-break').length;
+  if (columnBreakCount >= 2) return 'three-column';
+  if (columnBreakCount === 1) return 'two-column';
 
   // ── Code-only ────────────────────────────────────────────────────────────
 

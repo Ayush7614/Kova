@@ -44,7 +44,7 @@ function hasColor(xml: string, hex: string): boolean {
 }
 
 describe('exportPptx heading/bold theme colour', () => {
-  const layouts: Slide['layout'][] = ['title-content', 'split', 'two-column', 'bsp', 'grid'];
+  const layouts: Slide['layout'][] = ['title-content', 'split', 'two-column', 'three-column', 'bsp', 'grid'];
 
   for (const layout of layouts) {
     it(`colours the title distinctly from the body in ${layout}`, async () => {

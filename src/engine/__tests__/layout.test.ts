@@ -108,6 +108,22 @@ describe('two-column layout', () => {
   });
 });
 
+// ── Three-column layout ───────────────────────────────────────────────────────
+
+describe('three-column layout', () => {
+  it('2 column-breaks → three-column', () => {
+    expect(detectLayout([para, colBreak, list, colBreak, para], 2, true)).toBe('three-column');
+  });
+
+  it('3+ column-breaks still caps at three-column', () => {
+    expect(detectLayout([para, colBreak, list, colBreak, para, colBreak, list], 2, true)).toBe('three-column');
+  });
+
+  it('three-column takes priority over bsp/grid', () => {
+    expect(detectLayout([code, colBreak, mermaid, colBreak, list], 2, true)).toBe('three-column');
+  });
+});
+
 // ── Code-only layout ──────────────────────────────────────────────────────────
 
 describe('code layout', () => {

@@ -52,6 +52,24 @@ function balancedSplitIndex<T>(items: T[], weightOf: (item: T) => number): numbe
  * shrinks the font to fit, since it has no notion of how many characters
  * actually fit per rendered line (see issue #145).
  */
+/**
+ * Splits a slide's elements into `columns` groups at `column-break` markers.
+ *
+ * Shared by the live preview and the PPTX exporter for the same reason as
+ * `autoSplitElements` above. Breaks beyond `columns - 1` fold into the last
+ * group along with any trailing content — this is the mechanism that caps
+ * three-column layouts at three columns even if a slide has 3+ `|||`.
+ */
+export function splitByColumnBreaks(elements: SlideElement[], columns: number): SlideElement[][] {
+  const groups: SlideElement[][] = Array.from({ length: columns }, () => []);
+  let col = 0;
+  for (const el of elements) {
+    if (el.type === 'column-break' && col < columns - 1) { col++; continue; }
+    groups[col].push(el);
+  }
+  return groups;
+}
+
 export function autoSplitElements(elements: SlideElement[]): [SlideElement[], SlideElement[]] {
   // Single list: split by cumulative estimated line count for visual balance
   if (elements.length === 1 && elements[0].type === 'list') {

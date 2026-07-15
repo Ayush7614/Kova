@@ -46,7 +46,7 @@ function hasColor(xml: string, hex: string): boolean {
 describe('exportPptx per-slide text colour', () => {
   // Each affected layout with NO title: the only coloured runs are the body,
   // so a hit on OVERRIDE proves the override reaches body text (not just title).
-  const layouts: Slide['layout'][] = ['split', 'two-column', 'bsp', 'grid'];
+  const layouts: Slide['layout'][] = ['split', 'two-column', 'three-column', 'bsp', 'grid'];
 
   for (const layout of layouts) {
     it(`applies explicit color to body in ${layout}`, async () => {
@@ -71,6 +71,18 @@ describe('exportPptx per-slide text colour', () => {
     // Two paragraphs => two runs, both should be FF0000 (body of each column).
     const matches = xml.match(/<a:srgbClr val="FF0000"\/>/g) ?? [];
     expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('three-column colours all three columns via 2 column-breaks', async () => {
+    const els: SlideElement[] = [
+      para('left'), { type: 'column-break' },
+      para('middle'), { type: 'column-break' },
+      para('right'),
+    ];
+    const xml = await slideXml(makeSlide('three-column', els, { textColor: OVERRIDE }));
+    // Three paragraphs => three runs, all should be FF0000 (body of each column).
+    const matches = xml.match(/<a:srgbClr val="FF0000"\/>/g) ?? [];
+    expect(matches.length).toBeGreaterThanOrEqual(3);
   });
 
   it('bsp colours body in the progress-bar grouped path', async () => {

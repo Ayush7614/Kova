@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { autoSplitElements, groupProgressRuns } from '../elementGrouping';
+import { autoSplitElements, groupProgressRuns, splitByColumnBreaks } from '../elementGrouping';
 import type { SlideElement, ListItem } from '../../types';
 
 const item = (text: string): ListItem => ({ text, html: `<p>${text}</p>`, children: [] });
@@ -22,6 +22,36 @@ describe('groupProgressRuns', () => {
   it('starts a new group when a progress run is broken by another element', () => {
     const groups = groupProgressRuns([progress('a', 1), paragraph('mid'), progress('b', 2)]);
     expect(groups).toEqual([[progress('a', 1)], [paragraph('mid')], [progress('b', 2)]]);
+  });
+});
+
+describe('splitByColumnBreaks', () => {
+  const colBreak: SlideElement = { type: 'column-break' };
+
+  it('splits into 2 groups at a single break', () => {
+    const groups = splitByColumnBreaks([paragraph('a'), colBreak, paragraph('b')], 2);
+    expect(groups).toEqual([[paragraph('a')], [paragraph('b')]]);
+  });
+
+  it('splits into 3 clean groups at 2 breaks', () => {
+    const groups = splitByColumnBreaks(
+      [paragraph('a'), colBreak, paragraph('b'), colBreak, paragraph('c')],
+      3,
+    );
+    expect(groups).toEqual([[paragraph('a')], [paragraph('b')], [paragraph('c')]]);
+  });
+
+  it('folds a 3rd+ break and trailing content into the last group when capped at 3 columns', () => {
+    const groups = splitByColumnBreaks(
+      [paragraph('a'), colBreak, paragraph('b'), colBreak, paragraph('c'), colBreak, paragraph('d')],
+      3,
+    );
+    expect(groups).toEqual([[paragraph('a')], [paragraph('b')], [paragraph('c'), colBreak, paragraph('d')]]);
+  });
+
+  it('puts all content in the first group when there are no breaks, leaving the rest empty', () => {
+    const groups = splitByColumnBreaks([paragraph('a'), paragraph('b')], 3);
+    expect(groups).toEqual([[paragraph('a'), paragraph('b')], [], []]);
   });
 });
 

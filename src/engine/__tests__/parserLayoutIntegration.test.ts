@@ -34,6 +34,24 @@ describe('parser → layout integration', () => {
     expect(slides[0].elements.some((e) => e.type === 'column-break')).toBe(true);
   });
 
+  it('two ||| column breaks → layout: three-column', () => {
+    const { slides } = parseDocument(doc([
+      '## Slide',
+      '',
+      'Left content',
+      '',
+      '|||',
+      '',
+      'Middle content',
+      '',
+      '|||',
+      '',
+      'Right content',
+    ].join('\n')));
+    expect(slides[0].layout).toBe('three-column');
+    expect(slides[0].elements.filter((e) => e.type === 'column-break')).toHaveLength(2);
+  });
+
   it('!youtube embed → layout: media', () => {
     const { slides } = parseDocument(doc([
       '## Slide',
