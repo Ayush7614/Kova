@@ -405,6 +405,7 @@ const en = {
     checking: 'Checking…',
     upToDate: 'Up to date (v{{version}})',
     updateCheckError: 'Could not reach update server',
+    updateInstallError: 'Downloaded, but the update could not be verified or installed',
     updateAvailable: '{{version}} available',
     updateNow: 'Update Now',
     downloading: 'Downloading {{version}}{{pct}}',

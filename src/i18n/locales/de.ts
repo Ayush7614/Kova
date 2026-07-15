@@ -421,6 +421,7 @@ const de: DeepPartial<Messages> = {
     checking: 'Wird geprüft…', // Checking…
     upToDate: 'Auf dem neuesten Stand (v{{version}})', // Up to date (v{{version}})
     updateCheckError: 'Update-Server konnte nicht erreicht werden', // Could not reach update server
+    updateInstallError: 'Heruntergeladen, aber das Update konnte nicht verifiziert oder installiert werden', // Downloaded, but the update could not be verified or installed
     updateAvailable: '{{version}} verfügbar', // {{version}} available
     updateNow: 'Jetzt aktualisieren', // Update Now
     downloading: '{{version}} wird heruntergeladen{{pct}}', // Downloading {{version}}{{pct}}

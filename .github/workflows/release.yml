@@ -310,6 +310,37 @@ jobs:
              latest.json > /tmp/latest.json.new
           mv /tmp/latest.json.new latest.json
 
+      # Cached target/ can carry a stale Kova.app.tar.gz.sig from an earlier run
+      # into latest.json while the re-bundled tarball that uploads no longer
+      # matches it — breaking every macOS self-update. Re-sign the exact bytes
+      # we upload, same as the Windows/Linux re-sign steps above.
+      - name: Re-sign macOS updater tarball and patch latest.json
+        if: matrix.platform == 'macos-latest'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TARBALL=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name '*.app.tar.gz' | head -1)
+
+          npm install -g @tauri-apps/cli@^2
+          rm -f "$TARBALL.sig"
+          tauri signer sign "$TARBALL"
+          SIG=$(cat "$TARBALL.sig")
+
+          gh release upload "${{ github.ref_name }}" \
+            "$TARBALL#Kova_universal.app.tar.gz" --clobber
+
+          # All four darwin aliases point at the one universal tarball.
+          jq --arg sig "$SIG" '
+              .platforms["darwin-aarch64"].signature    = $sig |
+              .platforms["darwin-x86_64"].signature     = $sig |
+              .platforms["darwin-aarch64-app"].signature = $sig |
+              .platforms["darwin-x86_64-app"].signature = $sig
+            ' latest.json > /tmp/latest.json.new
+          mv /tmp/latest.json.new latest.json
+
       # Save this platform's latest.json as a workflow artifact so the finalize
       # job can merge all three into one before uploading to the release.
       # Without this, each platform overwrites the shared latest.json in the
