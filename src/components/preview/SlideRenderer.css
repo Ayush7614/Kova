@@ -193,6 +193,7 @@
   font-size: clamp(7px, 1.6cqi, 14px);
   color: color-mix(in srgb, var(--sl-text) 80%, transparent);
   margin-top: 0.4em;
+  margin-bottom: 0.4em;
 }
 
 .sl-blockquote {
