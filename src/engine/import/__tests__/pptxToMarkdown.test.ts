@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { pptxToMarkdown } from '../pptxToMarkdown';
+import { parseDocument } from '../../parser/markdownToSlides';
 import type { PptxParseResult } from '../parsePptx';
 
 function makeResult(overrides: Partial<PptxParseResult> = {}): PptxParseResult {
@@ -194,5 +195,41 @@ describe('pptxToMarkdown', () => {
     expect(second).toContain('## Two');
     expect(second).toContain('Notes for two');
     expect(second).not.toContain('Notes for one');
+  });
+
+  it('a literal "???" line in body text does not get swallowed into speaker notes', () => {
+    const md = pptxToMarkdown(makeResult({
+      slides: [{
+        blocks: [{
+          kind: 'body',
+          text: '???\nThis should be visible body content',
+          normX: 0, normY: 0.2, normW: 1, normH: 0.5,
+        }],
+        speakerNotes: '',
+      }],
+    }));
+    const { slides } = parseDocument(md);
+    expect(slides).toHaveLength(1);
+    const visibleText = JSON.stringify(slides[0].elements);
+    expect(visibleText).toContain('This should be visible body content');
+    expect(slides[0].speakerNotes ?? '').not.toContain('This should be visible body content');
+  });
+
+  it('a literal "---" line in body text does not split the slide in two', () => {
+    const md = pptxToMarkdown(makeResult({
+      slides: [{
+        blocks: [
+          { kind: 'title', text: 'Slide One', normX: 0, normY: 0, normW: 1, normH: 0.2 },
+          { kind: 'body', text: '---', normX: 0, normY: 0.2, normW: 1, normH: 0.2 },
+          { kind: 'body', text: 'Important content after divider', normX: 0, normY: 0.5, normW: 1, normH: 0.3 },
+        ],
+        speakerNotes: '',
+      }],
+    }));
+    const { slides } = parseDocument(md);
+    expect(slides).toHaveLength(1);
+    expect(slides[0].title).toBe('Slide One');
+    const visibleText = JSON.stringify(slides[0].elements);
+    expect(visibleText).toContain('Important content after divider');
   });
 });

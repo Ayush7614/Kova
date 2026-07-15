@@ -1,9 +1,36 @@
 import type { PptxParseResult, PptxParsedSlide } from './parsePptx';
 
+// ── Control-syntax escaping ──────────────────────────────────────────────────
+
+// Lines that Kova's pre-parse scanners treat as structural sentinels when a
+// trimmed line matches them *exactly* — checked as raw-string comparisons
+// before any Markdown parsing happens (markdownToSlides.ts's slide splitter,
+// speakerNotes.ts, preprocess()'s column-break handling). PPTX text boxes are
+// plain text with no such meaning, so a text box that happens to contain one
+// of these verbatim (e.g. a "???" placeholder, or a "---" divider) must not
+// be reinterpreted as Kova syntax on import.
+const CONTROL_SENTINELS = new Set(['---', '???', '|||']);
+
+// Backslash-escapes each character of a line that exactly matches a control
+// sentinel (preserving any surrounding whitespace as-is). CommonMark treats
+// a backslash-escaped ASCII punctuation character as a literal, so e.g.
+// '---' -> '\-\-\-' still renders as the visible text "---" but no longer
+// trim-equals '---', so it survives the raw-string scanners untouched.
+function escapeControlLine(line: string): string {
+  const trimmed = line.trim();
+  if (!CONTROL_SENTINELS.has(trimmed)) return line;
+  const start = line.indexOf(trimmed);
+  return line.slice(0, start) + trimmed.replace(/./g, '\\$&') + line.slice(start + trimmed.length);
+}
+
+function escapeControlLines(text: string): string {
+  return text.split('\n').map(escapeControlLine).join('\n');
+}
+
 // ── Table → GFM ──────────────────────────────────────────────────────────────
 
 function tableToGfm(headers: string[], rows: string[][]): string {
-  const escape = (s: string) => s.replace(/\|/g, '\\|');
+  const escape = (s: string) => escapeControlLine(s).replace(/\|/g, '\\|');
   const headerRow = `| ${headers.map(escape).join(' | ')} |`;
   const sepRow    = `| ${headers.map(() => '---').join(' | ')} |`;
   const bodyRows  = rows.map((r) => {
@@ -38,7 +65,7 @@ function slideToMarkdown(slide: PptxParsedSlide, slideIndex: number): string {
 
     switch (block.kind) {
       case 'body': {
-        const text = block.text ?? '';
+        const text = escapeControlLines(block.text ?? '');
         if (!text.trim()) break;
 
         // If the text block has multiple lines but none start with '- ',

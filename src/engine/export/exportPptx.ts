@@ -1511,7 +1511,13 @@ function firstFont(stack: string): string {
 }
 
 function stripHtml(html: string): string {
-  return html
-    .replace(/<img[^>]+alt="([^"]*)"[^>]*>/gi, '$1')
-    .replace(/<[^>]+>/g, '');
+  const withAltText = html.replace(/<img[^>]+alt="([^"]*)"[^>]*>/gi, '$1');
+  // Use the DOM (as htmlToInlineRuns/hljsHtmlToRuns already do elsewhere in
+  // this file) rather than a tag-stripping regex followed by hand-rolled
+  // entity decoding — inlineToHtml() escapes & < > into entities, and
+  // textContent decodes them back correctly (including numeric entities),
+  // instead of leaving e.g. "AT&amp;T" as literal text in the exported pptx.
+  const div = document.createElement('div');
+  div.innerHTML = withAltText;
+  return div.textContent ?? '';
 }

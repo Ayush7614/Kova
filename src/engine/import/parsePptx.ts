@@ -142,7 +142,13 @@ function parseRels(relsXml: Document): Map<string, string> {
 interface ShapeGeom { x: number; y: number; cx: number; cy: number }
 
 function getShapeGeom(shape: Element): ShapeGeom {
-  const xfrm = shape.getElementsByTagNameNS(A, 'xfrm')[0] ?? null;
+  // sp/pic shapes carry their transform as a:xfrm inside spPr. A graphicFrame
+  // (table/chart/SmartArt) instead carries it as its own direct p:xfrm child
+  // — wrong namespace for the a:xfrm lookup, so without this fallback every
+  // graphicFrame silently fell through to the (0,0)/1x1 default below.
+  const xfrm = shape.getElementsByTagNameNS(A, 'xfrm')[0]
+    ?? shape.getElementsByTagNameNS(P, 'xfrm')[0]
+    ?? null;
   if (!xfrm) return { x: 0, y: 0, cx: 1, cy: 1 };
   const off = xfrm.getElementsByTagNameNS(A, 'off')[0];
   const ext = xfrm.getElementsByTagNameNS(A, 'ext')[0];
@@ -396,7 +402,7 @@ async function extractSlideBlocks(
       if (!tbl) continue;
       const tableData = extractTable(tbl);
       if (!tableData) continue;
-      const geom = getShapeGeom(gf);
+      const geom = getComposedGeom(gf);
       const norm = normalise(geom, slideW, slideH);
       blocks.push({ kind: 'table', ...tableData, ...norm });
     } else if (uri.includes('/chart')) {
