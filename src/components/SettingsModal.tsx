@@ -133,7 +133,8 @@ type UpdateState =
   | { phase: 'available'; version: string }
   | { phase: 'downloading'; version: string; pct: number | null }
   | { phase: 'done'; version: string }
-  | 'error';
+  | 'error'          // check failed — server unreachable
+  | 'install-error'; // downloaded, but verify/install failed
 
 interface Props {
   settings: AppSettings;
@@ -237,7 +238,7 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, s
       setUpdateState({ phase: 'done', version });
     } catch (err) {
       console.error('[updater] install failed:', err);
-      setUpdateState('error');
+      setUpdateState('install-error');
     }
   }
 
@@ -714,7 +715,7 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, s
         )}
 
         {selfUpdateSupported && <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 4 }}>
-          {(updateState === 'idle' || updateState === 'up-to-date' || updateState === 'error') && (
+          {(updateState === 'idle' || updateState === 'up-to-date' || updateState === 'error' || updateState === 'install-error') && (
             <button
               type="button"
               onClick={runCheck}
@@ -756,6 +757,10 @@ export function SettingsModal({ settings, availableUpdate, allThemes, isDirty, s
 
           {updateState === 'error' && (
             <span style={{ fontSize: 11, color: '#c0392b' }}>{t('settings.updateCheckError')}</span>
+          )}
+
+          {updateState === 'install-error' && (
+            <span style={{ fontSize: 11, color: '#c0392b' }}>{t('settings.updateInstallError')}</span>
           )}
 
           {typeof updateState === 'object' && updateState.phase === 'available' && (
