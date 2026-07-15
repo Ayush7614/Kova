@@ -1270,8 +1270,10 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
   if (tableEl && tableEl.type === 'table') {
     const textFrac = runs.length > 0 ? Math.min(0.5, 0.15 + runs.length * 0.08) : 0;
     const tableY = area.y + area.h * textFrac;
-    const tableH = area.h * (1 - textFrac - 0.02);
+    const capH = tableEl.caption ? CAPTION_H : 0;
+    const tableH = area.h * (1 - textFrac - 0.02) - capH;
     addTable(s, tableEl, t, { x: area.x, y: tableY, w: area.w, h: tableH }, tc);
+    addCaption(s, tableEl.caption, t, area.x, tableY + tableH, area.w);
   }
 }
 

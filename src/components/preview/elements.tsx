@@ -137,16 +137,19 @@ function ElementNode({ el }: { el: SlideElement }) {
 
     case 'table':
       return (
-        <table className="sl-table">
-          <thead>
-            <tr>{el.headers.map((h, i) => <th key={i} style={{ textAlign: el.align?.[i] || undefined }} dangerouslySetInnerHTML={{ __html: h }} />)}</tr>
-          </thead>
-          <tbody>
-            {el.rows.map((row, i) => (
-              <tr key={i}>{row.map((cell, j) => <td key={j} style={{ textAlign: el.align?.[j] || undefined }} dangerouslySetInnerHTML={{ __html: cell }} />)}</tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <table className="sl-table">
+            <thead>
+              <tr>{el.headers.map((h, i) => <th key={i} style={{ textAlign: el.align?.[i] || undefined }} dangerouslySetInnerHTML={{ __html: h }} />)}</tr>
+            </thead>
+            <tbody>
+              {el.rows.map((row, i) => (
+                <tr key={i}>{row.map((cell, j) => <td key={j} style={{ textAlign: el.align?.[j] || undefined }} dangerouslySetInnerHTML={{ __html: cell }} />)}</tr>
+              ))}
+            </tbody>
+          </table>
+          {el.caption && <div className="sl-caption">{el.caption}</div>}
+        </>
       );
 
     case 'code':

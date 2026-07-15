@@ -403,10 +403,10 @@ function convertRoot(
             const el = placeholders.get(Number(m[1]));
             if (el?.type === 'caption') {
               const prev = elements[elements.length - 1];
-              if (prev && (prev.type === 'image' || prev.type === 'mermaid' || prev.type === 'math')) {
+              if (prev && (prev.type === 'image' || prev.type === 'mermaid' || prev.type === 'math' || prev.type === 'table')) {
                 elements[elements.length - 1] = { ...prev, caption: el.text };
               } else {
-                elements.push({ type: 'paragraph', text: '', html: "#ERR !caption must directly follow an image, diagram, or formula" });
+                elements.push({ type: 'paragraph', text: '', html: "#ERR !caption must directly follow an image, diagram, formula, or table" });
               }
             } else if (el) {
               elements.push(el);
