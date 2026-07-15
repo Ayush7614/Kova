@@ -154,8 +154,21 @@ pub fn copy_file_with_assets(
     let dest_dir = safe_dest.parent().ok_or("Invalid dest path")?;
 
     for asset_ref in &asset_refs {
-        let src_asset  = src_dir.join(asset_ref);
-        let dest_asset = dest_dir.join(asset_ref);
+        // asset_refs is scraped from document content by the frontend with no
+        // path validation — an absolute path or ".." component here could
+        // otherwise make src_asset/dest_asset resolve outside src_dir/dest_dir,
+        // or even to the exact same file (which would truncate it: fs::copy
+        // opens the destination with truncate semantics before finishing the
+        // read). Reject anything but a plain relative path up front.
+        let rel = std::path::Path::new(asset_ref);
+        if rel.is_absolute()
+            || rel.components().any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(format!("Invalid asset reference: {asset_ref}"));
+        }
+
+        let src_asset  = src_dir.join(rel);
+        let dest_asset = dest_dir.join(rel);
         // Create any intermediate directories the relative path requires.
         if let Some(parent) = dest_asset.parent() {
             std::fs::create_dir_all(parent)
@@ -169,6 +182,16 @@ pub fn copy_file_with_assets(
             dest_asset.to_str()
                 .ok_or_else(|| format!("Asset dest path contains non-UTF-8 characters: {dest_asset:?}"))?
         )?;
+        // Defence in depth: the checks above should already guarantee these
+        // stay within src_dir/dest_dir, but canonicalize() also resolves
+        // symlinks, which could still walk outside — and copying a file onto
+        // itself would silently truncate it, so refuse that outright too.
+        if !safe_src_asset.starts_with(src_dir) || !safe_dest_asset.starts_with(dest_dir) {
+            return Err(format!("Asset reference escapes its base directory: {asset_ref}"));
+        }
+        if safe_src_asset == safe_dest_asset {
+            return Err(format!("Source and destination are the same file for {asset_ref}"));
+        }
         std::fs::copy(&safe_src_asset, &safe_dest_asset)
             .map_err(|e| format!("Cannot copy {asset_ref}: {e}"))?;
     }
@@ -260,6 +283,71 @@ mod tests {
         assert_eq!(name1, "clip.mp4");
         assert_eq!(name2, "clip-1.mp4");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn setup_copy_scenario(label: &str) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+        let src_dir = temp_scratch_dir(&format!("copy-src-{label}"));
+        let dest_dir = temp_scratch_dir(&format!("copy-dest-{label}"));
+        let src_md = src_dir.join("doc.md");
+        std::fs::write(&src_md, "# hi").unwrap();
+        (src_dir, dest_dir, src_md)
+    }
+
+    #[test]
+    fn copy_file_with_assets_rejects_absolute_asset_ref() {
+        let (src_dir, dest_dir, src_md) = setup_copy_scenario("abs");
+        let secret = src_dir.join("secret.txt");
+        std::fs::write(&secret, b"do not touch").unwrap();
+        let dest_md = dest_dir.join("copy.md");
+
+        let result = copy_file_with_assets(
+            src_md.to_str().unwrap().to_string(),
+            "# hi".to_string(),
+            dest_md.to_str().unwrap().to_string(),
+            vec![secret.to_str().unwrap().to_string()],
+        );
+
+        assert!(result.is_err(), "absolute asset_ref must be rejected");
+        assert_eq!(std::fs::read(&secret).unwrap(), b"do not touch", "source file must be untouched");
+        let _ = std::fs::remove_dir_all(&src_dir);
+        let _ = std::fs::remove_dir_all(&dest_dir);
+    }
+
+    #[test]
+    fn copy_file_with_assets_rejects_parent_dir_traversal() {
+        let (src_dir, dest_dir, src_md) = setup_copy_scenario("traversal");
+        let dest_md = dest_dir.join("copy.md");
+
+        let result = copy_file_with_assets(
+            src_md.to_str().unwrap().to_string(),
+            "# hi".to_string(),
+            dest_md.to_str().unwrap().to_string(),
+            vec!["../../../etc/passwd".to_string()],
+        );
+
+        assert!(result.is_err(), "'..'-containing asset_ref must be rejected");
+        let _ = std::fs::remove_dir_all(&src_dir);
+        let _ = std::fs::remove_dir_all(&dest_dir);
+    }
+
+    #[test]
+    fn copy_file_with_assets_copies_plain_relative_asset() {
+        let (src_dir, dest_dir, src_md) = setup_copy_scenario("happy");
+        std::fs::create_dir_all(src_dir.join("assets")).unwrap();
+        std::fs::write(src_dir.join("assets/pic.png"), b"pngdata").unwrap();
+        let dest_md = dest_dir.join("copy.md");
+
+        let result = copy_file_with_assets(
+            src_md.to_str().unwrap().to_string(),
+            "# hi".to_string(),
+            dest_md.to_str().unwrap().to_string(),
+            vec!["assets/pic.png".to_string()],
+        );
+
+        assert!(result.is_ok(), "plain relative asset_ref should still work: {result:?}");
+        assert_eq!(std::fs::read(dest_dir.join("assets/pic.png")).unwrap(), b"pngdata");
+        let _ = std::fs::remove_dir_all(&src_dir);
+        let _ = std::fs::remove_dir_all(&dest_dir);
     }
 
 }

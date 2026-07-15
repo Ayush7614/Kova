@@ -1236,13 +1236,17 @@ export default function App() {
     const src = contentRef.current;
     const seen = new Set<string>();
     const WEB_URL = /^(https?|data|asset|tauri):\/\//i;
+    // Rust re-validates and is the real security boundary (asset refs must
+    // resolve to a plain relative path under src/dest dir) — this just avoids
+    // surfacing a Rust-side error for the common case of a malformed doc.
+    const isLocalRelativeRef = (ref: string) => !ref.startsWith('/') && !ref.split(/[/\\]/).includes('..');
     for (const m of src.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) {
       const ref = decodeURIComponent(m[1]);
-      if (!WEB_URL.test(ref)) seen.add(ref);
+      if (!WEB_URL.test(ref) && isLocalRelativeRef(ref)) seen.add(ref);
     }
     for (const m of src.matchAll(/<img[^>]+src=["']([^"']+)["']/g)) {
       const ref = decodeURIComponent(m[1]);
-      if (!WEB_URL.test(ref)) seen.add(ref);
+      if (!WEB_URL.test(ref) && isLocalRelativeRef(ref)) seen.add(ref);
     }
     try {
       await invoke('copy_file_with_assets', {

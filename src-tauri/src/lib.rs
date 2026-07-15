@@ -1,5 +1,6 @@
 mod commands;
 mod file_io;
+mod net_guard;
 mod watcher;
 
 use commands::{AppState, WatchState};

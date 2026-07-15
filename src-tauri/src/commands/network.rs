@@ -7,10 +7,7 @@ pub async fn fetch_url_b64(url: String) -> Result<(String, String), String> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return Err("URL must use HTTP or HTTPS".into());
     }
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| format!("client error: {e}"))?;
+    let client = crate::net_guard::build_ssrf_safe_client()?;
     let resp = client
         .get(&url)
         .send()
@@ -45,10 +42,7 @@ pub async fn fetch_url_text(url: String) -> Result<String, String> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return Err("URL must use HTTP or HTTPS".into());
     }
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| format!("client error: {e}"))?;
+    let client = crate::net_guard::build_ssrf_safe_client()?;
     let resp = client
         .get(&url)
         .send()
