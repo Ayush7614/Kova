@@ -59,6 +59,11 @@ export function detectOsLanguage(): SpellCheckLanguage {
 
 const CUSTOM_WORDS_KEY = 'kova:spell-custom-words';
 
+// Capped so cycling through many/all of the 23 supported languages in one
+// session (e.g. testing locales, multilingual decks) doesn't keep every
+// multi-MB dictionary in memory for the app's lifetime — same LRU-eviction
+// approach as mermaidSvgCache elsewhere in this codebase.
+const MAX_CACHED_DICTIONARIES = 4;
 const cache = new Map<SpellCheckLanguage, Typo>();
 let active: Typo | null = null;
 let currentLang: SpellCheckLanguage | null = null;
@@ -103,7 +108,11 @@ function notifyChange(): void {
 export async function initSpellChecker(lang: SpellCheckLanguage): Promise<void> {
   if (currentLang === lang && active) { return; }
   if (cache.has(lang)) {
-    active = cache.get(lang)!;
+    const typo = cache.get(lang)!;
+    // Refresh recency: re-insert so it's last in iteration (eviction) order.
+    cache.delete(lang);
+    cache.set(lang, typo);
+    active = typo;
     currentLang = lang;
     notifyChange();
     return;
@@ -116,6 +125,10 @@ export async function initSpellChecker(lang: SpellCheckLanguage): Promise<void> 
     await new Promise(resolve => setTimeout(resolve, 0));
     const typo = new Typo(lang, aff, dic);
     cache.set(lang, typo);
+    if (cache.size > MAX_CACHED_DICTIONARIES) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
+    }
     active = typo;
     currentLang = lang;
     notifyChange();

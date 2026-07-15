@@ -44,8 +44,12 @@ pub async fn export_pdf_native(
     let html_path_str = html_path.to_str().ok_or("html_path is non-UTF-8")?.to_string();
 
     // Load the HTML in a hidden WebviewWindow and print it with the platform's
-    // native WebView print API (WKWebView / WebView2 / WebKitGTK).
-    {
+    // native WebView print API (WKWebView / WebView2 / WebKitGTK). Wrapped in
+    // an async block (rather than using `?` directly in this function body)
+    // so a failure at *any* stage — URL parsing, window creation, or the
+    // platform print call itself — still falls through to the html_path
+    // cleanup below instead of leaking the temp HTML file.
+    let print_result: Result<(), String> = async move {
         // Per-page rect params are macOS-only; Windows and Linux paginate from
         // @page using width_mm/height_mm. Silence what each target doesn't use.
         #[cfg(not(target_os = "macos"))]
@@ -119,10 +123,13 @@ pub async fn export_pdf_native(
             platform_linux::generate_pdf(&window, &output_path, width_mm, height_mm).await;
 
         let _ = window.destroy();
-        let _ = tauri::async_runtime::spawn_blocking(move || std::fs::remove_file(&html_path)).await;
-
         result
     }
+    .await;
+
+    let _ = tauri::async_runtime::spawn_blocking(move || std::fs::remove_file(&html_path)).await;
+
+    print_result
 }
 
 // ── macOS: per-page WKWebView.createPDF + PDFKit merge (paginates the export) ──
