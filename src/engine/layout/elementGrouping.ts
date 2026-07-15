@@ -28,6 +28,7 @@ export function groupProgressRuns(elements: SlideElement[]): SlideElement[][] {
  * count-based midpoint when weights are empty/equal.
  */
 function balancedSplitIndex<T>(items: T[], weightOf: (item: T) => number): number {
+  if (items.length <= 1) return items.length;
   const totalWeight = items.reduce((n, it) => n + weightOf(it), 0);
   let cumWeight = 0;
   let mid = Math.ceil(items.length / 2); // fallback for empty/equal items
@@ -35,7 +36,10 @@ function balancedSplitIndex<T>(items: T[], weightOf: (item: T) => number): numbe
     cumWeight += weightOf(items[i]);
     if (cumWeight >= totalWeight / 2) { mid = i + 1; break; }
   }
-  return mid;
+  // Guarantee both sides get at least one item — if the single heaviest item
+  // is last, the loop above only crosses 50% at the final index, which would
+  // otherwise put everything in the left column and leave the right empty.
+  return Math.min(mid, items.length - 1);
 }
 
 /**

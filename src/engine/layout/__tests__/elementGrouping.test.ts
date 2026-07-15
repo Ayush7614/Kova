@@ -86,6 +86,22 @@ describe('autoSplitElements — multi-element branch', () => {
     expect(left).toEqual([paragraph('a'), paragraph('b'), image]);
     expect(right).toEqual([paragraph('c')]);
   });
+
+  it('never leaves the right column empty when the heaviest item is last', () => {
+    // Mirror of the heaviest-item-first case above: the cumulative-weight
+    // scan only crosses 50% at the final index, which previously put
+    // everything in the left column and left the right column with zero
+    // elements (a completely empty sibling column/divider).
+    const shorts = [paragraph('a'), paragraph('b'), paragraph('c'), paragraph('d')];
+    const long = paragraph('x '.repeat(200));
+    const els = [...shorts, long];
+
+    const [left, right] = autoSplitElements(els);
+
+    expect(right.length).toBeGreaterThan(0);
+    expect(right).toEqual([long]);
+    expect(left).toEqual(shorts);
+  });
 });
 
 describe('autoSplitElements — single list branch', () => {

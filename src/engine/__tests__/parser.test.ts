@@ -62,6 +62,28 @@ describe('slide splitting', () => {
     // the empty segment between the two --- is filtered
     expect(slides.every((s) => s.title !== '')).toBe(true);
   });
+
+  it('does not split on a --- line inside a fenced code block', () => {
+    const md = doc([
+      '# A',
+      '',
+      '```yaml',
+      'title: Example',
+      '---',
+      'body: text',
+      '```',
+      '',
+      'Some trailing text.',
+      '',
+      '---',
+      '',
+      '## B',
+      '',
+    ].join('\n'));
+    const { slides } = parseDocument(md);
+    expect(slides).toHaveLength(2);
+    expect(slides[1].title).toBe('B');
+  });
 });
 
 // ── Slide titles ──────────────────────────────────────────────────────────────
@@ -640,6 +662,18 @@ describe('column breaks', () => {
   it('two column-breaks trigger three-column layout', () => {
     const { slides } = parseDocument(doc('## Slide\n\nLeft\n\n|||\n\nMiddle\n\n|||\n\nRight\n'));
     expect(slides[0].layout).toBe('three-column');
+  });
+
+  it('does not treat an unpadded all-empty table row (|||) as a column break', () => {
+    const md = doc('## Slide\n\n| A | B |\n|---|---|\n| 1 | 2 |\n|||\n| 3 | 4 |\n');
+    const { slides } = parseDocument(md);
+    const cb = slides[0].elements.find((e) => e.type === 'column-break');
+    expect(cb).toBeUndefined();
+    const table = slides[0].elements.find((e) => e.type === 'table');
+    expect(table).toBeTruthy();
+    if (table && table.type === 'table') {
+      expect(table.rows).toHaveLength(3);
+    }
   });
 });
 

@@ -35,12 +35,34 @@ let prevParsedSlides: Slide[] = [];
 // only safe to reuse while the constants are unchanged too.
 let prevConstKey = '';
 
+// Splits the document body into per-slide raw text on a line that trims to
+// exactly '---', the same way a plain regex split would — except a '---'
+// line inside a fenced code block (e.g. a YAML sample) doesn't count as a
+// boundary, mirroring the inFencedCode tracking preprocess() already does.
+function splitIntoRawSlides(body: string): string[] {
+  const slides: string[] = [];
+  let current: string[] = [];
+  let inFencedCode = false;
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (/^(`{3,}|~{3,})/.test(t)) inFencedCode = !inFencedCode;
+    if (!inFencedCode && t === '---') {
+      slides.push(current.join('\n'));
+      current = [];
+      continue;
+    }
+    current.push(line);
+  }
+  slides.push(current.join('\n'));
+  return slides;
+}
+
 export function parseDocument(rawContent: string): ParsedDocument {
   const normalised = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const { frontmatter, body } = extractFrontmatter(normalised);
-  const constants = collectConstants(body);
+  const rawSlides = splitIntoRawSlides(body).map((s) => s.trim()).filter(Boolean);
+  const constants = collectConstants(rawSlides);
   const constKey = JSON.stringify([...constants]);
-  const rawSlides = body.split(/^---$/m).map((s) => s.trim()).filter(Boolean);
   const slides = rawSlides.map((raw, index) =>
     raw === prevRawSlides[index] && prevParsedSlides[index] && constKey === prevConstKey
       ? prevParsedSlides[index]
@@ -134,6 +156,9 @@ const RESERVED_RE     = /^!(include|fmt|code)\b/;
 // remark-math v6 only recognises block math when $$ appears on its own line.
 // Normalise single-line $$...$$ → multi-line so it is parsed as a math block.
 const DISPLAY_MATH_RE = /^\$\$(.+)\$\$\s*$/;
+// A GFM table row: starts and ends with '|' (also matches the header
+// separator row, e.g. '|---|---|', and an unpadded all-empty '|||' row).
+const TABLE_ROW_RE    = /^\|.*\|$/;
 
 function preprocess(content: string): PreprocessResult {
   const placeholders = new Map<number, SlideElement | CaptionMarker>();
@@ -143,6 +168,7 @@ function preprocess(content: string): PreprocessResult {
   let nextIdx = 0;
   const cleanLines: string[] = [];
   let inFencedCode = false;
+  let inTable = false;
 
   for (const line of content.split('\n')) {
     const t = line.trim();
@@ -157,10 +183,20 @@ function preprocess(content: string): PreprocessResult {
       continue;
     }
 
-    if (t === '|||') {
+    // A GFM table row can legitimately be an unpadded all-empty two-cell row,
+    // i.e. exactly '|||' — don't mistake it for a column-break sentinel while
+    // inside a table. Check against the table state as of the *previous*
+    // line first (a standalone '|||' also matches TABLE_ROW_RE, so updating
+    // inTable before this check would make it swallow itself, breaking the
+    // ordinary/explicit-three-column column-break use of consecutive '|||').
+    if (t === '|||' && !inTable) {
       cleanLines.push('<!-- column-break -->');
       continue;
     }
+    // TABLE_ROW_RE also matches the header separator row (e.g. '|---|---|'),
+    // which is fine: both keep inTable true.
+    if (TABLE_ROW_RE.test(t)) inTable = true;
+    else if (t === '') inTable = false;
 
     const yt = t.match(YOUTUBE_RE);
     if (yt) {
