@@ -126,6 +126,15 @@ inside slide body content.
    significant one, add an editor snippet
    (see [`EditorPanel.tsx`](src/components/layout/EditorPanel.tsx)).
 
+## UI changes and localisation
+
+Kova uses a custom i18n layer (`useT()` hook) rather than an external library.
+`src/i18n/en.ts` is the source of truth for all user-facing strings. If your
+change introduces a new UI element with visible text (a button, menu item,
+dialog, tooltip, etc.), add the corresponding key(s) to `en.ts` and use
+`useT()` to render it rather than hardcoding the string — don't leave it to be
+backfilled later.
+
 ## Reporting issues / proposing features
 
 Open an issue on GitHub describing the use case, not just the syntax you have
