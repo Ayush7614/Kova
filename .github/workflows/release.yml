@@ -33,7 +33,7 @@ jobs:
           - `!caption` now works after tables (including `!sheet` computed tables), not just images/Mermaid/math (reported by @a1880, fixes #154).
 
           ### Bug fixes
-          - **Fixed** pane text in split/two-column/BSP layouts sizing itself against the full slide width instead of its own (narrower) column, leaving text oversized and wrapping more than necessary (reported by @a1880, fixes #159).
+          - **Fixed** pane text in split/two-column/BSP layouts sizing itself against the full slide width instead of its own (narrower) column, leaving text oversized and wrapping more than necessary (reported by @a1880 and @mdopp, fixes #159, #145).
           - **Fixed** flex-sized content (Mermaid diagrams, images, math) inside overflow panes not sizing to the space actually available, showing only a clipped slice of the element.
           - **Fixed** missing space below caption text crowding the next slide element (fixes #154).
           - **Fixed** macOS self-update downloading to 100% and then failing signature verification, caused by a stale cached signature surviving from an earlier build run (by @vadika).
