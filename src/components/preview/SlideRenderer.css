@@ -114,6 +114,21 @@
   overflow-wrap: break-word;
 }
 
+/* OverflowPane's inner wrapper (used by sl-body, sl-two-col__col,
+   sl-bsp__pane/subpane and sl-split__right alike). Must be a flex column so
+   that flex:1-based children — Mermaid diagrams, images, math — are actually
+   height-constrained to the available space and shrink via their own
+   aspect-ratio scaling, instead of sizing to their intrinsic content height
+   and getting vertically centred + clipped by their own overflow:hidden
+   (visually: only a middle slice of an oversized diagram showing through).
+   See issue #159. */
+.sl-pane-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
 /* ── Shared typography ───────────────────────────────────────────────────── */
 
 .sl-heading {
