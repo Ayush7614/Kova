@@ -113,7 +113,7 @@ export function OverflowPane({ className, elements, minScale, onNaturalScale }: 
 
   return (
     <div ref={outerRef} className={className}>
-      <div ref={innerRef} style={{ transformOrigin: 'top left' }}>
+      <div ref={innerRef} className="sl-pane-inner" style={{ transformOrigin: 'top left' }}>
         <Elements elements={elements} />
       </div>
       {appliedScale < 0.99 && !isThumbnail && !hideOverflowBadge && <div className="sl-overflow-badge">{t('preview.rescaledToFit')}</div>}

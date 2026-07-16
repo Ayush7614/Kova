@@ -380,7 +380,14 @@
 .sl-split__left { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .sl-split__img-inner { display: flex; flex-direction: column; align-items: center; height: 100%; max-width: 100%; min-height: 0; }
 .sl-split__img-inner .sl-img-fill { flex: 1; min-height: 0; }
-.sl-split__right { flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start; font-size: clamp(8px, 2.5cqi, 24px); line-height: 1.6; font-family: var(--sl-font-body); padding: 0 2% 0; min-width: 0; position: relative; }
+.sl-split__right { flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start; padding: 0 2% 0; min-width: 0; position: relative; container-type: inline-size; }
+/* The cqi-based font-size lives on the inner pane wrapper, not the container
+   itself — container query units used directly on the query container fall
+   back to the next ancestor container (here .slide-frame, the full slide
+   width) instead of the container's own (much narrower) box, which is what
+   made text in split/two-column/BSP panes size — and wrap — as if it had the
+   whole slide width available. See issue #159 (recurrence of #145). */
+.sl-split__right > .sl-pane-inner { font-size: clamp(8px, 5cqi, 24px); line-height: 1.6; font-family: var(--sl-font-body); }
 
 /* ── Full-bleed image ────────────────────────────────────────────────────── */
 
@@ -445,8 +452,11 @@
 
 .sl-two-col { height: 100%; display: flex; flex-direction: column; }
 .sl-two-col__title { padding-bottom: 2%; }
-.sl-two-col__body { flex: 1; display: flex; padding: 2% 4% 4%; overflow: hidden; font-size: clamp(8px, 2.5cqi, 24px); line-height: 1.65; font-family: var(--sl-font-body); }
-.sl-two-col__col { flex: 1; overflow: hidden; padding: 0 3%; position: relative; }
+.sl-two-col__body { flex: 1; display: flex; padding: 2% 4% 4%; overflow: hidden; }
+.sl-two-col__col { flex: 1; overflow: hidden; padding: 0 3%; position: relative; container-type: inline-size; }
+/* cqi here (not on sl-two-col__body above) so it resolves against this
+   column's own width rather than the full slide — see issue #159. */
+.sl-two-col__col > .sl-pane-inner { font-size: clamp(8px, 5cqi, 24px); line-height: 1.65; font-family: var(--sl-font-body); }
 .sl-two-col__divider { width: 1px; background: color-mix(in srgb, var(--sl-text) 15%, transparent); align-self: stretch; flex-shrink: 0; }
 
 /* ── BSP auto-tiling ─────────────────────────────────────────────────────── */
@@ -459,9 +469,6 @@
   min-height: 0;
   padding: 0 4% 4%;
   overflow: hidden;
-  font-size: clamp(8px, 2.5cqi, 24px);
-  font-family: var(--sl-font-body);
-  line-height: 1.6;
 }
 .sl-bsp__pane {
   flex: 1;
@@ -474,7 +481,12 @@
   padding: 0 3%;
   min-width: 0;
   position: relative;
+  container-type: inline-size;
 }
+/* cqi here (not on sl-bsp__body/sl-bsp__right above) so it resolves against
+   this pane's own width rather than the full slide — see issue #159. */
+.sl-bsp__pane > .sl-pane-inner,
+.sl-bsp__subpane > .sl-pane-inner { font-size: clamp(8px, 5cqi, 24px); font-family: var(--sl-font-body); line-height: 1.6; }
 .sl-bsp__divider {
   width: 1px;
   background: color-mix(in srgb, var(--sl-text) 15%, transparent);
@@ -499,6 +511,7 @@
   padding: 0 3%;
   min-height: 0;
   position: relative;
+  container-type: inline-size;
 }
 /* Text-only panes top-align to match sl-body/sl-split__right/sl-two-col__col. */
 .sl-bsp__pane--text { justify-content: flex-start; }
@@ -699,12 +712,6 @@
 .sl-math-layout .sl-math .katex-display { overflow-x: auto; overflow-y: hidden; }
 
 .sl-blank { height: 100%; }
-
-/* Scale math up in split panes — the formula needs extra boost since cqi is
-   relative to the full slide width but the pane is only ~50% of that. */
-.sl-bsp__pane .sl-math,
-.sl-bsp__subpane .sl-math,
-.sl-two-col__col .sl-math { font-size: clamp(12px, 5cqi, 60px); }
 
 /* ── Academic references ─────────────────────────────────────────────────── */
 
