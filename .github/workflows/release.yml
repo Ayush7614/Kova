@@ -29,21 +29,20 @@ jobs:
           ## What's new
 
           ### New features
-          - **mdSheets: computed tables in Markdown** — annotate a GFM table with `!sheet` and write spreadsheet-style formulas straight in the cells (`=qty * unit`, `=sum(total) * (1 + vat)`); values compute live as you type, per-cell errors never blank the slide, and because only the rendered value ever touches the table, a plain Markdown viewer that's never heard of Kova still shows a sensible table (built by @vadika, #133). See the [mdSheets syntax reference](https://wiki.kova.md/markdown-and-syntax/#computed-tables-sheet) for the full formula language, or `examples/sheet-basics.md` and `examples/sheet-reference.md` in the repo for runnable decks.
-          - **Per-slide text colour, Marp `_color`/`invert` parity** — override text colour on individual background slides with `<!-- color: #fff -->` or `<!-- _class: invert -->`; honoured in the live preview and PowerPoint export across every layout (split, two-column, BSP, grid, media), and Marp decks that already use `_color`/`_class: invert` now keep their per-slide colours on import instead of losing them (built by @Ayush7614, closes #143).
-          - **Per-slide-scoped heading and bold text colour** — set distinct colours for headings and bold text separately from body text via `theme_overrides` in a deck's front matter or a custom `.theme.yaml` (requested by @florian-krieger, #146). Prototype stage: no Inspector control yet, YAML only.
-          - **Figure captions** — `!caption[text]` attaches a caption to the image, Mermaid diagram, or math block directly above it; renders centred beneath the element (or as a bottom overlay on full-bleed images) and carries through to PowerPoint export (#151).
-          - **Content width setting** — new Fixed/Full toggle under Settings → Appearance; Fixed now centres the editor's content column instead of leaving dead whitespace when the panel is wide.
-          - Updated German localization: new strings for TOC labels, slide background actions, the find dialog, and the content-width setting, plus corrections to several existing translations (credit @a1880, #147).
+          - **Explicit three-column layout** — a slide with two `|||` separators now renders as three columns instead of folding the third block into the right-hand column (requested by @jaza089, closes #153).
+          - `!caption` now works after tables (including `!sheet` computed tables), not just images/Mermaid/math (reported by @a1880, fixes #154).
 
           ### Bug fixes
-          - **Fixed** PDF export on macOS rendering H1/title-slide decoration gradients as solid black instead of the theme's colours — WKWebView's PDF snapshot path doesn't alpha-composite transparent gradient stops, so the dots/grid/diagonal/bar-left decorations are now built from opaque colour blends instead (reported by @jaza089, #152).
-          - **Fixed** BSP-layout panes sitting slightly left of the slide heading — padding now matches two-column layout's alignment, found while re-verifying the #140 video-layout fix (originally reported by @a1880).
-          - **Fixed** the update checker hanging indefinitely on "Checking…"/"Downloading…" if the connection stalled instead of dropping, rather than failing into the existing error UI.
-          - Renamed the QR embed's PPTX export fallback label from "Poll" to "QR Code" to match what the feature is actually used for (#134).
-
-          ### Packaging
-          - `kova-bin` is now published on the AUR, with the release `.tar.gz` PGP-signed using the same key that signs the deb/rpm repos so `makepkg` can verify it.
+          - **Fixed** pane text in split/two-column/BSP layouts sizing itself against the full slide width instead of its own (narrower) column, leaving text oversized and wrapping more than necessary (reported by @a1880, fixes #159).
+          - **Fixed** flex-sized content (Mermaid diagrams, images, math) inside overflow panes not sizing to the space actually available, showing only a clipped slice of the element.
+          - **Fixed** missing space below caption text crowding the next slide element (fixes #154).
+          - **Fixed** macOS self-update downloading to 100% and then failing signature verification, caused by a stale cached signature surviving from an earlier build run (by @vadika).
+          - **Fixed** a SSRF gap in URL fetch (export could reach internal-only addresses like cloud metadata or localhost) and a path-traversal gap in asset copying.
+          - **Fixed** a temp-file leak and a write-collision race in the Rust export/asset commands, and capped the previously-unbounded spellcheck dictionary cache.
+          - **Fixed** several stale-closure and race-condition bugs in export/print handling, a cache-invalidation bug that discarded resolved media on every keystroke, and an i18n pluralisation bug in the word-count display.
+          - **Fixed** PPTX import corrupting slide content when text boxes contained `---`, `???`, or unescaped HTML entities, and imported tables landing at position (0,0) instead of their real position.
+          - **Fixed** a `---` inside a fenced code block splitting a slide mid-block, `!let` silently breaking on later slides after an unbalanced fence, an edge case where column balancing could leave a column empty, and a literal `|||` inside a table truncating it early.
+          - Nudged the macOS traffic-light buttons down for better vertical balance in the toolbar.
 
           ---
 
