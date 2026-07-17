@@ -1153,6 +1153,7 @@ export default function App() {
             await invoke('write_file_bytes', { path: savePath, data: base64 });
             window.alert(
               t('app.pdfExportFallback') +
+              `\n\n${t('app.pdfExportFallbackReason', { error: String(nativeErr) })}` +
               (warnings.length ? `\n\n${warnings.join('\n')}` : ''),
             );
           }

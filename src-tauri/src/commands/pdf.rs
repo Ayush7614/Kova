@@ -371,7 +371,58 @@ mod platform_windows {
 
 #[cfg(target_os = "linux")]
 mod platform_linux {
+    use std::ffi::{CStr, CString};
     use tauri::WebviewWindow;
+
+    /// Serializes the LC_MESSAGES-forcing window below across concurrent
+    /// `generate_pdf` calls. `setlocale()` is process-global: without this,
+    /// one export's restore could race another's still-pending printer lookup.
+    static LOCALE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// RAII guard: forces LC_MESSAGES to "C" on construction and restores
+    /// whatever it was before, on drop.
+    ///
+    /// GTK's file print backend registers its virtual "Print to File" printer
+    /// under a gettext-translated display name (e.g. German "In Datei
+    /// drucken"), so the hard-coded English `settings.set("printer", ...)`
+    /// below only resolves when LC_MESSAGES selects the untranslated/C
+    /// catalog (see #161). Kova has its own i18n layer for all of its own UI
+    /// text, so this never affects anything user-facing in Kova itself —
+    /// only GTK/GLib-internal translated strings for the scope it's held.
+    struct ForcedCMessages {
+        previous: Option<CString>,
+    }
+
+    impl ForcedCMessages {
+        /// `setlocale()` is process-global, not GTK-thread-specific, so this
+        /// can be called from any thread — only the GTK-side printer lookup
+        /// that observes it (inside the print operation below) needs to run
+        /// while it's engaged.
+        fn engage() -> Self {
+            let previous = unsafe {
+                let ptr = libc::setlocale(libc::LC_MESSAGES, std::ptr::null());
+                (!ptr.is_null()).then(|| CStr::from_ptr(ptr.cast_const()).to_owned())
+            };
+            unsafe {
+                libc::setlocale(libc::LC_MESSAGES, c"C".as_ptr());
+            }
+            ForcedCMessages { previous }
+        }
+    }
+
+    impl Drop for ForcedCMessages {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.previous {
+                    Some(prev) => libc::setlocale(libc::LC_MESSAGES, prev.as_ptr()),
+                    // Query returned NULL (shouldn't happen — gtk_init already
+                    // establishes a locale) — re-derive from the environment
+                    // rather than leaving LC_MESSAGES stuck on "C".
+                    None => libc::setlocale(libc::LC_MESSAGES, c"".as_ptr()),
+                };
+            }
+        }
+    }
 
     pub async fn generate_pdf(
         window: &WebviewWindow,
@@ -381,6 +432,14 @@ mod platform_linux {
     ) -> Result<(), String> {
         let (tx, rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
         let output = output_path.to_string();
+
+        // Held for the whole call (through the recv below, not just around
+        // `op.print()`) since that call only starts an async WebKit print
+        // job — the printer-name lookup against `settings` isn't guaranteed
+        // to happen before it returns, only by the time the job's
+        // finished/failed signal fires.
+        let _locale_slot = LOCALE_LOCK.lock().await;
+        let _locale_guard = ForcedCMessages::engage();
 
         window
             .with_webview(move |wv| {

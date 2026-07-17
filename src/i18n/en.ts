@@ -302,6 +302,7 @@ const en = {
     },
     pptxExportFailed: 'PPTX export failed: {{error}}',
     pdfExportFallback: 'Used the basic PDF renderer (native export unavailable); handout/N-up/paper options were not applied.',
+    pdfExportFallbackReason: 'Reason: {{error}}',
     pdfExportFailed: 'PDF export failed:\n{{error}}',
     htmlExportFailed: 'HTML export failed:\n{{error}}',
     printCompleteWithWarnings: {
