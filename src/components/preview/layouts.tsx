@@ -6,9 +6,22 @@ import { SlideCtx } from './slideContext';
 import { Elements, CodeBlock, MermaidDiagram, YoutubeEmbed, VideoEmbed, PollEmbed, MathBlock } from './elements';
 
 // Scales content down to fit its container when it overflows.
-// Measures scrollHeight vs clientHeight after every render and on resize,
-// then applies a CSS transform to the inner wrapper — no visual flash because
-// the measurement and style update both happen inside useLayoutEffect (before paint).
+// Measures content extent vs available height after every render and on
+// resize, then applies CSS zoom to the inner wrapper — no visual flash
+// because the measurement and style update both happen inside
+// useLayoutEffect (before paint).
+//
+// zoom (not transform: scale()) deliberately, because it reflows: shrinking
+// a transform:scale()'d block leaves its *wrap points* computed at the
+// original, larger size, so the now-smaller text sits inset from the pane's
+// actual width with visible dead space beside it — exactly the "wrapping has
+// a margin" symptom once a pane holds enough text to overflow (issue #159).
+// zoom rewraps at the new effective size using the full available width. But
+// because it reflows, height isn't a linear function of it — a single guess
+// (availH / contentH) systematically under-shrinks, since text reflowed
+// smaller packs tighter than a pure geometric scale predicts, which leaves
+// its own unused space once a pane holds enough text. remeasure() binary
+// searches for the largest zoom that actually fits instead of guessing once.
 //
 // `minScale`/`onNaturalScale` are an opt-in pair that let a parent (e.g.
 // MultiColumnLayout) synchronise the shrink across sibling panes: each pane
@@ -21,6 +34,14 @@ export function OverflowPane({ className, elements, minScale, onNaturalScale }: 
   const t = useT();
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  // zoom is applied to zoomRef, a child of innerRef, rather than to innerRef
+  // itself — reading scrollHeight back on the same element zoom is applied to
+  // is unreliable on WebKitGTK (it comes back as roughly availH / zoom at
+  // every level tried, as if scrollHeight were reporting the element's own
+  // flex-allocated box divided back out by the zoom factor, rather than the
+  // true — possibly overflowing — content height). Keeping innerRef unzoomed
+  // and measuring *it* while zoom lives one level down avoids that entirely.
+  const zoomRef = useRef<HTMLDivElement>(null);
   const { isThumbnail, hideOverflowBadge } = useContext(SlideCtx);
   const fitScaleRef = useRef(1); // this pane's own natural (unclamped) fit scale
   const [fitScale, setFitScale] = useState(1);
@@ -29,45 +50,70 @@ export function OverflowPane({ className, elements, minScale, onNaturalScale }: 
 
   const lastRef = useRef({ c: -1, a: -1 });
 
-  // `transform` is paint-only — it never changes the element's content-box
-  // size, so writing it here can't re-trigger the ResizeObserver below and
-  // can't reopen the loop the bail-out in remeasure() guards against.
-  const applyTransform = useCallback((natural: number) => {
-    const inner = innerRef.current;
-    if (!inner) return;
+  const applyZoom = useCallback((natural: number) => {
+    const zoomEl = zoomRef.current;
+    if (!zoomEl) return;
     const applied = Math.min(natural, minScaleRef.current ?? 1);
-    inner.style.transform = applied < 1 ? `scale(${applied})` : '';
+    zoomEl.style.zoom = applied < 1 ? String(applied) : '';
   }, []);
 
   const remeasure = useCallback(() => {
     const outer = outerRef.current;
     const inner = innerRef.current;
-    if (!outer || !inner) return;
-    // Measure unscaled, then bail if nothing changed since last time. The bail is
-    // what makes this loop-proof: once dimensions settle, no setState fires, so the
-    // ResizeObserver → setState → re-render cycle terminates.
-    inner.style.transform = '';
-    const contentH = inner.scrollHeight;
-    // clientHeight includes padding, and .sl-body's is a percentage — which
-    // resolves against the *width*, so it is ~90px on a 16:9 slide. Measuring
-    // against it made content up to two table rows too tall read as "fits",
-    // and the frame's overflow:hidden then clipped it instead of scaling.
-    const pad = getComputedStyle(outer);
-    const availH = outer.clientHeight - parseFloat(pad.paddingTop) - parseFloat(pad.paddingBottom);
+    const zoomEl = zoomRef.current;
+    if (!outer || !inner || !zoomEl) return;
+    // scrollHeight turns out to be unusable here: on WebKitGTK, reading it on
+    // (or across) an element that has zoom applied comes back tangled up
+    // with the zoom factor and/or an ancestor's overflow:hidden, rather than
+    // the true content extent scrollHeight is specced to report regardless
+    // of clipping. A Range spanning the zoomed element's contents doesn't
+    // have that problem — getBoundingClientRect() on it is pure paint
+    // geometry, unaffected by zoom or by overflow:hidden anywhere above it.
+    const range = document.createRange();
+    const measureContentH = () => {
+      range.selectNodeContents(zoomEl);
+      return range.getBoundingClientRect().height;
+    };
+    // Measure unzoomed, then bail if nothing changed since last time (rounded,
+    // since Range geometry is sub-pixel and would otherwise almost never
+    // exactly repeat). The bail is what makes this loop-proof: once
+    // dimensions settle, no setState fires, so the ResizeObserver → setState
+    // → re-render cycle terminates.
+    zoomEl.style.zoom = '';
+    const contentH = Math.round(measureContentH());
+    // inner (unzoomed, sized by flex:1 off outer) already excludes outer's
+    // own padding, so its own rendered box directly is the available height.
+    const availH = Math.round(inner.getBoundingClientRect().height);
     if (contentH === lastRef.current.c && availH === lastRef.current.a) {
-      applyTransform(fitScaleRef.current);
+      applyZoom(fitScaleRef.current);
       return;
     }
     lastRef.current = { c: contentH, a: availH };
-    const s = contentH > availH + 2 && availH > 0
-      ? Math.max(0.4, availH / contentH)
-      : 1;
-    applyTransform(s);
+    let s = 1;
+    if (contentH > availH + 2 && availH > 0) {
+      // Binary search for the largest zoom that fits, instead of one linear
+      // guess (availH / contentH): because zoom reflows, height isn't a
+      // linear function of it — text reflowed smaller packs tighter than a
+      // pure geometric scale predicts, so a single linear guess systematically
+      // under-shrinks and leaves unused space that reads as a margin/gap once
+      // a pane holds enough text to need real shrinking. The floor of 0.15
+      // (vs the old 0.4, back when this scaled via transform) is safe because
+      // zoom reflows properly at any size — small-but-complete text beats
+      // clipping the bottom of genuinely excessive content off entirely.
+      let lo = 0.15, hi = 1;
+      for (let i = 0; i < 8; i++) {
+        const mid = (lo + hi) / 2;
+        zoomEl.style.zoom = String(mid);
+        if (measureContentH() > availH) hi = mid; else lo = mid;
+      }
+      s = lo;
+    }
+    applyZoom(s);
     if (Math.abs(s - fitScaleRef.current) > 0.005) {
       fitScaleRef.current = s;
       setFitScale(s);
     }
-  }, [applyTransform]);
+  }, [applyZoom]);
 
   // ResizeObserver fires once on observe() (covers mount), then on real box-size
   // changes: `outer` for available height, `inner` for content growth. The callback
@@ -106,15 +152,17 @@ export function OverflowPane({ className, elements, minScale, onNaturalScale }: 
   // this pane's own dimensions haven't — that's exactly the case where a
   // sibling column grew fuller and forced a deeper shared shrink.
   useLayoutEffect(() => {
-    applyTransform(fitScaleRef.current);
-  }, [minScale, applyTransform]);
+    applyZoom(fitScaleRef.current);
+  }, [minScale, applyZoom]);
 
   const appliedScale = minScale !== undefined ? Math.min(fitScale, minScale) : fitScale;
 
   return (
     <div ref={outerRef} className={className}>
-      <div ref={innerRef} className="sl-pane-inner" style={{ transformOrigin: 'top left' }}>
-        <Elements elements={elements} />
+      <div ref={innerRef} className="sl-pane-inner">
+        <div ref={zoomRef} className="sl-pane-zoom">
+          <Elements elements={elements} />
+        </div>
       </div>
       {appliedScale < 0.99 && !isThumbnail && !hideOverflowBadge && <div className="sl-overflow-badge">{t('preview.rescaledToFit')}</div>}
     </div>

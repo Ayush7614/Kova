@@ -114,19 +114,24 @@
   overflow-wrap: break-word;
 }
 
-/* OverflowPane's inner wrapper (used by sl-body, sl-two-col__col,
-   sl-bsp__pane/subpane and sl-split__right alike). Must be a flex column so
-   that flex:1-based children — Mermaid diagrams, images, math — are actually
-   height-constrained to the available space and shrink via their own
-   aspect-ratio scaling, instead of sizing to their intrinsic content height
-   and getting vertically centred + clipped by their own overflow:hidden
-   (visually: only a middle slice of an oversized diagram showing through).
-   See issue #159. */
-.sl-pane-inner {
+/* OverflowPane's wrapper pair (used by sl-body, sl-two-col__col,
+   sl-bsp__pane/subpane and sl-split__right alike): sl-pane-inner stays
+   unzoomed and is what gets measured (scrollHeight); sl-pane-zoom, one level
+   further in, is what OverflowPane actually applies CSS zoom to when
+   shrinking to fit. They're kept separate because reading scrollHeight back
+   on the very element zoom is applied to is unreliable on WebKitGTK — see
+   the comment on OverflowPane in layouts.tsx. Both need to be a flex column
+   so that flex:1-based children — Mermaid diagrams, images, math — are
+   actually height-constrained to the available space and shrink via their
+   own aspect-ratio scaling, instead of sizing to their intrinsic content
+   height and getting vertically centred + clipped by their own
+   overflow:hidden (visually: only a middle slice of an oversized diagram
+   showing through). See issue #159. */
+.sl-pane-inner, .sl-pane-zoom {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  height: 100%;
+  flex: 1;
 }
 
 /* ── Shared typography ───────────────────────────────────────────────────── */
@@ -468,7 +473,7 @@
 .sl-two-col { height: 100%; display: flex; flex-direction: column; }
 .sl-two-col__title { padding-bottom: 2%; }
 .sl-two-col__body { flex: 1; display: flex; padding: 2% 4% 4%; overflow: hidden; }
-.sl-two-col__col { flex: 1; overflow: hidden; padding: 0 3%; position: relative; container-type: inline-size; }
+.sl-two-col__col { flex: 1; overflow: hidden; padding: 0 3%; position: relative; container-type: inline-size; display: flex; flex-direction: column; }
 /* cqi here (not on sl-two-col__body above) so it resolves against this
    column's own width rather than the full slide — see issue #159. */
 .sl-two-col__col > .sl-pane-inner { font-size: clamp(8px, 5cqi, 24px); line-height: 1.65; font-family: var(--sl-font-body); }
