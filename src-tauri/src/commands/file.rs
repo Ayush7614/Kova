@@ -11,6 +11,12 @@ pub fn take_pending_open(state: State<'_, AppState>) -> Vec<String> {
     std::mem::take(&mut *state.pending_open.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
+/// Drain the CLI action (`--present` / `--check` / `--theme`) parsed at startup.
+#[tauri::command]
+pub fn take_pending_cli(state: State<'_, AppState>) -> Option<crate::cli::PendingCli> {
+    state.pending_cli.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
+
 #[tauri::command]
 pub fn read_file(path: String) -> Result<String, String> {
     file_io::read(&path)

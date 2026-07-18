@@ -1,3 +1,4 @@
+mod cli;
 mod commands;
 mod file_io;
 mod net_guard;
@@ -10,6 +11,12 @@ use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // CLI handling must resolve before the Tauri builder runs: --help,
+    // --version, usage errors, and nonexistent action paths all print to the
+    // terminal and exit without ever creating a window.
+    let startup = cli::startup();
+    let cli_action_active = startup.pending.is_some();
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -36,10 +43,16 @@ pub fn run() {
         .manage(AppState {
             watch: Mutex::new(WatchState { current_file: None, watcher: None }),
             exit_confirmed: AtomicBool::new(false),
-            pending_open: Mutex::new(Vec::new()),
+            // "Open With" on Linux/Windows (and now terminal launches on all
+            // three platforms) passes file paths as CLI arguments; cli::startup
+            // has already collected the ones that exist. The frontend drains
+            // them via take_pending_open after mount. macOS Finder opens arrive
+            // later via RunEvent::Opened below.
+            pending_open: Mutex::new(startup.open),
+            pending_cli: Mutex::new(startup.pending),
             own_write_suppress_until: Arc::new(AtomicU64::new(0)),
         })
-        .setup(|app| {
+        .setup(move |app| {
             // macOS: titleBarStyle Overlay still draws the window title text next
             // to the traffic lights, and setTitle("") doesn't clear it. Hide it at
             // the NSWindow level so only the in-app centered doctitle shows.
@@ -56,19 +69,17 @@ pub fn run() {
                     }
                 }
             }
-            // Linux/Windows: "Open With" passes the file path as a CLI argument.
-        // Buffer it so the frontend can drain via take_pending_open after mount.
-        #[cfg(not(target_os = "macos"))]
-        {
-            let paths: Vec<String> = std::env::args()
-                .skip(1)
-                .filter(|a| !a.starts_with('-') && std::path::Path::new(a).exists())
-                .collect();
-            if !paths.is_empty() {
-                let state = app.state::<AppState>();
-                state.pending_open.lock().unwrap_or_else(|e| e.into_inner()).extend(paths);
+            // The main window is declared visible: false in tauri.conf.json so
+            // CLI actions can run without flashing the editor. Showing it here
+            // (after creation, before the event loop pumps) is flash-free and
+            // identical UX to a config-visible window. Phase B of the CLI work
+            // moves the cli_action_active case's show() into the frontend's
+            // present-entry / check paths; until then show unconditionally so
+            // behaviour is unchanged.
+            let _ = cli_action_active; // Phase B branches on this
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
             }
-        }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -101,6 +112,7 @@ pub fn run() {
             commands::fetch_url_text,
             commands::confirm_exit,
             commands::take_pending_open,
+            commands::take_pending_cli,
             commands::export_pdf_native,
         ])
         .build(tauri::generate_context!())
@@ -125,7 +137,16 @@ pub fn run() {
                 .collect();
             if !paths.is_empty() {
                 let state = app_handle.state::<AppState>();
-                state.pending_open.lock().unwrap_or_else(|e| e.into_inner()).extend(paths.iter().cloned());
+                // Dedupe against paths already buffered from argv — a terminal
+                // launch now populates pending_open on macOS too, and the same
+                // file must not open twice if Opened also delivers it.
+                let mut pending = state.pending_open.lock().unwrap_or_else(|e| e.into_inner());
+                for p in &paths {
+                    if !pending.contains(p) {
+                        pending.push(p.clone());
+                    }
+                }
+                drop(pending);
                 let _ = app_handle.emit("open-file", paths);
             }
             return;
