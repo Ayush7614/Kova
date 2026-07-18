@@ -17,6 +17,22 @@ pub fn restart_app(app: tauri::AppHandle) {
     app.restart();
 }
 
+/// Terminal-facing error exit for CLI-initiated flows (`--present` / `--check`).
+/// The launching terminal is the CLI user's surface — and the main window may
+/// still be hidden at this point, which makes a GUI dialog unreliable — so the
+/// report goes to stderr (attaching the parent console on Windows, where the
+/// GUI subsystem otherwise swallows it). Exits the process directly rather
+/// than via `app.exit(code)`: the code passed to `app.exit` does not survive
+/// the run loop's return path (the process ends 0), and this error path has
+/// nothing to clean up — no unsaved edits, no presentation session, and the
+/// wake lock is only ever taken after presenting starts.
+#[tauri::command]
+pub fn cli_error_exit(message: String, code: i32) {
+    crate::cli::attach_parent_console();
+    eprintln!("kova: {message}");
+    std::process::exit(code);
+}
+
 /// Called by the frontend once the unsaved-changes prompt for an app-level
 /// quit (Cmd+Q, Dock Quit, etc.) has been resolved — either the user chose to
 /// discard/save, or there was nothing to confirm. Marks the exit confirmed so

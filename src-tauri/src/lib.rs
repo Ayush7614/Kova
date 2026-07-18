@@ -70,15 +70,15 @@ pub fn run() {
                 }
             }
             // The main window is declared visible: false in tauri.conf.json so
-            // CLI actions can run without flashing the editor. Showing it here
-            // (after creation, before the event loop pumps) is flash-free and
-            // identical UX to a config-visible window. Phase B of the CLI work
-            // moves the cli_action_active case's show() into the frontend's
-            // present-entry / check paths; until then show unconditionally so
-            // behaviour is unchanged.
-            let _ = cli_action_active; // Phase B branches on this
-            if let Some(win) = app.get_webview_window("main") {
-                let _ = win.show();
+            // CLI actions can run without flashing the editor. Normal launches
+            // show it here (after creation, before the event loop pumps —
+            // flash-free, identical UX to a config-visible window). CLI actions
+            // leave it hidden: the frontend shows it when entering presentation,
+            // and a standalone --check never shows it at all.
+            if !cli_action_active {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.show();
+                }
             }
             Ok(())
         })
@@ -111,6 +111,7 @@ pub fn run() {
             commands::fetch_url_b64,
             commands::fetch_url_text,
             commands::confirm_exit,
+            commands::cli_error_exit,
             commands::take_pending_open,
             commands::take_pending_cli,
             commands::export_pdf_native,

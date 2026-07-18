@@ -258,6 +258,7 @@ const en = {
   app: {
     connecting: 'Connecting…',
     dropToOpen: 'Drop to open',
+    presentLoading: 'Preparing presentation…',
     menuFile: 'File',
     menuEdit: 'Edit',
     menuNew: 'New',

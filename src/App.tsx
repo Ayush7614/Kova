@@ -48,6 +48,7 @@ import { parseAspectRatio } from './engine/types';
 import { imageMime } from './engine/export/imageMime';
 import type { Theme } from './engine/theme';
 import { useResolvedSlides } from './hooks/useResolvedSlides';
+import type { PendingCli } from './types/cli';
 
 import './styles/global.css';
 
@@ -82,6 +83,15 @@ function countWords(text: string): number {
 const EMPTY_SLIDES: Slide[] = [];
 const EMPTY_FM: Frontmatter = {};
 
+// take_pending_cli drains once on the Rust side (Option::take), so cache the
+// promise at module level: StrictMode's double-mount and dep-driven effect
+// re-runs all observe the same value instead of the second call's null.
+let pendingCliPromise: Promise<PendingCli | null> | null = null;
+function getPendingCli(): Promise<PendingCli | null> {
+  pendingCliPromise ??= invoke<PendingCli | null>('take_pending_cli').catch(() => null);
+  return pendingCliPromise;
+}
+
 export default function App() {
   const [filePath, setFilePath]           = useState<string | null>(null);
   const [content, setContent]             = useState('');
@@ -92,6 +102,11 @@ export default function App() {
   // Index into visibleSlides (hidden slides skipped) while presenting — kept
   // separate from currentSlideIndex (which indexes the full editor deck).
   const [presentIndex, setPresentIndex]   = useState(0);
+  // Session was started via `kova --present FILE` (docs/plans/kova-cli.md,
+  // Phase B): the editor chrome is never shown, presentation starts as soon as
+  // the deck resolves, and exiting quits the process instead of revealing the
+  // editor. Stays true for the whole session once set.
+  const [coldPresent, setColdPresent]     = useState(false);
   const [settings, setSettings]           = useState<AppSettings>(loadSettings);
   const t = useLocaleTranslator(settings.locale);
   const [showSettings, setShowSettings]   = useState(false);
@@ -507,6 +522,12 @@ export default function App() {
     });
   }, [guardDirty, settings.defaultThemeId]);
 
+  // Cold-start present guards: the load must run once (applyFileContent's
+  // identity changes re-run the drain effect) and presentation must be
+  // entered exactly once (visibleSlides/handlePresentEnter identity changes
+  // re-run the auto-enter effect).
+  const coldLoadStartedRef = useRef(false);
+  const coldEnterFiredRef = useRef(false);
   // Prevents double-exit when the audience window is closed externally while
   // handlePresentExit is already in flight.
   const isExitingRef = useRef(false);
@@ -668,6 +689,29 @@ export default function App() {
     setPresentMode(true);
     await getCurrentWindow().setFullscreen(true).catch(() => {});
   }, [slides, visibleSlides, safeSlideIndex, activeTheme, aspectRatio, docTitle, docDate, settings.presentationMode]);
+
+  // Cold-start present: enter presentation exactly once, as soon as the file
+  // content has been applied (filePath set in the same batch as content).
+  // Slide count is synchronous with content — useResolvedSlides only swaps
+  // media srcs asynchronously — so an empty visibleSlides here is a genuinely
+  // empty deck, not a deck that hasn't resolved yet. The window is hidden
+  // until this point (lib.rs setup skips show() for CLI actions); show it
+  // before entering so monitor detection and fullscreen behave normally.
+  useEffect(() => {
+    if (!coldPresent || coldEnterFiredRef.current || !filePath) return;
+    coldEnterFiredRef.current = true;
+    if (visibleSlides.length === 0) {
+      invoke('cli_error_exit', {
+        message: `'${filePath}' contains no visible slides`,
+        code: 1,
+      }).catch(() => {});
+      return;
+    }
+    (async () => {
+      await getCurrentWindow().show().catch(() => {});
+      await handlePresentEnter(false);
+    })();
+  }, [coldPresent, filePath, visibleSlides, handlePresentEnter]);
 
   // Prevent display sleep while presenting; release on exit.
   // Covers all exit paths (normal, error, external window close).
@@ -834,6 +878,32 @@ export default function App() {
     setMarpLoss(null);
   }, [syncThemeFromContent]);
 
+  // Cold-start present (kova --present FILE): load the file through the same
+  // post-read sequence as a normal open so docDir, theme sync, and the watcher
+  // all populate identically; the auto-enter effect below the present handlers
+  // starts the presentation once the deck is derived. Errors report to the
+  // launching terminal — the window is still hidden here, so a GUI dialog
+  // could be invisible; stderr is the CLI user's surface anyway.
+  useEffect(() => {
+    if (coldLoadStartedRef.current) return;
+    (async () => {
+      const cli = await getPendingCli();
+      if (!cli?.present || coldLoadStartedRef.current) return;
+      coldLoadStartedRef.current = true;
+      setColdPresent(true);
+      try {
+        await invoke('stop_watching').catch(() => {});
+        const text: string = await invoke('read_file', { path: cli.present });
+        await applyFileContent(text, cli.present);
+      } catch {
+        await invoke('cli_error_exit', {
+          message: `cannot read '${cli.present}'`,
+          code: 1,
+        }).catch(() => {});
+      }
+    })();
+  }, [applyFileContent]);
+
   // Startup restore — only when the user has opted in via Settings. Best-effort:
   // a deleted/moved/unreadable file just leaves the app at its normal blank
   // startup state rather than surfacing an error for what is, after all, a
@@ -845,6 +915,12 @@ export default function App() {
     const session = loadLastSession();
     if (!session) return;
     (async () => {
+      // A cold-start present (kova --present) owns this session — restoring
+      // the last file would race the CLI file's load through applyFileContent
+      // and whichever resolves last would win, possibly presenting the wrong
+      // deck. The CLI drain is cached, so this await costs one IPC roundtrip.
+      const cli = await getPendingCli();
+      if (cli?.present) return;
       try {
         const text: string = await invoke('read_file', { path: session.path });
         await applyFileContent(text, session.path);
@@ -865,8 +941,11 @@ export default function App() {
   // when there's no open file (e.g. after File > New) rather than leaving a
   // stale pointer to whatever was open before.
   useEffect(() => {
+    // A presentation-only run (kova --present) must not clobber the editor's
+    // last-session record — the user never opened this file for editing.
+    if (coldPresent) return;
     saveLastSession(filePath ? { path: filePath, slideIndex: safeSlideIndex } : null);
-  }, [filePath, safeSlideIndex]);
+  }, [filePath, safeSlideIndex, coldPresent]);
 
   // Maintain the "Open Recent" list whenever a file becomes the open document.
   useEffect(() => {
@@ -1680,19 +1759,8 @@ export default function App() {
   }, [editMenuOpen]);
 
 
-  return (
-    <I18nProvider locale={settings.locale}>
-    <div className="app">
-      {fileDragOver && !presentMode && !presenterMode && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 5000, pointerEvents: 'none',
-          border: '2px dashed #D94F00', borderRadius: 4,
-          background: 'rgba(217,79,0,0.06)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <span style={{ color: '#D94F00', fontSize: 14, fontWeight: 500 }}>{t('app.dropToOpen')}</span>
-        </div>
-      )}
+  const presentationOverlays = (
+    <>
       {presentMode && (
         <PresentationOverlay
           slides={visibleSlides}
@@ -1723,6 +1791,46 @@ export default function App() {
           onExit={handlePresentExit}
         />
       )}
+    </>
+  );
+
+  // Cold-start present (kova --present FILE): the editor chrome never mounts.
+  // Before presentation starts this renders a minimal loading surface (only
+  // visible for the instant between the window being shown and the overlay
+  // mounting); during presentation it renders just the overlays, so nothing
+  // editor-shaped can flash behind them or during exit.
+  if (coldPresent) {
+    return (
+      <I18nProvider locale={settings.locale}>
+        <div className="app">
+          {presentationOverlays}
+          {!presentMode && !presenterMode && (
+            <div style={{
+              height: '100vh',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span style={{ opacity: 0.6, fontSize: 14 }}>{t('app.presentLoading')}</span>
+            </div>
+          )}
+        </div>
+      </I18nProvider>
+    );
+  }
+
+  return (
+    <I18nProvider locale={settings.locale}>
+    <div className="app">
+      {fileDragOver && !presentMode && !presenterMode && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 5000, pointerEvents: 'none',
+          border: '2px dashed #D94F00', borderRadius: 4,
+          background: 'rgba(217,79,0,0.06)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <span style={{ color: '#D94F00', fontSize: 14, fontWeight: 500 }}>{t('app.dropToOpen')}</span>
+        </div>
+      )}
+      {presentationOverlays}
       <div className="app-toolbar">
         {/* macOS uses native traffic lights (titleBarStyle: Overlay) + the native
             menu bar, so reserve a draggable strip for the lights and drop the
