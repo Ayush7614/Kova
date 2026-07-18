@@ -48,7 +48,7 @@ import { parseAspectRatio } from './engine/types';
 import { imageMime } from './engine/export/imageMime';
 import type { Theme } from './engine/theme';
 import { useResolvedSlides } from './hooks/useResolvedSlides';
-import type { PendingCli } from './types/cli';
+import type { PendingCli, CliThemeArg } from './types/cli';
 
 import './styles/global.css';
 
@@ -90,6 +90,43 @@ let pendingCliPromise: Promise<PendingCli | null> | null = null;
 function getPendingCli(): Promise<PendingCli | null> {
   pendingCliPromise ??= invoke<PendingCli | null>('take_pending_cli').catch(() => null);
   return pendingCliPromise;
+}
+
+// Resolve a --theme argument to a Theme, or report to the terminal and exit 1
+// (returning null while the process shuts down). Named themes check built-ins
+// first, then the installed community themes — loaded directly here rather
+// than through the allThemes state, which may not have populated yet when the
+// cold-start path runs. Path themes get a `cli:`-prefixed id so a file named
+// light.yaml can never collide with (and silently lose to) a built-in id.
+async function resolveCliTheme(arg: CliThemeArg): Promise<Theme | null> {
+  const fail = async (message: string) => {
+    await invoke('cli_exit', { message, code: 1 }).catch(() => {});
+    return null;
+  };
+  if (arg.type === 'path') {
+    let text: string;
+    try {
+      text = await invoke<string>('read_file', { path: arg.path });
+    } catch {
+      return fail(`cannot read theme '${arg.path}'`);
+    }
+    const base = arg.path.replace(/\\/g, '/').split('/').pop() ?? arg.path;
+    const parsed = parseThemeYaml(`cli:${base.replace(/\.ya?ml$/i, '')}`, text);
+    if (!parsed.ok) return fail(`invalid theme '${arg.path}': ${parsed.error}`);
+    return parsed.theme;
+  }
+  const builtIn = BUILT_IN_THEMES.find((t) => t.id === arg.name);
+  if (builtIn) return builtIn;
+  try {
+    const [, entries] = await invoke<[string, Array<[string, string]>]>('load_custom_themes');
+    for (const [id, yaml] of entries) {
+      if (id !== arg.name) continue;
+      const parsed = parseThemeYaml(id, yaml);
+      if (parsed.ok) return parsed.theme;
+      return fail(`invalid theme '${arg.name}': ${parsed.error}`);
+    }
+  } catch { /* fall through to unknown */ }
+  return fail(`unknown theme '${arg.name}'`);
 }
 
 export default function App() {
@@ -386,7 +423,13 @@ export default function App() {
         const results: ThemeParseResult[] = entries.map(([id, yaml]) => parseThemeYaml(id, yaml));
         const custom = results.filter((r): r is Extract<ThemeParseResult, { ok: true }> => r.ok).map((r) => r.theme);
         const errors = results.filter((r): r is Extract<ThemeParseResult, { ok: false }> => !r.ok).map((r) => r.error);
-        setAllThemes(custom.length > 0 ? [...BUILT_IN_THEMES, ...custom] : BUILT_IN_THEMES);
+        setAllThemes(() => {
+          const base = custom.length > 0 ? [...BUILT_IN_THEMES, ...custom] : BUILT_IN_THEMES;
+          // Keep a --theme=path/to.yaml theme alive: it lives outside the
+          // config dir, so rebuilding the list from disk would drop it.
+          const cliTheme = cliThemeRef.current;
+          return cliTheme && !base.some((t) => t.id === cliTheme.id) ? [...base, cliTheme] : base;
+        });
         if (errors.length > 0) setWarnMessage(`Theme parse error:\n${errors.join('\n')}`);
       })
       .catch(() => {});
@@ -468,7 +511,9 @@ export default function App() {
         setShowExternalChangeDialog(true);
       } else {
         // No unsaved edits — reload silently then surface a dismissable banner.
-        syncThemeFromContent(newContent);
+        // Skip the frontmatter theme re-sync when a CLI --theme override is
+        // active: it supersedes the deck's theme for the whole session.
+        if (!cliThemeRef.current) syncThemeFromContent(newContent);
         setContent(newContent);
         setIsDirty(false);
         diskContentRef.current = newContent;
@@ -528,6 +573,11 @@ export default function App() {
   // re-run the auto-enter effect).
   const coldLoadStartedRef = useRef(false);
   const coldEnterFiredRef = useRef(false);
+  // Theme resolved from --theme, if any. Consulted by reloadCustomThemes (so
+  // a later community-theme reload doesn't drop it from allThemes) and by the
+  // watcher's silent-reload path (an external file edit re-syncing the theme
+  // from frontmatter must not clobber the CLI override mid-presentation).
+  const cliThemeRef = useRef<Theme | null>(null);
   // Render-updated mirror of coldPresent for the audience window's
   // tauri://error and tauri://destroyed once-handlers, whose closures
   // outlive the render that registered them.
@@ -922,10 +972,32 @@ export default function App() {
       if (!cli?.present || coldLoadStartedRef.current) return;
       coldLoadStartedRef.current = true;
       setColdPresent(true);
+      // Resolve --theme before loading the deck: theme errors are fail-fast
+      // (stderr + exit 1) like a missing presentation file, and nothing has
+      // rendered yet at this point.
+      let cliTheme: Theme | null = null;
+      if (cli.theme) {
+        cliTheme = await resolveCliTheme(cli.theme);
+        if (!cliTheme) return; // reported and exiting
+      }
       try {
         await invoke('stop_watching').catch(() => {});
         const text: string = await invoke('read_file', { path: cli.present });
         await applyFileContent(text, cli.present);
+        if (cliTheme) {
+          // --theme replaces the deck's *base* theme; frontmatter
+          // theme_overrides still apply on top. Set overrides explicitly:
+          // syncThemeFromContent (inside applyFileContent) skips them when
+          // the frontmatter theme is missing from the library, and that
+          // missing-theme state is irrelevant under a CLI override.
+          cliThemeRef.current = cliTheme;
+          const id = cliTheme.id;
+          setAllThemes((prev) => prev.some((t) => t.id === id) ? prev : [...prev, cliTheme]);
+          setActiveThemeId(id);
+          setMissingThemeId(null);
+          const { frontmatter: fm } = extractFrontmatter(text);
+          setThemeOverrides(sanitiseThemeOverrides(fm.theme_overrides as Record<string, unknown> ?? {}));
+        }
       } catch {
         await invoke('cli_exit', {
           message: `cannot read '${cli.present}'`,
