@@ -17,19 +17,24 @@ pub fn restart_app(app: tauri::AppHandle) {
     app.restart();
 }
 
-/// Terminal-facing error exit for CLI-initiated flows (`--present` / `--check`).
-/// The launching terminal is the CLI user's surface — and the main window may
-/// still be hidden at this point, which makes a GUI dialog unreliable — so the
-/// report goes to stderr (attaching the parent console on Windows, where the
-/// GUI subsystem otherwise swallows it). Exits the process directly rather
-/// than via `app.exit(code)`: the code passed to `app.exit` does not survive
-/// the run loop's return path (the process ends 0), and this error path has
-/// nothing to clean up — no unsaved edits, no presentation session, and the
-/// wake lock is only ever taken after presenting starts.
+/// Terminal-facing exit for CLI-initiated flows (`--present` / `--check`):
+/// clean end-of-presentation (no message, code 0) or an error report. The
+/// launching terminal is the CLI user's surface — and the main window may
+/// still be hidden when errors fire, which makes a GUI dialog unreliable —
+/// so messages go to stderr (attaching the parent console on Windows, where
+/// the GUI subsystem otherwise swallows it). Exits the process directly
+/// rather than via `app.exit(code)`: the code passed to `app.exit` does not
+/// survive the run loop's return path (the process ends 0). A cold-started
+/// session has no unsaved edits and deliberately skips the window-state
+/// save; the one cleanup that matters — releasing the wake lock, whose
+/// macOS `caffeinate` child would be orphaned by a hard exit — is the
+/// caller's responsibility before invoking this.
 #[tauri::command]
-pub fn cli_error_exit(message: String, code: i32) {
+pub fn cli_exit(message: Option<String>, code: i32) {
     crate::cli::attach_parent_console();
-    eprintln!("kova: {message}");
+    if let Some(msg) = message {
+        eprintln!("kova: {msg}");
+    }
     std::process::exit(code);
 }
 

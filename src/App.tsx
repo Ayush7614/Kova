@@ -528,6 +528,11 @@ export default function App() {
   // re-run the auto-enter effect).
   const coldLoadStartedRef = useRef(false);
   const coldEnterFiredRef = useRef(false);
+  // Render-updated mirror of coldPresent for the audience window's
+  // tauri://error and tauri://destroyed once-handlers, whose closures
+  // outlive the render that registered them.
+  const coldPresentRef = useRef(coldPresent);
+  coldPresentRef.current = coldPresent;
   // Prevents double-exit when the audience window is closed externally while
   // handlePresentExit is already in flight.
   const isExitingRef = useRef(false);
@@ -547,6 +552,16 @@ export default function App() {
       const audienceWin = await WebviewWindow.getByLabel('audience');
       if (audienceWin) await audienceWin.close().catch(() => {});
     } catch { /* ignore */ }
+    // Cold-started session (kova --present): exiting the presentation is
+    // exiting the app — there is no editor session to return to. Release the
+    // wake lock explicitly first: cli_exit is a hard process exit, so the
+    // effect that normally releases it on presentMode→false never runs, and
+    // an orphaned macOS caffeinate child would keep the machine awake.
+    if (coldPresent) {
+      await invoke('set_wake_lock', { active: false }).catch(() => {});
+      await invoke('cli_exit', { code: 0 }).catch(() => {});
+      return;
+    }
     setPresentMode(false);
     setPresenterMode(false);
     // Land the editor on whatever slide we exited on (translate visible→full).
@@ -554,7 +569,7 @@ export default function App() {
     if (full >= 0) setCurrentSlideIndex(full);
     await getCurrentWindow().setFullscreen(false).catch(() => {});
     isExitingRef.current = false;
-  }, [slides, visibleSlides, safePresentIndex]);
+  }, [slides, visibleSlides, safePresentIndex, coldPresent]);
 
   const handlePresentEnter = useCallback(async (eOrFromCurrent?: React.MouseEvent | boolean) => {
     if (visibleSlides.length === 0) return;
@@ -655,9 +670,18 @@ export default function App() {
         });
 
         // If window creation fails, clean up the ready listener and reset state.
+        // Cold-started sessions have no editor to fall back to — report and quit.
         audienceWin.once('tauri://error', () => {
           clearTimeout(readyTimeoutId);
           unlistenReady?.();
+          if (coldPresentRef.current) {
+            invoke('set_wake_lock', { active: false }).catch(() => {});
+            invoke('cli_exit', {
+              message: 'failed to create the presentation window',
+              code: 1,
+            }).catch(() => {});
+            return;
+          }
           setPresentMode(false);
           setPresenterMode(false);
           getCurrentWindow().setFullscreen(false).catch(() => {});
@@ -671,6 +695,13 @@ export default function App() {
         audienceWin.once('tauri://destroyed', () => {
           if (isExitingRef.current) return; // normal exit already in progress
           if (presentSessionRef.current !== sessionId) return; // stale session
+          // Cold-started session: the audience window going away ends the
+          // presentation, and ending the presentation ends the app.
+          if (coldPresentRef.current) {
+            invoke('set_wake_lock', { active: false }).catch(() => {});
+            invoke('cli_exit', { code: 0 }).catch(() => {});
+            return;
+          }
           setPresentMode(false);
           setPresenterMode(false);
           getCurrentWindow().setFullscreen(false).catch(() => {});
@@ -701,7 +732,7 @@ export default function App() {
     if (!coldPresent || coldEnterFiredRef.current || !filePath) return;
     coldEnterFiredRef.current = true;
     if (visibleSlides.length === 0) {
-      invoke('cli_error_exit', {
+      invoke('cli_exit', {
         message: `'${filePath}' contains no visible slides`,
         code: 1,
       }).catch(() => {});
@@ -896,7 +927,7 @@ export default function App() {
         const text: string = await invoke('read_file', { path: cli.present });
         await applyFileContent(text, cli.present);
       } catch {
-        await invoke('cli_error_exit', {
+        await invoke('cli_exit', {
           message: `cannot read '${cli.present}'`,
           code: 1,
         }).catch(() => {});

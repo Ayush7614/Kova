@@ -111,7 +111,7 @@ pub fn run() {
             commands::fetch_url_b64,
             commands::fetch_url_text,
             commands::confirm_exit,
-            commands::cli_error_exit,
+            commands::cli_exit,
             commands::take_pending_open,
             commands::take_pending_cli,
             commands::export_pdf_native,
