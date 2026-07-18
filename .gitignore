@@ -35,6 +35,9 @@ TESTING_PLAN.md
 testing/
 test-export.md
 
+# Working plan documents (not for source control)
+docs/plans/
+
 # AUR .SRCINFO is generated at publish time and lives in the AUR git repo,
 # not here
 packaging/arch/kova-bin/.SRCINFO
