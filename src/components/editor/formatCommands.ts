@@ -357,22 +357,97 @@ const LIST_PREFIX_RE = /^(\d+\.\s+|- )/;
 export function makeLinePrefixCommand(prefix: string) {
   return (view: EditorView): boolean => {
     const { state } = view;
-    const { from } = state.selection.main;
-    const line = state.doc.lineAt(from);
-    if (line.text.startsWith(prefix)) {
-      // Toggle off — same prefix already present
-      view.dispatch({
-        changes: { from: line.from, to: line.from + prefix.length, insert: '' },
-        selection: EditorSelection.cursor(Math.max(line.from, from - prefix.length)),
-      });
-    } else {
+    const { from, to } = state.selection.main;
+    const startLine = state.doc.lineAt(from);
+    const endLine = state.doc.lineAt(to);
+
+    const lines = [];
+    for (let n = startLine.number; n <= endLine.number; n++) lines.push(state.doc.line(n));
+
+    // Toggle off only when every selected line already has this exact prefix.
+    const allHavePrefix = lines.every((line) => line.text.startsWith(prefix));
+
+    const changes = lines.map((line) => {
+      if (allHavePrefix) {
+        return { from: line.from, to: line.from + prefix.length, insert: '' };
+      }
       const existing = line.text.match(LIST_PREFIX_RE);
       const removeLen = existing ? existing[0].length : 0;
-      view.dispatch({
-        changes: { from: line.from, to: line.from + removeLen, insert: prefix },
-        selection: EditorSelection.cursor(from + prefix.length - removeLen),
-      });
+      return { from: line.from, to: line.from + removeLen, insert: prefix };
+    });
+
+    const changeSet = state.changes(changes);
+    view.dispatch({
+      changes,
+      selection: EditorSelection.range(changeSet.mapPos(from, 1), changeSet.mapPos(to, 1)),
+    });
+    view.focus();
+    return true;
+  };
+}
+
+const UL_PREFIX_RE = /^- /;
+const OL_PREFIX_RE = /^\d+\.\s+/;
+
+/**
+ * UL/OL button handler. Differs from makeLinePrefixCommand in two ways OL needs:
+ * numbers are sequential rather than a fixed string, and — so a second click after
+ * appending plain lines to an existing list doesn't disturb it — a selection mixing
+ * already-listed lines with bare ones only adds markers to the bare lines.
+ */
+export function makeListCommand(kind: 'ul' | 'ol') {
+  const ownRe = kind === 'ul' ? UL_PREFIX_RE : OL_PREFIX_RE;
+  return (view: EditorView): boolean => {
+    const { state } = view;
+    const { from, to } = state.selection.main;
+    const startLine = state.doc.lineAt(from);
+    const endLine = state.doc.lineAt(to);
+
+    const lines = [];
+    for (let n = startLine.number; n <= endLine.number; n++) lines.push(state.doc.line(n));
+
+    const allHaveOwn = lines.every((line) => ownRe.test(line.text));
+    const allHaveAny = lines.every((line) => LIST_PREFIX_RE.test(line.text));
+    const noneHaveAny = lines.every((line) => !LIST_PREFIX_RE.test(line.text));
+
+    const changes: { from: number; to: number; insert: string }[] = [];
+
+    if (allHaveOwn) {
+      // Toggle off — every selected line is already this exact list type.
+      for (const line of lines) {
+        const removeLen = line.text.match(ownRe)![0].length;
+        changes.push({ from: line.from, to: line.from + removeLen, insert: '' });
+      }
+    } else if (allHaveAny || noneHaveAny) {
+      // Uniform selection (either all bare, or all marked with some other list
+      // type) — rewrite every line as this list type, numbering OL sequentially.
+      let n = 1;
+      for (const line of lines) {
+        const existing = line.text.match(LIST_PREFIX_RE);
+        const removeLen = existing ? existing[0].length : 0;
+        const insert = kind === 'ul' ? '- ' : `${n}. `;
+        changes.push({ from: line.from, to: line.from + removeLen, insert });
+        n++;
+      }
+    } else {
+      // Mixed selection — leave already-listed lines untouched and only add
+      // markers to bare ones, numbering OL to continue the existing sequence.
+      let n = 1;
+      for (const line of lines) {
+        if (LIST_PREFIX_RE.test(line.text)) { n++; continue; }
+        const insert = kind === 'ul' ? '- ' : `${n}. `;
+        changes.push({ from: line.from, to: line.from, insert });
+        n++;
+      }
     }
+
+    if (changes.length === 0) { view.focus(); return true; }
+
+    const changeSet = state.changes(changes);
+    view.dispatch({
+      changes,
+      selection: EditorSelection.range(changeSet.mapPos(from, 1), changeSet.mapPos(to, 1)),
+    });
     view.focus();
     return true;
   };

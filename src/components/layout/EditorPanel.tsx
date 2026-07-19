@@ -17,6 +17,7 @@ import {
   indentLine,
   dedentLine,
   makeLinePrefixCommand,
+  makeListCommand,
   findNextRange,
 } from '../editor/formatCommands';
 import { buildMediaSnippet } from '../editor/mediaSnippet';
@@ -178,8 +179,8 @@ export const EditorPanel = forwardRef<EditorHandle, Props>(function EditorPanel(
         case 'underline':    makeWrapCommand('<u>', '</u>', 'underlined text')(view); break;
         case 'strikethrough':makeWrapCommand('~~', '~~', 'strikethrough text')(view); break;
         case 'code':         makeWrapCommand('`', '`', 'code')(view); break;
-        case 'ul':           makeLinePrefixCommand('- ')(view); break;
-        case 'ol':           makeLinePrefixCommand('1. ')(view); break;
+        case 'ul':           makeListCommand('ul')(view); break;
+        case 'ol':           makeListCommand('ol')(view); break;
         case 'blockquote':   makeLinePrefixCommand('> ')(view); break;
         case 'hr': {
           const { from } = view.state.selection.main;
