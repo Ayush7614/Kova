@@ -113,6 +113,7 @@ pub fn run() {
             commands::confirm_exit,
             commands::cli_exit,
             commands::cli_stdout,
+            commands::install_cli_symlink,
             commands::path_exists,
             commands::take_pending_open,
             commands::take_pending_cli,

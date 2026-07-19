@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { open, save, message } from '@tauri-apps/plugin-dialog';
 import { emit, emitTo, listen } from '@tauri-apps/api/event';
 import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -1765,6 +1765,19 @@ export default function App() {
     present: () => { void handlePresentEnter(); },
     toggleInspector: () => setShowInspector((v) => !v),
     openSettings: () => setShowSettings(true),
+    installCli: () => {
+      void (async () => {
+        try {
+          const dir = await invoke<string>('install_cli_symlink');
+          await message(t('app.cliInstallSuccess', { dir }), { title: 'Kova' });
+        } catch (e) {
+          await message(t('app.cliInstallFailure', { command: String(e) }), {
+            title: 'Kova',
+            kind: 'error',
+          });
+        }
+      })();
+    },
   };
   const stableMenuHandlers = useRef<MacMenuHandlers>({
     newFile: () => menuHandlersRef.current.newFile(),
@@ -1783,6 +1796,7 @@ export default function App() {
     present: () => menuHandlersRef.current.present(),
     toggleInspector: () => menuHandlersRef.current.toggleInspector(),
     openSettings: () => menuHandlersRef.current.openSettings(),
+    installCli: () => menuHandlersRef.current.installCli(),
   }).current;
 
   useEffect(() => {
@@ -1791,6 +1805,7 @@ export default function App() {
       present: t('macMenu.present'),
       view: t('macMenu.view'),
       toggleInspector: t('macMenu.toggleInspector'),
+      installCli: t('macMenu.installCli'),
       file: t('app.menuFile'),
       edit: t('app.menuEdit'),
       newFile: t('app.menuNew'),
