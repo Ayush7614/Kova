@@ -11,6 +11,7 @@ interface Props {
   onSelect: (index: number) => void;
   onReorder?: (fromIndex: number, toIndex: number) => void;
   onDuplicate?: (index: number) => void;
+  onNewSlide?: (index: number) => void;
   onToggleHidden?: (index: number) => void;
   onSetBackground?: (index: number) => void;
   onClearBackground?: (index: number) => void;
@@ -24,7 +25,7 @@ interface Props {
 const SLIDE_W = 960;
 const THUMB_W = 140;
 
-export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onDuplicate, onToggleHidden, onSetBackground, onClearBackground, onDelete, theme = DEFAULT_THEME, docTitle, docDate, aspectRatio = { w: 16, h: 9 } }: Props) {
+export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onDuplicate, onNewSlide, onToggleHidden, onSetBackground, onClearBackground, onDelete, theme = DEFAULT_THEME, docTitle, docDate, aspectRatio = { w: 16, h: 9 } }: Props) {
   const t = useT();
   const slideH = Math.round(SLIDE_W * aspectRatio.h / aspectRatio.w);
 
@@ -262,6 +263,11 @@ export function ThumbnailPanel({ slides, currentIndex, onSelect, onReorder, onDu
             label={t('layout.moveDown')}
             disabled={!onReorder || menu.index === slides.length - 1}
             onClick={() => { onReorder?.(menu.index, menu.index + 1); setMenu(null); }}
+          />
+          <MenuItem
+            label={t('layout.newSlide')}
+            disabled={!onNewSlide}
+            onClick={() => { onNewSlide?.(menu.index); setMenu(null); }}
           />
           <MenuItem
             label={t('layout.duplicateSlide')}

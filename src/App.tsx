@@ -1325,6 +1325,22 @@ export default function App() {
     setTimeout(() => editorRef.current?.scrollToSlide(index + 1), 50);
   }, []);
 
+  const handleNewSlide = useCallback((index: number) => {
+    setContent((prev) => {
+      const fmMatch = prev.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+      const fmBlock = fmMatch ? fmMatch[0] : '';
+      const body = prev.slice(fmBlock.length);
+      const segments = body.split(/^---$/m);
+      if (index < 0 || index >= segments.length) return prev;
+      const next = [...segments];
+      next.splice(index + 1, 0, '');
+      return fmBlock + next.map((s) => s.trim()).join('\n\n---\n\n') + '\n';
+    });
+    setIsDirty(true);
+    setCurrentSlideIndex(index + 1);
+    setTimeout(() => editorRef.current?.scrollToSlide(index + 1), 50);
+  }, []);
+
   const handleDeleteSlide = useCallback((index: number) => {
     setContent((prev) => {
       const fmMatch = prev.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
@@ -1982,6 +1998,7 @@ export default function App() {
               onSelect={handleThumbnailSelect}
               onReorder={handleSlideReorder}
               onDuplicate={handleDuplicateSlide}
+              onNewSlide={handleNewSlide}
               onToggleHidden={handleToggleHidden}
               onSetBackground={handleSetSlideBackground}
               onClearBackground={handleClearSlideBackground}

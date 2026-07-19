@@ -114,6 +114,7 @@ const en = {
     slideOptionsAriaLabel: 'Slide options',
     moveUp: 'Move up',
     moveDown: 'Move down',
+    newSlide: 'New slide',
     duplicateSlide: 'Duplicate slide',
     showSlide: 'Show slide',
     hideSlide: 'Hide slide',
