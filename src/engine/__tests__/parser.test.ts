@@ -636,6 +636,26 @@ describe('!ref academic references', () => {
     expect(slides[0].references).toEqual(['Alpha citation']);
     expect(slides[1].references).toEqual(['Beta citation']);
   });
+
+  it('italicises journal names written with asterisks', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n!ref[Smith, A. (2022). *Journal of Results*, 4(1).]\n'));
+    expect(slides[0].references).toEqual(['Smith, A. (2022). <em>Journal of Results</em>, 4(1).']);
+  });
+
+  it('bolds double-asterisk text and formats inline code in references', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n!ref[**Vol. 4** — see `doi:10.1000/xyz`]\n'));
+    expect(slides[0].references).toEqual(['<strong>Vol. 4</strong> — see <code>doi:10.1000/xyz</code>']);
+  });
+
+  it('leaves underscores in DOIs/URLs untouched', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n!ref[10.1000/journal_name_2020]\n'));
+    expect(slides[0].references).toEqual(['10.1000/journal_name_2020']);
+  });
+
+  it('escapes HTML-significant characters in references', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n!ref[Smith & Jones <2022>]\n'));
+    expect(slides[0].references).toEqual(['Smith &amp; Jones &lt;2022&gt;']);
+  });
 });
 
 // ── Column breaks ─────────────────────────────────────────────────────────────

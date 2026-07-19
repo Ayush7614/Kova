@@ -44,7 +44,7 @@ export interface Slide {
   titleLevel: number;   // 1 = H1, 2 = H2, etc. (0 = no title)
   elements: SlideElement[];
   speakerNotes: string;
-  references: string[];   // academic citations set via !ref[...], rendered at bottom-right
+  references: string[];   // academic citations set via !ref[...], rendered at bottom-right (HTML: bold/italic/code)
   layout: LayoutType;
   layoutOverride?: LayoutType;
   hidden: boolean;        // skipped in presentation + export; set via <!-- hidden --> marker

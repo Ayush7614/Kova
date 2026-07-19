@@ -266,7 +266,7 @@ function preprocess(content: string): PreprocessResult {
 
     const ref = t.match(REF_RE);
     if (ref) {
-      if (ref[1].trim()) references.push(ref[1]);
+      if (ref[1].trim()) references.push(referenceInlineToHtml(ref[1]));
       continue;
     }
 
@@ -660,6 +660,18 @@ function inlineToHtml(children: Node[]): string {
 
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// !ref[...] is a bracket-captured raw string that never goes through remark,
+// so citations (which routinely italicise a journal name) got no emphasis at
+// all. Only asterisks are parsed here, not underscores — citations commonly
+// contain DOIs/URLs like 10.1000/journal_name where `_` is literal.
+function referenceInlineToHtml(raw: string): string {
+  let html = escHtml(raw);
+  html = html.replace(/`([^`]+)`/g, (_m, code) => `<code>${code}</code>`);
+  html = html.replace(/\*\*([^*]+)\*\*/g, (_m, b) => `<strong>${b}</strong>`);
+  html = html.replace(/\*([^*]+)\*/g, (_m, i) => `<em>${i}</em>`);
+  return html;
 }
 
 function escUrl(url: string): string {

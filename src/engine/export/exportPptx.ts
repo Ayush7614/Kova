@@ -710,10 +710,15 @@ function addReferences(s: PS, refs: string[], t: Theme, H: number, hasFoot: bool
   const REF_H = Math.min(0.06 + refs.length * 0.17, H * 0.35);
   const bottomPad = hasFoot ? FOOT_H + 0.08 : 0.15;
   const color = blendColor(tc, t.colors.background, 0.60);
-  const runs = refs.map((ref, i) => ({
-    text: ref,
-    options: { fontSize: 7, breakLine: i < refs.length - 1, color },
-  }));
+  const codeFont = firstFont(t.fonts.code);
+  const accentColor = hex(t.colors.accent);
+  const runs = refs.flatMap((ref, i) => {
+    const refRuns = htmlToInlineRuns(ref, color, codeFont, accentColor, color);
+    return refRuns.map((run, ri) => ({
+      text: run.text,
+      options: { fontSize: 7, ...run.options, color, breakLine: ri === refRuns.length - 1 && i < refs.length - 1 },
+    }));
+  });
   s.addText(runs, {
     x: W / 2, y: H - bottomPad - REF_H, w: W / 2 - M, h: REF_H,
     fontSize: 7, color,

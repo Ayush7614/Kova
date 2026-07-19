@@ -150,7 +150,7 @@ export function SlideRenderer({ slide, theme = DEFAULT_THEME, slideNumber, total
         {slide.references.length > 0 && (
           <div className="sl-references">
             {slide.references.map((ref, i) => (
-              <div key={i} className="sl-reference">{ref}</div>
+              <div key={i} className="sl-reference" dangerouslySetInnerHTML={{ __html: ref }} />
             ))}
           </div>
         )}
