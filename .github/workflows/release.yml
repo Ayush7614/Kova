@@ -29,20 +29,13 @@ jobs:
           ## What's new
 
           ### New features
-          - **Explicit three-column layout** — a slide with two `|||` separators now renders as three columns instead of folding the third block into the right-hand column (requested by @jaza089, closes #153).
-          - `!caption` now works after tables (including `!sheet` computed tables), not just images/Mermaid/math (reported by @a1880, fixes #154).
+          - **New slide from the right-click menu**: the thumbnail panel's context menu now has a "New slide" entry, so a blank slide can be inserted without hand-typing a `---` separator in the editor (requested by @surferjoeit, closes #162).
+          - `!ref` citation text now supports inline emphasis (`*italic*`, `**bold**`, `` `code` ``) instead of showing the raw markers literally in preview and PPTX export, useful for italicised journal names in citations.
 
           ### Bug fixes
-          - **Fixed** pane text in split/two-column/BSP layouts sizing itself against the full slide width instead of its own (narrower) column, leaving text oversized and wrapping more than necessary (reported by @a1880 and @mdopp, fixes #159, #145).
-          - **Fixed** flex-sized content (Mermaid diagrams, images, math) inside overflow panes not sizing to the space actually available, showing only a clipped slice of the element.
-          - **Fixed** missing space below caption text crowding the next slide element (fixes #154).
-          - **Fixed** macOS self-update downloading to 100% and then failing signature verification, caused by a stale cached signature surviving from an earlier build run (by @vadika).
-          - **Fixed** a SSRF gap in URL fetch (export could reach internal-only addresses like cloud metadata or localhost) and a path-traversal gap in asset copying.
-          - **Fixed** a temp-file leak and a write-collision race in the Rust export/asset commands, and capped the previously-unbounded spellcheck dictionary cache.
-          - **Fixed** several stale-closure and race-condition bugs in export/print handling, a cache-invalidation bug that discarded resolved media on every keystroke, and an i18n pluralisation bug in the word-count display.
-          - **Fixed** PPTX import corrupting slide content when text boxes contained `---`, `???`, or unescaped HTML entities, and imported tables landing at position (0,0) instead of their real position.
-          - **Fixed** a `---` inside a fenced code block splitting a slide mid-block, `!let` silently breaking on later slides after an unbalanced fence, an edge case where column balancing could leave a column empty, and a literal `|||` inside a table truncating it early.
-          - Nudged the macOS traffic-light buttons down for better vertical balance in the toolbar.
+          - **Fixed** the bullet/numbered list toolbar buttons only applying to the first line of a multi-line selection. Numbered lists now number sequentially instead of repeating "1." on every line, and clicking the button again after adding new lines to an existing list only affects the new, unmarked lines.
+          - **Fixed** native PDF export on Linux always falling back to the raster renderer under non-English locales, caused by the GTK "Print to File" printer name being hard-coded while GTK translates it (reported by @Knorberto, fixes #161).
+          - **Fixed** the auto-shrink text search in split/two-column layouts under-shrinking text once a pane held enough content, leaving unused space that read as an oversized wrapping margin (further fix for #159, reported by @a1880).
 
           ---
 
