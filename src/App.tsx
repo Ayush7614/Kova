@@ -34,6 +34,7 @@ import type { Keybindings } from './engine/keybindings';
 import { I18nProvider, useLocaleTranslator, formatFallbackDate } from './i18n';
 
 import { parseDocument } from './engine/parser/markdownToSlides';
+import { collectDiagnostics, formatCheckReport } from './engine/parser/diagnostics';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
 import { parseBgLine, formatBgLine } from './engine/parser/bgImage';
 import { fetchUpdate } from './engine/updater';
@@ -127,6 +128,18 @@ async function resolveCliTheme(arg: CliThemeArg): Promise<Theme | null> {
     }
   } catch { /* fall through to unknown */ }
   return fail(`unknown theme '${arg.name}'`);
+}
+
+// Theme ids --check validates frontmatter `theme:` against — built-ins plus
+// whatever community themes are installed in the config dir.
+async function knownThemeIds(): Promise<string[]> {
+  const ids = BUILT_IN_THEMES.map((t) => t.id);
+  try {
+    const [, entries] = await invoke<[string, Array<[string, string]>]>('load_custom_themes');
+    return [...ids, ...entries.map(([id]) => id)];
+  } catch {
+    return ids;
+  }
 }
 
 export default function App() {
@@ -969,21 +982,45 @@ export default function App() {
     if (coldLoadStartedRef.current) return;
     (async () => {
       const cli = await getPendingCli();
-      if (!cli?.present || coldLoadStartedRef.current) return;
+      if (coldLoadStartedRef.current) return;
+      // --present FILE, or standalone --check FILE (which never shows a window:
+      // the loading branch renders behind a window that lib.rs never shows, and
+      // the process exits from this effect).
+      const target = cli?.present ?? cli?.check_only;
+      if (!cli || !target) return;
       coldLoadStartedRef.current = true;
       setColdPresent(true);
       // Resolve --theme before loading the deck: theme errors are fail-fast
       // (stderr + exit 1) like a missing presentation file, and nothing has
       // rendered yet at this point.
       let cliTheme: Theme | null = null;
-      if (cli.theme) {
+      if (cli.theme && cli.present) {
         cliTheme = await resolveCliTheme(cli.theme);
         if (!cliTheme) return; // reported and exiting
       }
       try {
+        const text: string = await invoke('read_file', { path: target });
+        // --check: validate before anything renders. The report goes to
+        // stdout (it is data; errors about the invocation itself go to
+        // stderr). Standalone check exits either way; as a gate before
+        // --present, errors abort with exit 1 and warnings continue into
+        // the presentation.
+        if (cli.check || cli.check_only) {
+          const diags = await collectDiagnostics(text, {
+            docDir: dirOf(target),
+            themeIds: await knownThemeIds(),
+            fileExists: (p) =>
+              invoke<boolean>('path_exists', { path: p }).then(Boolean).catch(() => false),
+          });
+          const { report, errors } = formatCheckReport(target, diags);
+          await invoke('cli_stdout', { text: report }).catch(() => {});
+          if (cli.check_only || errors > 0) {
+            await invoke('cli_exit', { code: errors > 0 ? 1 : 0 }).catch(() => {});
+            return;
+          }
+        }
         await invoke('stop_watching').catch(() => {});
-        const text: string = await invoke('read_file', { path: cli.present });
-        await applyFileContent(text, cli.present);
+        await applyFileContent(text, target);
         if (cliTheme) {
           // --theme replaces the deck's *base* theme; frontmatter
           // theme_overrides still apply on top. Set overrides explicitly:
@@ -1000,7 +1037,7 @@ export default function App() {
         }
       } catch {
         await invoke('cli_exit', {
-          message: `cannot read '${cli.present}'`,
+          message: `cannot read '${target}'`,
           code: 1,
         }).catch(() => {});
       }

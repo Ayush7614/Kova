@@ -17,6 +17,14 @@ pub fn take_pending_cli(state: State<'_, AppState>) -> Option<crate::cli::Pendin
     state.pending_cli.lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
+/// Existence probe for --check's media validation. Read-only and cheap —
+/// deliberately not read_file_b64, which would load whole videos to answer
+/// a yes/no question.
+#[tauri::command]
+pub fn path_exists(path: String) -> bool {
+    std::path::Path::new(&path).exists()
+}
+
 #[tauri::command]
 pub fn read_file(path: String) -> Result<String, String> {
     file_io::read(&path)

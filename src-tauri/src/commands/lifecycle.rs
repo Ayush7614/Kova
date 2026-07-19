@@ -29,6 +29,14 @@ pub fn restart_app(app: tauri::AppHandle) {
 /// save; the one cleanup that matters — releasing the wake lock, whose
 /// macOS `caffeinate` child would be orphaned by a hard exit — is the
 /// caller's responsibility before invoking this.
+/// Print to the launching terminal's stdout (used for --check reports, which
+/// are data, unlike the error reporting on stderr in cli_exit below).
+#[tauri::command]
+pub fn cli_stdout(text: String) {
+    crate::cli::attach_parent_console();
+    println!("{text}");
+}
+
 #[tauri::command]
 pub fn cli_exit(message: Option<String>, code: i32) {
     crate::cli::attach_parent_console();
