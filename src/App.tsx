@@ -22,6 +22,8 @@ import { ImportUrlModal } from './components/ImportUrlModal';
 import { ModalShell } from './components/ModalShell';
 import { InfoBanner } from './components/InfoBanner';
 import { isMarp, importMarp } from './engine/import/marp';
+import { parsePptx } from './engine/import/parsePptx';
+import { pptxToMarkdown } from './engine/import/pptxToMarkdown';
 import { MissingThemeBanner } from './components/MissingThemeBanner';
 import { loadSettings, saveSettings, EDITOR_FONT_OPTIONS } from './store/settings';
 import type { AppSettings } from './store/settings';
@@ -49,7 +51,7 @@ import { parseAspectRatio } from './engine/types';
 import { imageMime } from './engine/export/imageMime';
 import type { Theme } from './engine/theme';
 import { useResolvedSlides } from './hooks/useResolvedSlides';
-import type { PendingCli, CliThemeArg } from './types/cli';
+import type { PendingCli, CliThemeArg, PendingImport } from './types/cli';
 
 import './styles/global.css';
 
@@ -139,6 +141,55 @@ async function knownThemeIds(): Promise<string[]> {
     return [...ids, ...entries.map(([id]) => id)];
   } catch {
     return ids;
+  }
+}
+
+// kova --import marp|pptx|url IN OUT. Headless like standalone --check: the
+// window is never shown (lib.rs keeps it hidden for any CLI action), this
+// runs entirely outside React state, and the process exits from here.
+// Mirrors the exact conversion each in-app import flow uses (ImportPptxModal,
+// ImportUrlModal, the Marp-detection prompt) so CLI output matches the GUI's.
+async function runCliImport(imp: PendingImport): Promise<void> {
+  const finish = async (report: string) => {
+    await invoke('cli_stdout', { text: report }).catch(() => {});
+    await invoke('cli_exit', { code: 0 }).catch(() => {});
+  };
+  const fail = async (message: string) => {
+    await invoke('cli_exit', { message, code: 1 }).catch(() => {});
+  };
+
+  try {
+    if (imp.format === 'marp') {
+      const text: string = await invoke('read_file', { path: imp.input });
+      const { markdown, dropped } = importMarp(text);
+      await invoke('write_file', { path: imp.output, content: markdown });
+      const suffix = dropped.length > 0 ? ` (simplified: ${dropped.join(', ')})` : '';
+      await finish(`wrote '${imp.output}'${suffix}`);
+      return;
+    }
+    if (imp.format === 'pptx') {
+      // Media referenced by the deck is extracted alongside the output file,
+      // same as the in-app import modal.
+      const parsed = await parsePptx(imp.input, dirOf(imp.output));
+      const markdown = pptxToMarkdown(parsed);
+      await invoke('write_file', { path: imp.output, content: markdown });
+      const lines = [`wrote '${imp.output}' (${parsed.slides.length} slides)`];
+      for (const w of parsed.warnings) lines.push(`warning: ${w}`);
+      await finish(lines.join('\n'));
+      return;
+    }
+    // url — fetched verbatim, no conversion (matches ImportUrlModal: if the
+    // remote content is a Marp deck, that's detected on open, not on fetch).
+    const text: string = await invoke('fetch_url_text', { url: imp.input });
+    await invoke('write_file', { path: imp.output, content: text });
+    await finish(`wrote '${imp.output}'`);
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    // Mirrors ImportPptxModal's special-case message for this common failure.
+    const msg = imp.format === 'pptx' && /password|encrypted/i.test(raw)
+      ? 'PPTX file is password-protected; remove protection before importing'
+      : raw;
+    await fail(msg);
   }
 }
 
@@ -983,6 +1034,13 @@ export default function App() {
     (async () => {
       const cli = await getPendingCli();
       if (coldLoadStartedRef.current) return;
+      // kova --import: fully headless, no editor state or window involved —
+      // runs and exits before any of the present/check logic below.
+      if (cli?.import) {
+        coldLoadStartedRef.current = true;
+        await runCliImport(cli.import);
+        return;
+      }
       // --present FILE, or standalone --check FILE (which never shows a window:
       // the loading branch renders behind a window that lib.rs never shows, and
       // the process exits from this effect).
@@ -1059,8 +1117,10 @@ export default function App() {
       // the last file would race the CLI file's load through applyFileContent
       // and whichever resolves last would win, possibly presenting the wrong
       // deck. The CLI drain is cached, so this await costs one IPC roundtrip.
+      // --import is headless and exits the process itself, but skip restoring
+      // here too rather than doing pointless work moments before it quits.
       const cli = await getPendingCli();
-      if (cli?.present) return;
+      if (cli?.present || cli?.import) return;
       try {
         const text: string = await invoke('read_file', { path: session.path });
         await applyFileContent(text, session.path);

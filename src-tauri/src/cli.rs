@@ -2,10 +2,10 @@
 //!
 //! Grammar: at most one action per invocation (`--present`, `--import`,
 //! `--export`, or standalone `--check FILE`) plus modifiers (`--theme`,
-//! `--check`) that combine with an action in any order. `--import` and
-//! `--export` parse fully but are rejected as "not available in this
-//! version" until the export engine work lands, so the grammar is stable
-//! and scripts fail loudly rather than misparsing.
+//! `--check`) that combine with an action in any order. `--export` parses
+//! fully but is rejected as "not available in this version" until the
+//! export engine work lands, so the grammar stays stable and scripts fail
+//! loudly rather than misparsing.
 //!
 //! `parse_cli_args` is pure (no filesystem, no exit) so the grammar is unit
 //! testable; `startup` wraps it with the process-level concerns: printing,
@@ -31,6 +31,21 @@ pub struct PendingCli {
     pub theme: Option<ThemeArg>,
     pub check: bool,
     pub check_only: Option<String>,
+    pub import: Option<PendingImport>,
+}
+
+/// `--import <format> <input> <output>`, resolved for the frontend. `input`
+/// is a canonicalised existing path for `marp`/`pptx`, or the raw URL
+/// unchanged for `url` — validating a URL string against the filesystem
+/// would be nonsensical, and the fetch step reports a bad URL naturally.
+/// `output` is made absolute (so the reported path is unambiguous
+/// regardless of the shell's cwd) but is not required to exist yet — it's
+/// the file about to be created.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PendingImport {
+    pub format: ImportFormat,
+    pub input: String,
+    pub output: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -51,8 +66,8 @@ pub struct RunArgs {
     pub open: Vec<String>,
 }
 
-// Import/Export are parsed for grammar stability but rejected until Track 2
-// implements them, so their payload fields are not read yet.
+// Export is parsed for grammar stability but rejected until Track 2
+// implements it, so its payload fields are not read yet.
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum Action {
@@ -62,8 +77,10 @@ pub enum Action {
     CheckOnly(String),
 }
 
-#[allow(dead_code)]
-#[derive(Debug, PartialEq)]
+/// Serialises as a bare lowercase string ("marp"/"pptx"/"url") — matching
+/// the CLI keywords directly, no adjacent tagging needed for a fieldless enum.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ImportFormat {
     Marp,
     Pptx,
@@ -98,7 +115,7 @@ Other:
   -h, --help            show this help
   --version             show version
 
---import and --export are not available in this version.
+--export is not available in this version.
 ";
 
 pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
@@ -234,14 +251,8 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
         if action.is_none() {
             return CliArgs::Error("--theme requires --present, --import, or --export".into());
         }
-        match action {
-            Some(Action::Import { .. }) => {
-                return CliArgs::Error("--import is not available in this version".into())
-            }
-            Some(Action::Export { .. }) => {
-                return CliArgs::Error("--export is not available in this version".into())
-            }
-            _ => {}
+        if matches!(action, Some(Action::Export { .. })) {
+            return CliArgs::Error("--export is not available in this version".into());
         }
         CliArgs::Run(RunArgs { action, theme, check, open: Vec::new() })
     } else {
@@ -340,8 +351,19 @@ fn resolve(run: RunArgs) -> Startup {
         Some(Action::CheckOnly(path)) => {
             pending.check_only = Some(canonicalise_or_exit(&path, "cannot open"));
         }
+        Some(Action::Import { format, input, output }) => {
+            let input = match format {
+                // A URL isn't a filesystem path — canonicalising it would
+                // always fail. The fetch step reports a bad URL naturally.
+                ImportFormat::Url => input,
+                ImportFormat::Marp | ImportFormat::Pptx => {
+                    canonicalise_or_exit(&input, "cannot open")
+                }
+            };
+            pending.import = Some(PendingImport { format, input, output: absolutize(&output) });
+        }
         // Rejected with "not available" during parse.
-        Some(Action::Import { .. }) | Some(Action::Export { .. }) => unreachable!(),
+        Some(Action::Export { .. }) => unreachable!(),
         None => {}
     }
     pending.theme = run.theme.map(|theme| match theme {
@@ -351,7 +373,8 @@ fn resolve(run: RunArgs) -> Startup {
         named => named,
     });
 
-    let cli_active = pending.present.is_some() || pending.check_only.is_some();
+    let cli_active =
+        pending.present.is_some() || pending.check_only.is_some() || pending.import.is_some();
     // Editor launch keeps the pre-CLI behaviour: arguments that don't exist
     // on disk are silently ignored rather than failing the launch.
     let open = run
@@ -360,6 +383,23 @@ fn resolve(run: RunArgs) -> Startup {
         .filter(|p| std::path::Path::new(p).exists())
         .collect();
     Startup { pending: if cli_active { Some(pending) } else { None }, open }
+}
+
+/// Resolves a not-necessarily-existing path to absolute, for the output side
+/// of `--import`/`--export`. Unlike `canonicalise_or_exit`, this never fails
+/// or requires the path to exist yet — it's the file about to be written.
+/// Relative paths join onto the shell's cwd; already-absolute paths pass
+/// through unchanged. Does not resolve symlinks or `..` segments (`canonicalize`
+/// would, but requires existence) — the OS handles those fine at write time.
+fn absolutize(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    if p.is_absolute() {
+        return p.to_string_lossy().into_owned();
+    }
+    match std::env::current_dir() {
+        Ok(cwd) => cwd.join(p).to_string_lossy().into_owned(),
+        Err(_) => path.to_string(),
+    }
 }
 
 fn canonicalise_or_exit(path: &str, verb: &str) -> String {
@@ -481,10 +521,37 @@ mod tests {
     // -- import / export ----------------------------------------------------
 
     #[test]
-    fn import_parses_then_reports_unavailable() {
+    fn import_parses_successfully() {
+        let run = expect_run(&["--import", "marp", "in.md", "out.md"]);
         assert_eq!(
-            expect_error(&["--import", "marp", "in.md", "out.md"]),
-            "--import is not available in this version"
+            run.action,
+            Some(Action::Import {
+                format: ImportFormat::Marp,
+                input: "in.md".into(),
+                output: "out.md".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn import_pptx_and_url_formats_parse() {
+        let pptx = expect_run(&["--import", "pptx", "deck.pptx", "out.md"]);
+        assert_eq!(
+            pptx.action,
+            Some(Action::Import {
+                format: ImportFormat::Pptx,
+                input: "deck.pptx".into(),
+                output: "out.md".into(),
+            })
+        );
+        let url = expect_run(&["--import", "url", "https://example.com/x.md", "out.md"]);
+        assert_eq!(
+            url.action,
+            Some(Action::Import {
+                format: ImportFormat::Url,
+                input: "https://example.com/x.md".into(),
+                output: "out.md".into(),
+            })
         );
     }
 
