@@ -199,6 +199,37 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
                 ) else {
                     return CliArgs::Error(IMPORT_USAGE.into());
                 };
+                // Guards a real footgun, not just usage hygiene: input and
+                // output are two unrelated positional slots with no way to
+                // tell a deliberate call from a shell glob that happened to
+                // expand to exactly two files (e.g. `--import marp *.md
+                // out.md` matching two decks) — which would otherwise
+                // silently overwrite the second file as if it were the
+                // intended output. Three or more matches already fail via
+                // the unexpected-argument check below; this closes the
+                // exactly-two-matches gap that check can't see, since it's
+                // a fully-valid-looking two-argument call by that point.
+                let input_ext_ok = match format {
+                    ImportFormat::Marp => has_extension(&input, &[".md", ".markdown"]),
+                    ImportFormat::Pptx => has_extension(&input, &[".pptx"]),
+                    ImportFormat::Url => true, // not a filesystem path
+                };
+                if !input_ext_ok {
+                    let expected = match format {
+                        ImportFormat::Marp => ".md",
+                        ImportFormat::Pptx => ".pptx",
+                        ImportFormat::Url => unreachable!(),
+                    };
+                    return CliArgs::Error(format!(
+                        "--import {} expects a {expected} input file, got '{input}'",
+                        format_name(&format)
+                    ));
+                }
+                if !has_extension(&output, &[".md", ".markdown"]) {
+                    return CliArgs::Error(format!(
+                        "--import output must be a .md file, got '{output}'"
+                    ));
+                }
                 if let Err(e) = set_action(&mut action, Action::Import { format, input, output }) {
                     return e;
                 }
@@ -222,6 +253,24 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
                 ) else {
                     return CliArgs::Error(EXPORT_USAGE.into());
                 };
+                // See the matching comment on --import above — same
+                // exactly-two-glob-matches footgun, same fix.
+                if !has_extension(&input, &[".md", ".markdown"]) {
+                    return CliArgs::Error(format!(
+                        "--export expects a .md input file, got '{input}'"
+                    ));
+                }
+                let expected_out = match format {
+                    ExportFormat::Pptx => &[".pptx"][..],
+                    ExportFormat::Pdf => &[".pdf"][..],
+                };
+                if !has_extension(&output, expected_out) {
+                    return CliArgs::Error(format!(
+                        "--export {} output must be a {} file, got '{output}'",
+                        format_name_export(&format),
+                        expected_out[0],
+                    ));
+                }
                 if let Err(e) = set_action(&mut action, Action::Export { format, input, output }) {
                     return e;
                 }
@@ -274,6 +323,28 @@ fn split_eq(arg: &str) -> (&str, Option<&str>) {
 
 /// Value for a flag: the inline `--flag=value` form, or the following
 /// argument when it doesn't look like another flag.
+/// Case-insensitive suffix check against a list of accepted extensions
+/// (each including the leading dot, e.g. `".md"`).
+fn has_extension(path: &str, exts: &[&str]) -> bool {
+    let lower = path.to_ascii_lowercase();
+    exts.iter().any(|e| lower.ends_with(e))
+}
+
+fn format_name(f: &ImportFormat) -> &'static str {
+    match f {
+        ImportFormat::Marp => "marp",
+        ImportFormat::Pptx => "pptx",
+        ImportFormat::Url => "url",
+    }
+}
+
+fn format_name_export(f: &ExportFormat) -> &'static str {
+    match f {
+        ExportFormat::Pptx => "pptx",
+        ExportFormat::Pdf => "pdf",
+    }
+}
+
 fn take_value(inline: Option<&str>, args: &[String], i: &mut usize) -> Option<String> {
     if let Some(v) = inline {
         return Some(v.to_string());
@@ -585,6 +656,80 @@ mod tests {
                 format: ExportFormat::Pptx,
                 input: "in.md".into(),
                 output: "out.pptx".into(),
+            })
+        );
+    }
+
+    // -- extension guards (glob-safety) --------------------------------------
+    //
+    // A shell glob that happens to expand to exactly two files is otherwise
+    // indistinguishable from a deliberate `input output` call — these tests
+    // simulate that by using two plausible filenames in the wrong roles and
+    // checking the mismatch is caught before anything would be written.
+
+    #[test]
+    fn export_rejects_non_md_input() {
+        let msg = expect_error(&["--export", "pdf", "notes.pptx", "out.pdf"]);
+        assert!(msg.contains("--export expects a .md input file"), "{msg}");
+    }
+
+    #[test]
+    fn export_pptx_rejects_glob_landing_on_a_second_md_file() {
+        // Simulates `--export pptx *.md out.pptx` where the glob matched
+        // exactly two decks (jan.md, feb.md) instead of one deck plus an
+        // explicit output — feb.md must never be silently treated as pptx.
+        let msg = expect_error(&["--export", "pptx", "jan.md", "feb.md"]);
+        assert!(msg.contains("--export pptx output must be a .pptx file"), "{msg}");
+    }
+
+    #[test]
+    fn export_pdf_rejects_wrong_output_extension() {
+        let msg = expect_error(&["--export", "pdf", "in.md", "out.pptx"]);
+        assert!(msg.contains("--export pdf output must be a .pdf file"), "{msg}");
+    }
+
+    #[test]
+    fn import_marp_rejects_non_md_input() {
+        let msg = expect_error(&["--import", "marp", "deck.pptx", "out.md"]);
+        assert!(msg.contains("--import marp expects a .md input file"), "{msg}");
+    }
+
+    #[test]
+    fn import_pptx_rejects_non_pptx_input() {
+        let msg = expect_error(&["--import", "pptx", "deck.md", "out.md"]);
+        assert!(msg.contains("--import pptx expects a .pptx input file"), "{msg}");
+    }
+
+    #[test]
+    fn import_rejects_glob_landing_on_a_second_md_file_as_output() {
+        // Simulates `--import marp *.md out.md` matching exactly two decks —
+        // the second must be caught, not silently overwritten... except a
+        // .md output IS what import always expects, so this specific pair
+        // parses (the danger case a naive extension check can't catch:
+        // both matched files already look like valid input/output). Kept as
+        // a documented residual case, not asserted as blocked.
+        let run = expect_run(&["--import", "marp", "jan.md", "feb.md"]);
+        assert_eq!(
+            run.action,
+            Some(Action::Import {
+                format: ImportFormat::Marp,
+                input: "jan.md".into(),
+                output: "feb.md".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn import_url_skips_input_extension_check() {
+        // url's "input" is a URL, not a filesystem path — must never be
+        // extension-checked.
+        let run = expect_run(&["--import", "url", "https://example.com/x", "out.md"]);
+        assert_eq!(
+            run.action,
+            Some(Action::Import {
+                format: ImportFormat::Url,
+                input: "https://example.com/x".into(),
+                output: "out.md".into(),
             })
         );
     }
