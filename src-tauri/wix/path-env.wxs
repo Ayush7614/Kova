@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Appends the install directory to the system PATH so `kova` works from a
+  terminal after an MSI install (docs/plans/kova-cli.md, Phase D). The NSIS
+  installer does the same via installer-hooks.nsh; WiX never runs those
+  hooks, so the MSI needs its own declarative version.
+
+  System="yes" (machine PATH, not per-user) matches the MSI's install scope:
+  Tauri's WiX template installs per-machine under ProgramFiles64Folder.
+  Windows Installer handles the append, repair, and removal-on-uninstall
+  itself (Permanent="no"), so unlike the NSIS side there is no hand-rolled
+  dedupe or excise logic to maintain.
+
+  The RegistryValue exists only as the component KeyPath - an Environment
+  element cannot be one, and every component must have one.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="KovaPathEnv" Guid="D2626A48-7CD3-429B-89FA-B61EC6EE3A4A" Win64="yes">
+        <Environment Id="KovaPathEnv"
+                     Name="PATH"
+                     Value="[INSTALLDIR]"
+                     Permanent="no"
+                     Part="last"
+                     Action="set"
+                     System="yes" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Kova\PathEnv"
+                       Name="installed"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

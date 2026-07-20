@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { open, save, message } from '@tauri-apps/plugin-dialog';
 import { emit, emitTo, listen } from '@tauri-apps/api/event';
 import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -34,6 +34,7 @@ import type { Keybindings } from './engine/keybindings';
 import { I18nProvider, useLocaleTranslator, formatFallbackDate } from './i18n';
 
 import { parseDocument } from './engine/parser/markdownToSlides';
+import { collectDiagnostics, formatCheckReport } from './engine/parser/diagnostics';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
 import { parseBgLine, formatBgLine } from './engine/parser/bgImage';
 import { fetchUpdate } from './engine/updater';
@@ -48,6 +49,7 @@ import { parseAspectRatio } from './engine/types';
 import { imageMime } from './engine/export/imageMime';
 import type { Theme } from './engine/theme';
 import { useResolvedSlides } from './hooks/useResolvedSlides';
+import type { PendingCli, CliThemeArg } from './types/cli';
 
 import './styles/global.css';
 
@@ -82,6 +84,64 @@ function countWords(text: string): number {
 const EMPTY_SLIDES: Slide[] = [];
 const EMPTY_FM: Frontmatter = {};
 
+// take_pending_cli drains once on the Rust side (Option::take), so cache the
+// promise at module level: StrictMode's double-mount and dep-driven effect
+// re-runs all observe the same value instead of the second call's null.
+let pendingCliPromise: Promise<PendingCli | null> | null = null;
+function getPendingCli(): Promise<PendingCli | null> {
+  pendingCliPromise ??= invoke<PendingCli | null>('take_pending_cli').catch(() => null);
+  return pendingCliPromise;
+}
+
+// Resolve a --theme argument to a Theme, or report to the terminal and exit 1
+// (returning null while the process shuts down). Named themes check built-ins
+// first, then the installed community themes — loaded directly here rather
+// than through the allThemes state, which may not have populated yet when the
+// cold-start path runs. Path themes get a `cli:`-prefixed id so a file named
+// light.yaml can never collide with (and silently lose to) a built-in id.
+async function resolveCliTheme(arg: CliThemeArg): Promise<Theme | null> {
+  const fail = async (message: string) => {
+    await invoke('cli_exit', { message, code: 1 }).catch(() => {});
+    return null;
+  };
+  if (arg.type === 'path') {
+    let text: string;
+    try {
+      text = await invoke<string>('read_file', { path: arg.path });
+    } catch {
+      return fail(`cannot read theme '${arg.path}'`);
+    }
+    const base = arg.path.replace(/\\/g, '/').split('/').pop() ?? arg.path;
+    const parsed = parseThemeYaml(`cli:${base.replace(/\.ya?ml$/i, '')}`, text);
+    if (!parsed.ok) return fail(`invalid theme '${arg.path}': ${parsed.error}`);
+    return parsed.theme;
+  }
+  const builtIn = BUILT_IN_THEMES.find((t) => t.id === arg.name);
+  if (builtIn) return builtIn;
+  try {
+    const [, entries] = await invoke<[string, Array<[string, string]>]>('load_custom_themes');
+    for (const [id, yaml] of entries) {
+      if (id !== arg.name) continue;
+      const parsed = parseThemeYaml(id, yaml);
+      if (parsed.ok) return parsed.theme;
+      return fail(`invalid theme '${arg.name}': ${parsed.error}`);
+    }
+  } catch { /* fall through to unknown */ }
+  return fail(`unknown theme '${arg.name}'`);
+}
+
+// Theme ids --check validates frontmatter `theme:` against — built-ins plus
+// whatever community themes are installed in the config dir.
+async function knownThemeIds(): Promise<string[]> {
+  const ids = BUILT_IN_THEMES.map((t) => t.id);
+  try {
+    const [, entries] = await invoke<[string, Array<[string, string]>]>('load_custom_themes');
+    return [...ids, ...entries.map(([id]) => id)];
+  } catch {
+    return ids;
+  }
+}
+
 export default function App() {
   const [filePath, setFilePath]           = useState<string | null>(null);
   const [content, setContent]             = useState('');
@@ -92,6 +152,11 @@ export default function App() {
   // Index into visibleSlides (hidden slides skipped) while presenting — kept
   // separate from currentSlideIndex (which indexes the full editor deck).
   const [presentIndex, setPresentIndex]   = useState(0);
+  // Session was started via `kova --present FILE` (docs/plans/kova-cli.md,
+  // Phase B): the editor chrome is never shown, presentation starts as soon as
+  // the deck resolves, and exiting quits the process instead of revealing the
+  // editor. Stays true for the whole session once set.
+  const [coldPresent, setColdPresent]     = useState(false);
   const [settings, setSettings]           = useState<AppSettings>(loadSettings);
   const t = useLocaleTranslator(settings.locale);
   const [showSettings, setShowSettings]   = useState(false);
@@ -371,7 +436,13 @@ export default function App() {
         const results: ThemeParseResult[] = entries.map(([id, yaml]) => parseThemeYaml(id, yaml));
         const custom = results.filter((r): r is Extract<ThemeParseResult, { ok: true }> => r.ok).map((r) => r.theme);
         const errors = results.filter((r): r is Extract<ThemeParseResult, { ok: false }> => !r.ok).map((r) => r.error);
-        setAllThemes(custom.length > 0 ? [...BUILT_IN_THEMES, ...custom] : BUILT_IN_THEMES);
+        setAllThemes(() => {
+          const base = custom.length > 0 ? [...BUILT_IN_THEMES, ...custom] : BUILT_IN_THEMES;
+          // Keep a --theme=path/to.yaml theme alive: it lives outside the
+          // config dir, so rebuilding the list from disk would drop it.
+          const cliTheme = cliThemeRef.current;
+          return cliTheme && !base.some((t) => t.id === cliTheme.id) ? [...base, cliTheme] : base;
+        });
         if (errors.length > 0) setWarnMessage(`Theme parse error:\n${errors.join('\n')}`);
       })
       .catch(() => {});
@@ -453,7 +524,9 @@ export default function App() {
         setShowExternalChangeDialog(true);
       } else {
         // No unsaved edits — reload silently then surface a dismissable banner.
-        syncThemeFromContent(newContent);
+        // Skip the frontmatter theme re-sync when a CLI --theme override is
+        // active: it supersedes the deck's theme for the whole session.
+        if (!cliThemeRef.current) syncThemeFromContent(newContent);
         setContent(newContent);
         setIsDirty(false);
         diskContentRef.current = newContent;
@@ -507,6 +580,22 @@ export default function App() {
     });
   }, [guardDirty, settings.defaultThemeId]);
 
+  // Cold-start present guards: the load must run once (applyFileContent's
+  // identity changes re-run the drain effect) and presentation must be
+  // entered exactly once (visibleSlides/handlePresentEnter identity changes
+  // re-run the auto-enter effect).
+  const coldLoadStartedRef = useRef(false);
+  const coldEnterFiredRef = useRef(false);
+  // Theme resolved from --theme, if any. Consulted by reloadCustomThemes (so
+  // a later community-theme reload doesn't drop it from allThemes) and by the
+  // watcher's silent-reload path (an external file edit re-syncing the theme
+  // from frontmatter must not clobber the CLI override mid-presentation).
+  const cliThemeRef = useRef<Theme | null>(null);
+  // Render-updated mirror of coldPresent for the audience window's
+  // tauri://error and tauri://destroyed once-handlers, whose closures
+  // outlive the render that registered them.
+  const coldPresentRef = useRef(coldPresent);
+  coldPresentRef.current = coldPresent;
   // Prevents double-exit when the audience window is closed externally while
   // handlePresentExit is already in flight.
   const isExitingRef = useRef(false);
@@ -526,6 +615,16 @@ export default function App() {
       const audienceWin = await WebviewWindow.getByLabel('audience');
       if (audienceWin) await audienceWin.close().catch(() => {});
     } catch { /* ignore */ }
+    // Cold-started session (kova --present): exiting the presentation is
+    // exiting the app — there is no editor session to return to. Release the
+    // wake lock explicitly first: cli_exit is a hard process exit, so the
+    // effect that normally releases it on presentMode→false never runs, and
+    // an orphaned macOS caffeinate child would keep the machine awake.
+    if (coldPresent) {
+      await invoke('set_wake_lock', { active: false }).catch(() => {});
+      await invoke('cli_exit', { code: 0 }).catch(() => {});
+      return;
+    }
     setPresentMode(false);
     setPresenterMode(false);
     // Land the editor on whatever slide we exited on (translate visible→full).
@@ -533,7 +632,7 @@ export default function App() {
     if (full >= 0) setCurrentSlideIndex(full);
     await getCurrentWindow().setFullscreen(false).catch(() => {});
     isExitingRef.current = false;
-  }, [slides, visibleSlides, safePresentIndex]);
+  }, [slides, visibleSlides, safePresentIndex, coldPresent]);
 
   const handlePresentEnter = useCallback(async (eOrFromCurrent?: React.MouseEvent | boolean) => {
     if (visibleSlides.length === 0) return;
@@ -634,9 +733,18 @@ export default function App() {
         });
 
         // If window creation fails, clean up the ready listener and reset state.
+        // Cold-started sessions have no editor to fall back to — report and quit.
         audienceWin.once('tauri://error', () => {
           clearTimeout(readyTimeoutId);
           unlistenReady?.();
+          if (coldPresentRef.current) {
+            invoke('set_wake_lock', { active: false }).catch(() => {});
+            invoke('cli_exit', {
+              message: 'failed to create the presentation window',
+              code: 1,
+            }).catch(() => {});
+            return;
+          }
           setPresentMode(false);
           setPresenterMode(false);
           getCurrentWindow().setFullscreen(false).catch(() => {});
@@ -650,6 +758,13 @@ export default function App() {
         audienceWin.once('tauri://destroyed', () => {
           if (isExitingRef.current) return; // normal exit already in progress
           if (presentSessionRef.current !== sessionId) return; // stale session
+          // Cold-started session: the audience window going away ends the
+          // presentation, and ending the presentation ends the app.
+          if (coldPresentRef.current) {
+            invoke('set_wake_lock', { active: false }).catch(() => {});
+            invoke('cli_exit', { code: 0 }).catch(() => {});
+            return;
+          }
           setPresentMode(false);
           setPresenterMode(false);
           getCurrentWindow().setFullscreen(false).catch(() => {});
@@ -668,6 +783,29 @@ export default function App() {
     setPresentMode(true);
     await getCurrentWindow().setFullscreen(true).catch(() => {});
   }, [slides, visibleSlides, safeSlideIndex, activeTheme, aspectRatio, docTitle, docDate, settings.presentationMode]);
+
+  // Cold-start present: enter presentation exactly once, as soon as the file
+  // content has been applied (filePath set in the same batch as content).
+  // Slide count is synchronous with content — useResolvedSlides only swaps
+  // media srcs asynchronously — so an empty visibleSlides here is a genuinely
+  // empty deck, not a deck that hasn't resolved yet. The window is hidden
+  // until this point (lib.rs setup skips show() for CLI actions); show it
+  // before entering so monitor detection and fullscreen behave normally.
+  useEffect(() => {
+    if (!coldPresent || coldEnterFiredRef.current || !filePath) return;
+    coldEnterFiredRef.current = true;
+    if (visibleSlides.length === 0) {
+      invoke('cli_exit', {
+        message: `'${filePath}' contains no visible slides`,
+        code: 1,
+      }).catch(() => {});
+      return;
+    }
+    (async () => {
+      await getCurrentWindow().show().catch(() => {});
+      await handlePresentEnter(false);
+    })();
+  }, [coldPresent, filePath, visibleSlides, handlePresentEnter]);
 
   // Prevent display sleep while presenting; release on exit.
   // Covers all exit paths (normal, error, external window close).
@@ -834,6 +972,78 @@ export default function App() {
     setMarpLoss(null);
   }, [syncThemeFromContent]);
 
+  // Cold-start present (kova --present FILE): load the file through the same
+  // post-read sequence as a normal open so docDir, theme sync, and the watcher
+  // all populate identically; the auto-enter effect below the present handlers
+  // starts the presentation once the deck is derived. Errors report to the
+  // launching terminal — the window is still hidden here, so a GUI dialog
+  // could be invisible; stderr is the CLI user's surface anyway.
+  useEffect(() => {
+    if (coldLoadStartedRef.current) return;
+    (async () => {
+      const cli = await getPendingCli();
+      if (coldLoadStartedRef.current) return;
+      // --present FILE, or standalone --check FILE (which never shows a window:
+      // the loading branch renders behind a window that lib.rs never shows, and
+      // the process exits from this effect).
+      const target = cli?.present ?? cli?.check_only;
+      if (!cli || !target) return;
+      coldLoadStartedRef.current = true;
+      setColdPresent(true);
+      // Resolve --theme before loading the deck: theme errors are fail-fast
+      // (stderr + exit 1) like a missing presentation file, and nothing has
+      // rendered yet at this point.
+      let cliTheme: Theme | null = null;
+      if (cli.theme && cli.present) {
+        cliTheme = await resolveCliTheme(cli.theme);
+        if (!cliTheme) return; // reported and exiting
+      }
+      try {
+        const text: string = await invoke('read_file', { path: target });
+        // --check: validate before anything renders. The report goes to
+        // stdout (it is data; errors about the invocation itself go to
+        // stderr). Standalone check exits either way; as a gate before
+        // --present, errors abort with exit 1 and warnings continue into
+        // the presentation.
+        if (cli.check || cli.check_only) {
+          const diags = await collectDiagnostics(text, {
+            docDir: dirOf(target),
+            themeIds: await knownThemeIds(),
+            fileExists: (p) =>
+              invoke<boolean>('path_exists', { path: p }).then(Boolean).catch(() => false),
+          });
+          const { report, errors } = formatCheckReport(target, diags);
+          await invoke('cli_stdout', { text: report }).catch(() => {});
+          if (cli.check_only || errors > 0) {
+            await invoke('cli_exit', { code: errors > 0 ? 1 : 0 }).catch(() => {});
+            return;
+          }
+        }
+        await invoke('stop_watching').catch(() => {});
+        await applyFileContent(text, target);
+        if (cliTheme) {
+          // --theme replaces the deck's *base* theme; frontmatter
+          // theme_overrides still apply on top. Set overrides explicitly:
+          // syncThemeFromContent (inside applyFileContent) skips them when
+          // the frontmatter theme is missing from the library, and that
+          // missing-theme state is irrelevant under a CLI override.
+          cliThemeRef.current = cliTheme;
+          const id = cliTheme.id;
+          setAllThemes((prev) => prev.some((t) => t.id === id) ? prev : [...prev, cliTheme]);
+          setActiveThemeId(id);
+          setMissingThemeId(null);
+          const { frontmatter: fm } = extractFrontmatter(text);
+          setThemeOverrides(sanitiseThemeOverrides(fm.theme_overrides as Record<string, unknown> ?? {}));
+        }
+      } catch {
+        await invoke('cli_exit', {
+          message: `cannot read '${target}'`,
+          code: 1,
+        }).catch(() => {});
+      }
+    })();
+  }, [applyFileContent]);
+
   // Startup restore — only when the user has opted in via Settings. Best-effort:
   // a deleted/moved/unreadable file just leaves the app at its normal blank
   // startup state rather than surfacing an error for what is, after all, a
@@ -845,6 +1055,12 @@ export default function App() {
     const session = loadLastSession();
     if (!session) return;
     (async () => {
+      // A cold-start present (kova --present) owns this session — restoring
+      // the last file would race the CLI file's load through applyFileContent
+      // and whichever resolves last would win, possibly presenting the wrong
+      // deck. The CLI drain is cached, so this await costs one IPC roundtrip.
+      const cli = await getPendingCli();
+      if (cli?.present) return;
       try {
         const text: string = await invoke('read_file', { path: session.path });
         await applyFileContent(text, session.path);
@@ -865,8 +1081,11 @@ export default function App() {
   // when there's no open file (e.g. after File > New) rather than leaving a
   // stale pointer to whatever was open before.
   useEffect(() => {
+    // A presentation-only run (kova --present) must not clobber the editor's
+    // last-session record — the user never opened this file for editing.
+    if (coldPresent) return;
     saveLastSession(filePath ? { path: filePath, slideIndex: safeSlideIndex } : null);
-  }, [filePath, safeSlideIndex]);
+  }, [filePath, safeSlideIndex, coldPresent]);
 
   // Maintain the "Open Recent" list whenever a file becomes the open document.
   useEffect(() => {
@@ -1546,6 +1765,19 @@ export default function App() {
     present: () => { void handlePresentEnter(); },
     toggleInspector: () => setShowInspector((v) => !v),
     openSettings: () => setShowSettings(true),
+    installCli: () => {
+      void (async () => {
+        try {
+          const dir = await invoke<string>('install_cli_symlink');
+          await message(t('app.cliInstallSuccess', { dir }), { title: 'Kova' });
+        } catch (e) {
+          await message(t('app.cliInstallFailure', { command: String(e) }), {
+            title: 'Kova',
+            kind: 'error',
+          });
+        }
+      })();
+    },
   };
   const stableMenuHandlers = useRef<MacMenuHandlers>({
     newFile: () => menuHandlersRef.current.newFile(),
@@ -1564,6 +1796,7 @@ export default function App() {
     present: () => menuHandlersRef.current.present(),
     toggleInspector: () => menuHandlersRef.current.toggleInspector(),
     openSettings: () => menuHandlersRef.current.openSettings(),
+    installCli: () => menuHandlersRef.current.installCli(),
   }).current;
 
   useEffect(() => {
@@ -1572,6 +1805,7 @@ export default function App() {
       present: t('macMenu.present'),
       view: t('macMenu.view'),
       toggleInspector: t('macMenu.toggleInspector'),
+      installCli: t('macMenu.installCli'),
       file: t('app.menuFile'),
       edit: t('app.menuEdit'),
       newFile: t('app.menuNew'),
@@ -1680,19 +1914,8 @@ export default function App() {
   }, [editMenuOpen]);
 
 
-  return (
-    <I18nProvider locale={settings.locale}>
-    <div className="app">
-      {fileDragOver && !presentMode && !presenterMode && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 5000, pointerEvents: 'none',
-          border: '2px dashed #D94F00', borderRadius: 4,
-          background: 'rgba(217,79,0,0.06)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <span style={{ color: '#D94F00', fontSize: 14, fontWeight: 500 }}>{t('app.dropToOpen')}</span>
-        </div>
-      )}
+  const presentationOverlays = (
+    <>
       {presentMode && (
         <PresentationOverlay
           slides={visibleSlides}
@@ -1723,6 +1946,46 @@ export default function App() {
           onExit={handlePresentExit}
         />
       )}
+    </>
+  );
+
+  // Cold-start present (kova --present FILE): the editor chrome never mounts.
+  // Before presentation starts this renders a minimal loading surface (only
+  // visible for the instant between the window being shown and the overlay
+  // mounting); during presentation it renders just the overlays, so nothing
+  // editor-shaped can flash behind them or during exit.
+  if (coldPresent) {
+    return (
+      <I18nProvider locale={settings.locale}>
+        <div className="app">
+          {presentationOverlays}
+          {!presentMode && !presenterMode && (
+            <div style={{
+              height: '100vh',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span style={{ opacity: 0.6, fontSize: 14 }}>{t('app.presentLoading')}</span>
+            </div>
+          )}
+        </div>
+      </I18nProvider>
+    );
+  }
+
+  return (
+    <I18nProvider locale={settings.locale}>
+    <div className="app">
+      {fileDragOver && !presentMode && !presenterMode && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 5000, pointerEvents: 'none',
+          border: '2px dashed #D94F00', borderRadius: 4,
+          background: 'rgba(217,79,0,0.06)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <span style={{ color: '#D94F00', fontSize: 14, fontWeight: 500 }}>{t('app.dropToOpen')}</span>
+        </div>
+      )}
+      {presentationOverlays}
       <div className="app-toolbar">
         {/* macOS uses native traffic lights (titleBarStyle: Overlay) + the native
             menu bar, so reserve a draggable strip for the lights and drop the

@@ -258,6 +258,9 @@ const en = {
   app: {
     connecting: 'Connecting…',
     dropToOpen: 'Drop to open',
+    presentLoading: 'Preparing presentation…',
+    cliInstallSuccess: "The 'kova' command was installed to {{dir}}. Newly opened terminals can now run kova.",
+    cliInstallFailure: "Couldn't install the 'kova' command automatically. Run this in a terminal instead:\n\n{{command}}",
     menuFile: 'File',
     menuEdit: 'Edit',
     menuNew: 'New',
@@ -336,6 +339,7 @@ const en = {
     present: 'Present',
     view: 'View',
     toggleInspector: 'Toggle Inspector',
+    installCli: "Install 'kova' Command in PATH",
   },
   settings: {
     windowTitle: 'Settings',

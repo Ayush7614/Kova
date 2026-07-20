@@ -27,12 +27,14 @@ export interface MacMenuHandlers {
   present: () => void;
   toggleInspector: () => void;
   openSettings: () => void;
+  installCli: () => void;
 }
 
 export interface MacMenuLabels {
   present: string;
   view: string;
   toggleInspector: string;
+  installCli: string;
   file: string;
   edit: string;
   newFile: string;
@@ -72,6 +74,7 @@ export async function buildMacMenu(h: MacMenuHandlers, recents: string[], labels
           { item: { About: { name: 'Kova', version } } },
           { item: 'Separator' },
           { text: 'Settings…', accelerator: 'CmdOrCtrl+,', action: () => h.openSettings() },
+          { text: labels.installCli, action: () => h.installCli() },
           { item: 'Separator' },
           { item: 'Services' },
           { item: 'Separator' },

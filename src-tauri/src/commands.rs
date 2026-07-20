@@ -40,6 +40,10 @@ pub struct AppState {
     /// `RunEvent::Opened`) before the frontend mounted its listener. Drained
     /// once on startup by `take_pending_open`.
     pub pending_open: Mutex<Vec<String>>,
+    /// CLI action (`--present` / `--check` / `--theme`) parsed at startup by
+    /// `cli::startup`, before the webview exists. Drained once on startup by
+    /// `take_pending_cli`.
+    pub pending_cli: Mutex<Option<crate::cli::PendingCli>>,
     /// Unix-millisecond deadline before which the watcher should suppress
     /// file-changed events — set by write_file to swallow events caused by
     /// Kova's own atomic rename rather than a genuine external edit.
