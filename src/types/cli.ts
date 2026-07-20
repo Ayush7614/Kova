@@ -15,6 +15,16 @@ export interface PendingImport {
   output: string;
 }
 
+export type CliExportFormat = 'pptx' | 'pdf';
+
+export interface PendingExport {
+  format: CliExportFormat;
+  /** Canonicalised path — must already exist, unlike import's url case. */
+  input: string;
+  /** Absolute path — not required to exist yet, it's the file being written. */
+  output: string;
+}
+
 export interface PendingCli {
   /** Canonicalised absolute path to present (`kova --present FILE`). */
   present: string | null;
@@ -26,4 +36,6 @@ export interface PendingCli {
   check_only: string | null;
   /** `kova --import marp|pptx|url IN OUT`. */
   import: PendingImport | null;
+  /** `kova --export pptx|pdf IN OUT`. */
+  export: PendingExport | null;
 }

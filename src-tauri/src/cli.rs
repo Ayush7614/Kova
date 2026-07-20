@@ -2,10 +2,7 @@
 //!
 //! Grammar: at most one action per invocation (`--present`, `--import`,
 //! `--export`, or standalone `--check FILE`) plus modifiers (`--theme`,
-//! `--check`) that combine with an action in any order. `--export` parses
-//! fully but is rejected as "not available in this version" until the
-//! export engine work lands, so the grammar stays stable and scripts fail
-//! loudly rather than misparsing.
+//! `--check`) that combine with an action in any order.
 //!
 //! `parse_cli_args` is pure (no filesystem, no exit) so the grammar is unit
 //! testable; `startup` wraps it with the process-level concerns: printing,
@@ -32,6 +29,7 @@ pub struct PendingCli {
     pub check: bool,
     pub check_only: Option<String>,
     pub import: Option<PendingImport>,
+    pub export: Option<PendingExport>,
 }
 
 /// `--import <format> <input> <output>`, resolved for the frontend. `input`
@@ -44,6 +42,16 @@ pub struct PendingCli {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PendingImport {
     pub format: ImportFormat,
+    pub input: String,
+    pub output: String,
+}
+
+/// `--export <format> <input> <output>`. Unlike import, `input` is always a
+/// local Markdown file — canonicalised, must already exist. `output` is
+/// absolutized like `PendingImport`'s.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PendingExport {
+    pub format: ExportFormat,
     pub input: String,
     pub output: String,
 }
@@ -66,9 +74,6 @@ pub struct RunArgs {
     pub open: Vec<String>,
 }
 
-// Export is parsed for grammar stability but rejected until Track 2
-// implements it, so its payload fields are not read yet.
-#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum Action {
     Present(String),
@@ -87,8 +92,10 @@ pub enum ImportFormat {
     Url,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, PartialEq)]
+/// Serialises as a bare lowercase string ("pptx"/"pdf") — same reasoning as
+/// `ImportFormat` above.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
     Pptx,
     Pdf,
@@ -114,8 +121,6 @@ Modifiers (combine with an action, any order):
 Other:
   -h, --help            show this help
   --version             show version
-
---export is not available in this version.
 ";
 
 pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
@@ -251,9 +256,6 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
         if action.is_none() {
             return CliArgs::Error("--theme requires --present, --import, or --export".into());
         }
-        if matches!(action, Some(Action::Export { .. })) {
-            return CliArgs::Error("--export is not available in this version".into());
-        }
         CliArgs::Run(RunArgs { action, theme, check, open: Vec::new() })
     } else {
         // Plain editor launch: positionals are files to open. Unknown
@@ -362,8 +364,12 @@ fn resolve(run: RunArgs) -> Startup {
             };
             pending.import = Some(PendingImport { format, input, output: absolutize(&output) });
         }
-        // Rejected with "not available" during parse.
-        Some(Action::Export { .. }) => unreachable!(),
+        Some(Action::Export { format, input, output }) => {
+            // Unlike import's url case, export's input is always a local
+            // Markdown file that must already exist.
+            let input = canonicalise_or_exit(&input, "cannot open");
+            pending.export = Some(PendingExport { format, input, output: absolutize(&output) });
+        }
         None => {}
     }
     pending.theme = run.theme.map(|theme| match theme {
@@ -373,8 +379,10 @@ fn resolve(run: RunArgs) -> Startup {
         named => named,
     });
 
-    let cli_active =
-        pending.present.is_some() || pending.check_only.is_some() || pending.import.is_some();
+    let cli_active = pending.present.is_some()
+        || pending.check_only.is_some()
+        || pending.import.is_some()
+        || pending.export.is_some();
     // Editor launch keeps the pre-CLI behaviour: arguments that don't exist
     // on disk are silently ignored rather than failing the launch.
     let open = run
@@ -556,10 +564,28 @@ mod tests {
     }
 
     #[test]
-    fn export_parses_then_reports_unavailable() {
+    fn export_parses_successfully() {
+        let run = expect_run(&["--export", "pdf", "in.md", "out.pdf"]);
         assert_eq!(
-            expect_error(&["--export", "pdf", "in.md", "out.pdf"]),
-            "--export is not available in this version"
+            run.action,
+            Some(Action::Export {
+                format: ExportFormat::Pdf,
+                input: "in.md".into(),
+                output: "out.pdf".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn export_pptx_format_parses() {
+        let run = expect_run(&["--export", "pptx", "in.md", "out.pptx"]);
+        assert_eq!(
+            run.action,
+            Some(Action::Export {
+                format: ExportFormat::Pptx,
+                input: "in.md".into(),
+                output: "out.pptx".into(),
+            })
         );
     }
 
