@@ -11,6 +11,7 @@ import { queuedMermaidRender } from '../../engine/export/mermaidRenderQueue';
 import { useT } from '../../i18n';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { SlideCtx } from './slideContext';
+import { hasLeadingMermaidConfig } from './mermaidConfig';
 
 // Parse an image title like "50%" or "300px" into an inline width style.
 // Returning a style disables the default max-height cap on the wrapper.
@@ -436,9 +437,9 @@ export function MermaidDiagram({ value, caption }: { value: string; caption?: st
     setSvg('');
     setMermaidError('');
     // Sanitize first: strip any user-supplied securityLevel override, then
-    // prepend theme init when no custom pragma is present.
+    // prepend theme init only when the diagram has no leading Mermaid config.
     const sanitized = sanitizeMermaidSource(value);
-    const src = sanitized.trimStart().startsWith('%%{') ? sanitized : mermaidInit + sanitized;
+    const src = hasLeadingMermaidConfig(sanitized) ? sanitized : mermaidInit + sanitized;
     const renderId = `${baseId}-${++counter.current}`;
     queuedMermaidRender(renderId, src)
       .then(({ svg: out }: { svg: string }) => {
