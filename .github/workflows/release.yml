@@ -36,6 +36,7 @@ jobs:
             - `kova --export pptx|pdf IN OUT` — export a deck straight from the terminal, via the same pipeline as the Present/Export buttons.
             - `kova --help` / `kova --version`.
             - Windows installs now register `kova` on PATH automatically. On **macOS**, run **Kova → Install 'kova' Command in PATH** from the app's menu bar once to make it available in Terminal — this is a deliberate, user-initiated step (same pattern as VS Code's "install shell command"), not automatic.
+            - Full usage guide: [wiki.kova.md/command-line](https://wiki.kova.md/command-line).
 
           ### Security
           - **Fixed** an SSRF guard bypass in the URL fetcher behind "Import from URL" and remote image embeds: private/loopback hostnames were blocked, but a URL whose host was already an IP literal (`http://127.0.0.1/...`, cloud metadata's `http://169.254.169.254/...`) skipped the guard entirely. Found while building the CLI's `--import url` path; both IPv4 and IPv6 loopback are now rejected, including via redirects.
