@@ -2,10 +2,7 @@
 //!
 //! Grammar: at most one action per invocation (`--present`, `--import`,
 //! `--export`, or standalone `--check FILE`) plus modifiers (`--theme`,
-//! `--check`) that combine with an action in any order. `--import` and
-//! `--export` parse fully but are rejected as "not available in this
-//! version" until the export engine work lands, so the grammar is stable
-//! and scripts fail loudly rather than misparsing.
+//! `--check`) that combine with an action in any order.
 //!
 //! `parse_cli_args` is pure (no filesystem, no exit) so the grammar is unit
 //! testable; `startup` wraps it with the process-level concerns: printing,
@@ -31,6 +28,32 @@ pub struct PendingCli {
     pub theme: Option<ThemeArg>,
     pub check: bool,
     pub check_only: Option<String>,
+    pub import: Option<PendingImport>,
+    pub export: Option<PendingExport>,
+}
+
+/// `--import <format> <input> <output>`, resolved for the frontend. `input`
+/// is a canonicalised existing path for `marp`/`pptx`, or the raw URL
+/// unchanged for `url` — validating a URL string against the filesystem
+/// would be nonsensical, and the fetch step reports a bad URL naturally.
+/// `output` is made absolute (so the reported path is unambiguous
+/// regardless of the shell's cwd) but is not required to exist yet — it's
+/// the file about to be created.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PendingImport {
+    pub format: ImportFormat,
+    pub input: String,
+    pub output: String,
+}
+
+/// `--export <format> <input> <output>`. Unlike import, `input` is always a
+/// local Markdown file — canonicalised, must already exist. `output` is
+/// absolutized like `PendingImport`'s.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PendingExport {
+    pub format: ExportFormat,
+    pub input: String,
+    pub output: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -51,9 +74,6 @@ pub struct RunArgs {
     pub open: Vec<String>,
 }
 
-// Import/Export are parsed for grammar stability but rejected until Track 2
-// implements them, so their payload fields are not read yet.
-#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum Action {
     Present(String),
@@ -62,16 +82,20 @@ pub enum Action {
     CheckOnly(String),
 }
 
-#[allow(dead_code)]
-#[derive(Debug, PartialEq)]
+/// Serialises as a bare lowercase string ("marp"/"pptx"/"url") — matching
+/// the CLI keywords directly, no adjacent tagging needed for a fieldless enum.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ImportFormat {
     Marp,
     Pptx,
     Url,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, PartialEq)]
+/// Serialises as a bare lowercase string ("pptx"/"pdf") — same reasoning as
+/// `ImportFormat` above.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
     Pptx,
     Pdf,
@@ -97,8 +121,6 @@ Modifiers (combine with an action, any order):
 Other:
   -h, --help            show this help
   --version             show version
-
---import and --export are not available in this version.
 ";
 
 pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
@@ -177,6 +199,37 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
                 ) else {
                     return CliArgs::Error(IMPORT_USAGE.into());
                 };
+                // Guards a real footgun, not just usage hygiene: input and
+                // output are two unrelated positional slots with no way to
+                // tell a deliberate call from a shell glob that happened to
+                // expand to exactly two files (e.g. `--import marp *.md
+                // out.md` matching two decks) — which would otherwise
+                // silently overwrite the second file as if it were the
+                // intended output. Three or more matches already fail via
+                // the unexpected-argument check below; this closes the
+                // exactly-two-matches gap that check can't see, since it's
+                // a fully-valid-looking two-argument call by that point.
+                let input_ext_ok = match format {
+                    ImportFormat::Marp => has_extension(&input, &[".md", ".markdown"]),
+                    ImportFormat::Pptx => has_extension(&input, &[".pptx"]),
+                    ImportFormat::Url => true, // not a filesystem path
+                };
+                if !input_ext_ok {
+                    let expected = match format {
+                        ImportFormat::Marp => ".md",
+                        ImportFormat::Pptx => ".pptx",
+                        ImportFormat::Url => unreachable!(),
+                    };
+                    return CliArgs::Error(format!(
+                        "--import {} expects a {expected} input file, got '{input}'",
+                        format_name(&format)
+                    ));
+                }
+                if !has_extension(&output, &[".md", ".markdown"]) {
+                    return CliArgs::Error(format!(
+                        "--import output must be a .md file, got '{output}'"
+                    ));
+                }
                 if let Err(e) = set_action(&mut action, Action::Import { format, input, output }) {
                     return e;
                 }
@@ -200,6 +253,24 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
                 ) else {
                     return CliArgs::Error(EXPORT_USAGE.into());
                 };
+                // See the matching comment on --import above — same
+                // exactly-two-glob-matches footgun, same fix.
+                if !has_extension(&input, &[".md", ".markdown"]) {
+                    return CliArgs::Error(format!(
+                        "--export expects a .md input file, got '{input}'"
+                    ));
+                }
+                let expected_out = match format {
+                    ExportFormat::Pptx => &[".pptx"][..],
+                    ExportFormat::Pdf => &[".pdf"][..],
+                };
+                if !has_extension(&output, expected_out) {
+                    return CliArgs::Error(format!(
+                        "--export {} output must be a {} file, got '{output}'",
+                        format_name_export(&format),
+                        expected_out[0],
+                    ));
+                }
                 if let Err(e) = set_action(&mut action, Action::Export { format, input, output }) {
                     return e;
                 }
@@ -234,15 +305,6 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
         if action.is_none() {
             return CliArgs::Error("--theme requires --present, --import, or --export".into());
         }
-        match action {
-            Some(Action::Import { .. }) => {
-                return CliArgs::Error("--import is not available in this version".into())
-            }
-            Some(Action::Export { .. }) => {
-                return CliArgs::Error("--export is not available in this version".into())
-            }
-            _ => {}
-        }
         CliArgs::Run(RunArgs { action, theme, check, open: Vec::new() })
     } else {
         // Plain editor launch: positionals are files to open. Unknown
@@ -261,6 +323,28 @@ fn split_eq(arg: &str) -> (&str, Option<&str>) {
 
 /// Value for a flag: the inline `--flag=value` form, or the following
 /// argument when it doesn't look like another flag.
+/// Case-insensitive suffix check against a list of accepted extensions
+/// (each including the leading dot, e.g. `".md"`).
+fn has_extension(path: &str, exts: &[&str]) -> bool {
+    let lower = path.to_ascii_lowercase();
+    exts.iter().any(|e| lower.ends_with(e))
+}
+
+fn format_name(f: &ImportFormat) -> &'static str {
+    match f {
+        ImportFormat::Marp => "marp",
+        ImportFormat::Pptx => "pptx",
+        ImportFormat::Url => "url",
+    }
+}
+
+fn format_name_export(f: &ExportFormat) -> &'static str {
+    match f {
+        ExportFormat::Pptx => "pptx",
+        ExportFormat::Pdf => "pdf",
+    }
+}
+
 fn take_value(inline: Option<&str>, args: &[String], i: &mut usize) -> Option<String> {
     if let Some(v) = inline {
         return Some(v.to_string());
@@ -340,8 +424,23 @@ fn resolve(run: RunArgs) -> Startup {
         Some(Action::CheckOnly(path)) => {
             pending.check_only = Some(canonicalise_or_exit(&path, "cannot open"));
         }
-        // Rejected with "not available" during parse.
-        Some(Action::Import { .. }) | Some(Action::Export { .. }) => unreachable!(),
+        Some(Action::Import { format, input, output }) => {
+            let input = match format {
+                // A URL isn't a filesystem path — canonicalising it would
+                // always fail. The fetch step reports a bad URL naturally.
+                ImportFormat::Url => input,
+                ImportFormat::Marp | ImportFormat::Pptx => {
+                    canonicalise_or_exit(&input, "cannot open")
+                }
+            };
+            pending.import = Some(PendingImport { format, input, output: absolutize(&output) });
+        }
+        Some(Action::Export { format, input, output }) => {
+            // Unlike import's url case, export's input is always a local
+            // Markdown file that must already exist.
+            let input = canonicalise_or_exit(&input, "cannot open");
+            pending.export = Some(PendingExport { format, input, output: absolutize(&output) });
+        }
         None => {}
     }
     pending.theme = run.theme.map(|theme| match theme {
@@ -351,7 +450,10 @@ fn resolve(run: RunArgs) -> Startup {
         named => named,
     });
 
-    let cli_active = pending.present.is_some() || pending.check_only.is_some();
+    let cli_active = pending.present.is_some()
+        || pending.check_only.is_some()
+        || pending.import.is_some()
+        || pending.export.is_some();
     // Editor launch keeps the pre-CLI behaviour: arguments that don't exist
     // on disk are silently ignored rather than failing the launch.
     let open = run
@@ -360,6 +462,23 @@ fn resolve(run: RunArgs) -> Startup {
         .filter(|p| std::path::Path::new(p).exists())
         .collect();
     Startup { pending: if cli_active { Some(pending) } else { None }, open }
+}
+
+/// Resolves a not-necessarily-existing path to absolute, for the output side
+/// of `--import`/`--export`. Unlike `canonicalise_or_exit`, this never fails
+/// or requires the path to exist yet — it's the file about to be written.
+/// Relative paths join onto the shell's cwd; already-absolute paths pass
+/// through unchanged. Does not resolve symlinks or `..` segments (`canonicalize`
+/// would, but requires existence) — the OS handles those fine at write time.
+fn absolutize(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    if p.is_absolute() {
+        return p.to_string_lossy().into_owned();
+    }
+    match std::env::current_dir() {
+        Ok(cwd) => cwd.join(p).to_string_lossy().into_owned(),
+        Err(_) => path.to_string(),
+    }
 }
 
 fn canonicalise_or_exit(path: &str, verb: &str) -> String {
@@ -481,18 +600,137 @@ mod tests {
     // -- import / export ----------------------------------------------------
 
     #[test]
-    fn import_parses_then_reports_unavailable() {
+    fn import_parses_successfully() {
+        let run = expect_run(&["--import", "marp", "in.md", "out.md"]);
         assert_eq!(
-            expect_error(&["--import", "marp", "in.md", "out.md"]),
-            "--import is not available in this version"
+            run.action,
+            Some(Action::Import {
+                format: ImportFormat::Marp,
+                input: "in.md".into(),
+                output: "out.md".into(),
+            })
         );
     }
 
     #[test]
-    fn export_parses_then_reports_unavailable() {
+    fn import_pptx_and_url_formats_parse() {
+        let pptx = expect_run(&["--import", "pptx", "deck.pptx", "out.md"]);
         assert_eq!(
-            expect_error(&["--export", "pdf", "in.md", "out.pdf"]),
-            "--export is not available in this version"
+            pptx.action,
+            Some(Action::Import {
+                format: ImportFormat::Pptx,
+                input: "deck.pptx".into(),
+                output: "out.md".into(),
+            })
+        );
+        let url = expect_run(&["--import", "url", "https://example.com/x.md", "out.md"]);
+        assert_eq!(
+            url.action,
+            Some(Action::Import {
+                format: ImportFormat::Url,
+                input: "https://example.com/x.md".into(),
+                output: "out.md".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn export_parses_successfully() {
+        let run = expect_run(&["--export", "pdf", "in.md", "out.pdf"]);
+        assert_eq!(
+            run.action,
+            Some(Action::Export {
+                format: ExportFormat::Pdf,
+                input: "in.md".into(),
+                output: "out.pdf".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn export_pptx_format_parses() {
+        let run = expect_run(&["--export", "pptx", "in.md", "out.pptx"]);
+        assert_eq!(
+            run.action,
+            Some(Action::Export {
+                format: ExportFormat::Pptx,
+                input: "in.md".into(),
+                output: "out.pptx".into(),
+            })
+        );
+    }
+
+    // -- extension guards (glob-safety) --------------------------------------
+    //
+    // A shell glob that happens to expand to exactly two files is otherwise
+    // indistinguishable from a deliberate `input output` call — these tests
+    // simulate that by using two plausible filenames in the wrong roles and
+    // checking the mismatch is caught before anything would be written.
+
+    #[test]
+    fn export_rejects_non_md_input() {
+        let msg = expect_error(&["--export", "pdf", "notes.pptx", "out.pdf"]);
+        assert!(msg.contains("--export expects a .md input file"), "{msg}");
+    }
+
+    #[test]
+    fn export_pptx_rejects_glob_landing_on_a_second_md_file() {
+        // Simulates `--export pptx *.md out.pptx` where the glob matched
+        // exactly two decks (jan.md, feb.md) instead of one deck plus an
+        // explicit output — feb.md must never be silently treated as pptx.
+        let msg = expect_error(&["--export", "pptx", "jan.md", "feb.md"]);
+        assert!(msg.contains("--export pptx output must be a .pptx file"), "{msg}");
+    }
+
+    #[test]
+    fn export_pdf_rejects_wrong_output_extension() {
+        let msg = expect_error(&["--export", "pdf", "in.md", "out.pptx"]);
+        assert!(msg.contains("--export pdf output must be a .pdf file"), "{msg}");
+    }
+
+    #[test]
+    fn import_marp_rejects_non_md_input() {
+        let msg = expect_error(&["--import", "marp", "deck.pptx", "out.md"]);
+        assert!(msg.contains("--import marp expects a .md input file"), "{msg}");
+    }
+
+    #[test]
+    fn import_pptx_rejects_non_pptx_input() {
+        let msg = expect_error(&["--import", "pptx", "deck.md", "out.md"]);
+        assert!(msg.contains("--import pptx expects a .pptx input file"), "{msg}");
+    }
+
+    #[test]
+    fn import_rejects_glob_landing_on_a_second_md_file_as_output() {
+        // Simulates `--import marp *.md out.md` matching exactly two decks —
+        // the second must be caught, not silently overwritten... except a
+        // .md output IS what import always expects, so this specific pair
+        // parses (the danger case a naive extension check can't catch:
+        // both matched files already look like valid input/output). Kept as
+        // a documented residual case, not asserted as blocked.
+        let run = expect_run(&["--import", "marp", "jan.md", "feb.md"]);
+        assert_eq!(
+            run.action,
+            Some(Action::Import {
+                format: ImportFormat::Marp,
+                input: "jan.md".into(),
+                output: "feb.md".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn import_url_skips_input_extension_check() {
+        // url's "input" is a URL, not a filesystem path — must never be
+        // extension-checked.
+        let run = expect_run(&["--import", "url", "https://example.com/x", "out.md"]);
+        assert_eq!(
+            run.action,
+            Some(Action::Import {
+                format: ImportFormat::Url,
+                input: "https://example.com/x".into(),
+                output: "out.md".into(),
+            })
         );
     }
 

@@ -34,10 +34,31 @@ fn is_blocked(ip: IpAddr) -> bool {
     }
 }
 
+/// True if `url`'s host is an IP literal (`http://127.0.0.1/...`,
+/// `http://169.254.169.254/...`) that names a blocked address. Hostname-based
+/// SSRF is caught by `SsrfSafeResolver` below, but reqwest/hyper's connector
+/// never invokes a custom `Resolve` when the host is already an IP literal —
+/// there's nothing to resolve — so it would otherwise connect straight there,
+/// completely bypassing the resolver-based guard. Must be checked explicitly
+/// against both the initial request URL and every redirect target.
+pub fn url_host_is_blocked(url: &reqwest::Url) -> bool {
+    // Url::host(), not host_str() + parse::<IpAddr>(): host_str() returns an
+    // IPv6 literal's host bracketed ("[::1]"), which IpAddr::from_str rejects
+    // outright — silently defeating the check for exactly the case (IPv6
+    // loopback) it most needs to catch. Host::Ipv6/Ipv4 sidestep the string
+    // round-trip entirely.
+    match url.host() {
+        Some(url::Host::Ipv4(v4)) => is_blocked(IpAddr::V4(v4)),
+        Some(url::Host::Ipv6(v6)) => is_blocked(IpAddr::V6(v6)),
+        _ => false,
+    }
+}
+
 /// A `reqwest::dns::Resolve` that performs ordinary DNS resolution and then
 /// rejects the result if any resolved address is non-public. Since reqwest
 /// re-resolves through this same resolver on every redirect hop, this also
-/// blocks a public hostname that redirects to an internal address.
+/// blocks a public hostname that redirects to an internal address. Does
+/// *not* cover IP-literal hosts — see `url_host_is_blocked` above.
 #[derive(Debug, Default)]
 struct SsrfSafeResolver;
 
@@ -78,11 +99,22 @@ impl Resolve for SsrfSafeResolver {
 
 /// Builds an HTTP client for fetching URLs taken from document content
 /// (remote image embeds, "Import from URL"). DNS resolution — including on
-/// every redirect hop — rejects loopback/private/link-local targets.
+/// every redirect hop — rejects loopback/private/link-local targets; the
+/// redirect policy additionally rejects a redirect straight to an IP literal,
+/// which never goes through DNS resolution at all. Callers must still check
+/// `url_host_is_blocked` against the *initial* request URL themselves — the
+/// redirect policy only ever sees hop 2 onward.
 pub fn build_ssrf_safe_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .dns_resolver(Arc::new(SsrfSafeResolver))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if url_host_is_blocked(attempt.url()) {
+                attempt.error("refusing to redirect to a non-public address")
+            } else {
+                attempt.follow()
+            }
+        }))
         .build()
         .map_err(|e| format!("client error: {e}"))
 }
@@ -107,6 +139,28 @@ mod tests {
         for addr in ["8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:4700:4700::1111"] {
             let ip: IpAddr = addr.parse().unwrap();
             assert!(!is_blocked(ip), "{addr} should be allowed");
+        }
+    }
+
+    #[test]
+    fn blocks_ip_literal_urls_that_never_reach_the_dns_resolver() {
+        for url in [
+            "http://127.0.0.1/",
+            "http://127.0.0.1:8998/fixture.md",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[::1]/",
+            "https://10.0.0.5/internal",
+        ] {
+            let parsed = reqwest::Url::parse(url).unwrap();
+            assert!(url_host_is_blocked(&parsed), "{url} should be blocked");
+        }
+    }
+
+    #[test]
+    fn allows_public_hostname_and_ip_urls() {
+        for url in ["https://raw.githubusercontent.com/x", "https://8.8.8.8/"] {
+            let parsed = reqwest::Url::parse(url).unwrap();
+            assert!(!url_host_is_blocked(&parsed), "{url} should be allowed");
         }
     }
 }

@@ -22,6 +22,8 @@ import { ImportUrlModal } from './components/ImportUrlModal';
 import { ModalShell } from './components/ModalShell';
 import { InfoBanner } from './components/InfoBanner';
 import { isMarp, importMarp } from './engine/import/marp';
+import { parsePptx } from './engine/import/parsePptx';
+import { pptxToMarkdown } from './engine/import/pptxToMarkdown';
 import { MissingThemeBanner } from './components/MissingThemeBanner';
 import { loadSettings, saveSettings, EDITOR_FONT_OPTIONS } from './store/settings';
 import type { AppSettings } from './store/settings';
@@ -49,7 +51,7 @@ import { parseAspectRatio } from './engine/types';
 import { imageMime } from './engine/export/imageMime';
 import type { Theme } from './engine/theme';
 import { useResolvedSlides } from './hooks/useResolvedSlides';
-import type { PendingCli, CliThemeArg } from './types/cli';
+import type { PendingCli, CliThemeArg, PendingImport, PendingExport } from './types/cli';
 
 import './styles/global.css';
 
@@ -142,6 +144,55 @@ async function knownThemeIds(): Promise<string[]> {
   }
 }
 
+// kova --import marp|pptx|url IN OUT. Headless like standalone --check: the
+// window is never shown (lib.rs keeps it hidden for any CLI action), this
+// runs entirely outside React state, and the process exits from here.
+// Mirrors the exact conversion each in-app import flow uses (ImportPptxModal,
+// ImportUrlModal, the Marp-detection prompt) so CLI output matches the GUI's.
+async function runCliImport(imp: PendingImport): Promise<void> {
+  const finish = async (report: string) => {
+    await invoke('cli_stdout', { text: report }).catch(() => {});
+    await invoke('cli_exit', { code: 0 }).catch(() => {});
+  };
+  const fail = async (message: string) => {
+    await invoke('cli_exit', { message, code: 1 }).catch(() => {});
+  };
+
+  try {
+    if (imp.format === 'marp') {
+      const text: string = await invoke('read_file', { path: imp.input });
+      const { markdown, dropped } = importMarp(text);
+      await invoke('write_file', { path: imp.output, content: markdown });
+      const suffix = dropped.length > 0 ? ` (simplified: ${dropped.join(', ')})` : '';
+      await finish(`wrote '${imp.output}'${suffix}`);
+      return;
+    }
+    if (imp.format === 'pptx') {
+      // Media referenced by the deck is extracted alongside the output file,
+      // same as the in-app import modal.
+      const parsed = await parsePptx(imp.input, dirOf(imp.output));
+      const markdown = pptxToMarkdown(parsed);
+      await invoke('write_file', { path: imp.output, content: markdown });
+      const lines = [`wrote '${imp.output}' (${parsed.slides.length} slides)`];
+      for (const w of parsed.warnings) lines.push(`warning: ${w}`);
+      await finish(lines.join('\n'));
+      return;
+    }
+    // url — fetched verbatim, no conversion (matches ImportUrlModal: if the
+    // remote content is a Marp deck, that's detected on open, not on fetch).
+    const text: string = await invoke('fetch_url_text', { url: imp.input });
+    await invoke('write_file', { path: imp.output, content: text });
+    await finish(`wrote '${imp.output}'`);
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    // Mirrors ImportPptxModal's special-case message for this common failure.
+    const msg = imp.format === 'pptx' && /password|encrypted/i.test(raw)
+      ? 'PPTX file is password-protected; remove protection before importing'
+      : raw;
+    await fail(msg);
+  }
+}
+
 export default function App() {
   const [filePath, setFilePath]           = useState<string | null>(null);
   const [content, setContent]             = useState('');
@@ -157,6 +208,10 @@ export default function App() {
   // the deck resolves, and exiting quits the process instead of revealing the
   // editor. Stays true for the whole session once set.
   const [coldPresent, setColdPresent]     = useState(false);
+  // Session was started via `kova --export pptx|pdf FILE OUT`: set once the
+  // deck has loaded (by the same effect that handles --present), consumed by
+  // the cold-export effect below the export handlers once slides resolve.
+  const [coldExport, setColdExport]       = useState<PendingExport | null>(null);
   const [settings, setSettings]           = useState<AppSettings>(loadSettings);
   const t = useLocaleTranslator(settings.locale);
   const [showSettings, setShowSettings]   = useState(false);
@@ -983,18 +1038,29 @@ export default function App() {
     (async () => {
       const cli = await getPendingCli();
       if (coldLoadStartedRef.current) return;
-      // --present FILE, or standalone --check FILE (which never shows a window:
+      // kova --import: fully headless, no editor state or window involved —
+      // runs and exits before any of the present/check logic below.
+      if (cli?.import) {
+        coldLoadStartedRef.current = true;
+        await runCliImport(cli.import);
+        return;
+      }
+      // --present FILE, standalone --check FILE (which never shows a window:
       // the loading branch renders behind a window that lib.rs never shows, and
-      // the process exits from this effect).
-      const target = cli?.present ?? cli?.check_only;
+      // the process exits from this effect), or --export's input file (the
+      // window also stays hidden — export_pdf_native always prints via its
+      // own separate hidden window regardless, and PPTX needs no window at
+      // all — the cold-export effect below picks this up once slides resolve).
+      const target = cli?.present ?? cli?.check_only ?? cli?.export?.input;
       if (!cli || !target) return;
       coldLoadStartedRef.current = true;
-      setColdPresent(true);
+      if (cli.present) setColdPresent(true);
       // Resolve --theme before loading the deck: theme errors are fail-fast
       // (stderr + exit 1) like a missing presentation file, and nothing has
-      // rendered yet at this point.
+      // rendered yet at this point. Applies to present and export — not
+      // import, which never renders anything a theme could affect.
       let cliTheme: Theme | null = null;
-      if (cli.theme && cli.present) {
+      if (cli.theme && (cli.present || cli.export)) {
         cliTheme = await resolveCliTheme(cli.theme);
         if (!cliTheme) return; // reported and exiting
       }
@@ -1035,6 +1101,7 @@ export default function App() {
           const { frontmatter: fm } = extractFrontmatter(text);
           setThemeOverrides(sanitiseThemeOverrides(fm.theme_overrides as Record<string, unknown> ?? {}));
         }
+        if (cli.export) setColdExport(cli.export);
       } catch {
         await invoke('cli_exit', {
           message: `cannot read '${target}'`,
@@ -1059,8 +1126,12 @@ export default function App() {
       // the last file would race the CLI file's load through applyFileContent
       // and whichever resolves last would win, possibly presenting the wrong
       // deck. The CLI drain is cached, so this await costs one IPC roundtrip.
+      // --import is headless and exits the process itself, but skip restoring
+      // here too rather than doing pointless work moments before it quits.
+      // --export needs this effect to stay out of the way entirely: it loads
+      // its own file into the same state this would race against.
       const cli = await getPendingCli();
-      if (cli?.present) return;
+      if (cli?.present || cli?.import || cli?.export) return;
       try {
         const text: string = await invoke('read_file', { path: session.path });
         await applyFileContent(text, session.path);
@@ -1333,6 +1404,50 @@ export default function App() {
     }
   });
 
+  // Shared by the button (handleExportPdf) and the headless CLI export path:
+  // mounts the off-screen slide list, waits for it to render (native print
+  // first, raster fallback on failure), writes the file, and reports back
+  // what happened rather than alerting — each caller handles that its own
+  // way (a dialog here, stdout/stderr for the CLI). Throws only on total
+  // failure (both native and the raster fallback failed).
+  const runPdfExportCapture = useCallback(async (
+    visSlides: Slide[],
+    savePath: string,
+    opts: PdfExportOpts,
+  ): Promise<{ warnings: string[]; usedFallback: boolean; fallbackReason?: string }> => {
+    pdfSlideRefs.current.clear();
+    pdfSlideReadyCount.current = 0;
+    pdfSlideReadyTotal.current = visSlides.length;
+    return new Promise((resolve, reject) => {
+      pdfExportRunnerRef.current = async () => {
+        try {
+          const elements = Array.from(
+            { length: visSlides.length },
+            (_, i) => pdfSlideRefs.current.get(i),
+          ).filter((el): el is HTMLElement => Boolean(el));
+
+          try {
+            await exportPdfNative(elements, aspectRatio, savePath, opts);
+            resolve({ warnings: [], usedFallback: false });
+          } catch (nativeErr) {
+            // Native backend unavailable/failed — degrade to the raster renderer.
+            // It's one-slide-per-page and ignores handout/N-up/paper options.
+            const { base64, warnings } = await exportToPdf(elements, activeTheme, aspectRatio);
+            await invoke('write_file_bytes', { path: savePath, data: base64 });
+            resolve({ warnings, usedFallback: true, fallbackReason: String(nativeErr) });
+          }
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error(String(err)));
+        } finally {
+          setPdfExportContext(null);
+          pdfSlideRefs.current.clear();
+          pdfExportRunnerRef.current = null;
+        }
+      };
+      setPdfExportContext({ slides: visSlides, savePath });
+    });
+  }, [aspectRatio, activeTheme]);
+
   const handleExportPdf = useCallback(async (opts: PdfExportOpts = {}) => {
     if (visibleSlides.length === 0) return;
     // The in-window buttons disable while an export is already in flight, but
@@ -1350,45 +1465,68 @@ export default function App() {
     if (!target) return;
     const savePath = target.toLowerCase().endsWith('.pdf') ? target : `${target}.pdf`;
 
-    const visSlides = [...visibleSlides];
-    pdfSlideRefs.current.clear();
-    pdfSlideReadyCount.current = 0;
-    pdfSlideReadyTotal.current = visSlides.length;
-    await new Promise<void>(resolve => {
-      pdfExportRunnerRef.current = async () => {
-        try {
-          const elements = Array.from(
-            { length: visSlides.length },
-            (_, i) => pdfSlideRefs.current.get(i),
-          ).filter((el): el is HTMLElement => Boolean(el));
+    try {
+      const outcome = await runPdfExportCapture([...visibleSlides], savePath, opts);
+      if (outcome.usedFallback) {
+        console.error('Native PDF failed, falling back to raster:', outcome.fallbackReason);
+        window.alert(
+          t('app.pdfExportFallback') +
+          `\n\n${t('app.pdfExportFallbackReason', { error: outcome.fallbackReason ?? '' })}` +
+          (outcome.warnings.length ? `\n\n${outcome.warnings.join('\n')}` : ''),
+        );
+      }
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      window.alert(t('app.pdfExportFailed', { error: String(err) }));
+    }
+  }, [visibleSlides, filePath, runPdfExportCapture, t, pdfExportContext, printContext]);
 
-          try {
-            await exportPdfNative(elements, aspectRatio, savePath, opts);
-          } catch (nativeErr) {
-            // Native backend unavailable/failed — degrade to the raster renderer.
-            // It's one-slide-per-page and ignores handout/N-up/paper options.
-            console.error('Native PDF failed, falling back to raster:', nativeErr);
-            const { base64, warnings } = await exportToPdf(elements, activeTheme, aspectRatio);
-            await invoke('write_file_bytes', { path: savePath, data: base64 });
-            window.alert(
-              t('app.pdfExportFallback') +
-              `\n\n${t('app.pdfExportFallbackReason', { error: String(nativeErr) })}` +
-              (warnings.length ? `\n\n${warnings.join('\n')}` : ''),
-            );
-          }
-        } catch (err) {
-          console.error('PDF export failed:', err);
-          window.alert(t('app.pdfExportFailed', { error: String(err) }));
-        } finally {
-          setPdfExportContext(null);
-          pdfSlideRefs.current.clear();
-          pdfExportRunnerRef.current = null;
-          resolve();
+  // Cold-start export (kova --export pptx|pdf FILE OUT): the load effect
+  // above applies --theme and loads the deck; this fires once slides are
+  // resolved. PPTX needs no rendered DOM (exportToPptx works from slide data
+  // directly); PDF reuses the exact capture path the button uses above,
+  // native print against the hidden dedicated print window (export_pdf_native
+  // already always creates one, whether launched from the GUI or the CLI)
+  // with the same raster fallback on failure.
+  const coldExportFiredRef = useRef(false);
+  useEffect(() => {
+    if (!coldExport || coldExportFiredRef.current || !filePath) return;
+    coldExportFiredRef.current = true;
+    if (visibleSlides.length === 0) {
+      invoke('cli_exit', {
+        message: `'${filePath}' contains no visible slides`,
+        code: 1,
+      }).catch(() => {});
+      return;
+    }
+    const finish = async (report: string) => {
+      await invoke('cli_stdout', { text: report }).catch(() => {});
+      await invoke('cli_exit', { code: 0 }).catch(() => {});
+    };
+    const fail = async (message: string) => {
+      await invoke('cli_exit', { message, code: 1 }).catch(() => {});
+    };
+    (async () => {
+      try {
+        if (coldExport.format === 'pptx') {
+          const { base64, warnings } = await exportToPptx(visibleSlides, frontmatter, activeTheme, settings.locale);
+          await invoke('write_file_bytes', { path: coldExport.output, data: base64 });
+          const lines = [`wrote '${coldExport.output}'`, ...warnings.map((w) => `warning: ${w}`)];
+          await finish(lines.join('\n'));
+          return;
         }
-      };
-      setPdfExportContext({ slides: visSlides, savePath });
-    });
-  }, [visibleSlides, filePath, activeTheme, aspectRatio, t, pdfExportContext, printContext]);
+        const outcome = await runPdfExportCapture([...visibleSlides], coldExport.output, {});
+        const lines = [`wrote '${coldExport.output}'`];
+        if (outcome.usedFallback) {
+          lines.push(`note: native PDF export failed, used raster fallback (${outcome.fallbackReason})`);
+        }
+        lines.push(...outcome.warnings.map((w) => `warning: ${w}`));
+        await finish(lines.join('\n'));
+      } catch (err) {
+        await fail(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }, [coldExport, filePath, visibleSlides, frontmatter, activeTheme, settings.locale, runPdfExportCapture]);
 
   const handleExportHtml = useCallback(async () => {
     if (visibleSlides.length === 0) return;

@@ -7,6 +7,14 @@ pub async fn fetch_url_b64(url: String) -> Result<(String, String), String> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return Err("URL must use HTTP or HTTPS".into());
     }
+    // The redirect policy in build_ssrf_safe_client only ever sees hop 2
+    // onward — the initial request URL needs its own check against an
+    // IP-literal host (127.0.0.1, 169.254.169.254, ...), which never reaches
+    // the DNS-resolver-based guard at all.
+    let parsed = reqwest::Url::parse(&url).map_err(|e| format!("invalid URL: {e}"))?;
+    if crate::net_guard::url_host_is_blocked(&parsed) {
+        return Err("refusing to connect to a non-public address".into());
+    }
     let client = crate::net_guard::build_ssrf_safe_client()?;
     let resp = client
         .get(&url)
@@ -41,6 +49,11 @@ pub async fn fetch_url_b64(url: String) -> Result<(String, String), String> {
 pub async fn fetch_url_text(url: String) -> Result<String, String> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return Err("URL must use HTTP or HTTPS".into());
+    }
+    // See the matching comment in fetch_url_b64 above.
+    let parsed = reqwest::Url::parse(&url).map_err(|e| format!("invalid URL: {e}"))?;
+    if crate::net_guard::url_host_is_blocked(&parsed) {
+        return Err("refusing to connect to a non-public address".into());
     }
     let client = crate::net_guard::build_ssrf_safe_client()?;
     let resp = client

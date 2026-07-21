@@ -28,6 +28,10 @@ notify = "6"
 base64 = "0.22"
 dirs = "5"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# Already resolved transitively via reqwest — named directly so net_guard.rs
+# can match on url::Host (Ipv4/Ipv6 variants) rather than round-tripping
+# through host_str()'s bracketed IPv6 string form.
+url = "2"
 sha2 = "0.10"
 tauri-plugin-window-state = "2.4.1"
 
