@@ -29,13 +29,10 @@ jobs:
           ## What's new
 
           ### New features
-          - **New slide from the right-click menu**: the thumbnail panel's context menu now has a "New slide" entry, so a blank slide can be inserted without hand-typing a `---` separator in the editor (requested by @surferjoeit, closes #162).
-          - `!ref` citation text now supports inline emphasis (`*italic*`, `**bold**`, `` `code` ``) instead of showing the raw markers literally in preview and PPTX export, useful for italicised journal names in citations.
+          - **Kova CLI — present, validate, import, and export decks from the terminal**: after a standard install, `kova` works as a full command-line tool on macOS, Windows, and Linux. `kova --present FILE` launches straight into presentation mode with an optional `--theme=NAME|PATH` override; `kova --check FILE` validates a deck headlessly (frontmatter errors, unknown keys/themes/layouts/directives, missing local media, empty decks) and exits 0/1, designed for CI use; `kova --import marp|pptx|url IN OUT` and `kova --export pptx|pdf IN OUT` run the exact same conversion and export pipelines as the in-app modals and Present/Export buttons, fully headless. Windows and macOS installs now also register `kova` on PATH automatically, so it's usable from a terminal immediately. Built following @a1880's original batch-mode suggestion (closes #94, #163, #165).
 
-          ### Bug fixes
-          - **Fixed** the bullet/numbered list toolbar buttons only applying to the first line of a multi-line selection. Numbered lists now number sequentially instead of repeating "1." on every line, and clicking the button again after adding new lines to an existing list only affects the new, unmarked lines.
-          - **Fixed** native PDF export on Linux always falling back to the raster renderer under non-English locales, caused by the GTK "Print to File" printer name being hard-coded while GTK translates it (reported by @Knorberto, fixes #161).
-          - **Fixed** the auto-shrink text search in split/two-column layouts under-shrinking text once a pane held enough content, leaving unused space that read as an oversized wrapping margin (further fix for #159, reported by @a1880).
+          ### Security
+          - **Fixed** an SSRF guard bypass in the URL fetcher behind "Import from URL" and remote image embeds: private/loopback hostnames were blocked, but a URL whose host was already an IP literal (`http://127.0.0.1/...`, cloud metadata's `http://169.254.169.254/...`) skipped the guard entirely. Found while building the CLI's `--import url` path; both IPv4 and IPv6 loopback are now rejected, including via redirects.
 
           ---
 
@@ -49,6 +46,8 @@ jobs:
           | **Linux AppImage** | `.AppImage` | Graphics libs stripped for compatibility with Arch/Fedora/etc. Supports auto-update. |
 
           > **Beta release** — expect rough edges. Please report bugs via [Issues](../../issues).
+
+          Kova is free and community funded. You can now support development directly through [Open Collective](https://opencollective.com/kovamd).
           NOTES
 
           gh release create "${{ github.ref_name }}" \
