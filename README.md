@@ -32,17 +32,14 @@ Kova turns plain Markdown into polished slides — with live preview, multiple l
 |---|---|
 | **macOS** (Apple Silicon + Intel) | [**Download .dmg**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_macOS.dmg) |
 | **Windows 10/11** | [**Download .msi**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows.msi) · [Setup .exe](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows_setup.exe) |
-| **Linux (Debian/Ubuntu)** | [**.deb package**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.deb) · [or via package manager](#linux-package-managers) |
-| **Linux (Fedora/RHEL/openSUSE)** | [**.rpm package**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.rpm) · [or via package manager](#linux-package-managers) |
-| **Linux (Arch)** | [Install via AUR](#linux-package-managers) |
-| **Linux (AppImage)** | [**.AppImage**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.AppImage) |
-| **Linux (Flatpak)** | [Install via Flatpak](#linux-package-managers) |
+| **Linux** | [See install options ↓](#linux) |
 
-## Linux package managers
+## Linux
 
-> **AppImage note** — Bundled graphics libs are stripped for compatibility with Arch/Fedora/etc., and the AppImage is signed so in-app auto-update works. See [issue #3](https://github.com/KovaMD/Kova/issues/3) for background.
+Debian/Ubuntu and Fedora/RHEL/openSUSE users should install from the repo below — it keeps Kova updated automatically. Arch, Nix, and Flatpak have native options too, or grab the self-updating AppImage if you'd rather not add a repo.
 
-**Debian / Ubuntu**
+<details>
+<summary><strong>Debian / Ubuntu</strong> (recommended)</summary>
 
 ```bash
 sudo curl -fsSL https://deb.kova.md/key.gpg \
@@ -54,7 +51,10 @@ sudo apt update && sudo apt install kova
 
 Debian 13+ — use the [DEB822 source format](https://wiki.kova.md/install/linux/).
 
-**Fedora / RHEL / openSUSE**
+</details>
+
+<details>
+<summary><strong>Fedora / RHEL / openSUSE</strong> (recommended)</summary>
 
 ```bash
 sudo rpm --import https://rpm.kova.md/key.gpg
@@ -63,7 +63,10 @@ sudo curl -o /etc/yum.repos.d/kova.repo \
 sudo dnf install kova   # openSUSE: zypper install kova
 ```
 
-**Nix (flakes)**
+</details>
+
+<details>
+<summary><strong>Nix (flakes)</strong></summary>
 
 ```bash
 nix run github:KovaMD/Kova          # run without installing
@@ -72,13 +75,19 @@ nix profile install github:KovaMD/Kova   # install into your profile
 
 Or add `github:KovaMD/Kova` as a flake input and use `packages.<system>.default`.
 
-**Arch (AUR)**
+</details>
+
+<details>
+<summary><strong>Arch (AUR)</strong></summary>
 
 ```bash
 yay -S kova-bin   # or: paru -S kova-bin
 ```
 
-**Flatpak**
+</details>
+
+<details>
+<summary><strong>Flatpak</strong></summary>
 
 Flathub's current policy excludes LLM-assisted apps, so Kova ships from a self-hosted Flatpak repo:
 
@@ -96,6 +105,24 @@ curl -fsSL -o packaging/flatpak/kova.deb \
 flatpak-builder --user --install --force-clean build packaging/flatpak/md.kova.app.yml
 flatpak run md.kova.app
 ```
+
+</details>
+
+<details>
+<summary><strong>AppImage</strong></summary>
+
+Bundled graphics libs are stripped for compatibility with Arch/Fedora/etc., and the AppImage is signed so in-app auto-update works. See [issue #3](https://github.com/KovaMD/Kova/issues/3) for background.
+
+```bash
+chmod +x Kova_Linux.AppImage
+./Kova_Linux.AppImage
+```
+
+[**Download .AppImage**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Linux.AppImage)
+
+</details>
+
+Prefer a plain package file over adding a repo? Raw `.deb` and `.rpm` builds are attached to every [release](https://github.com/KovaMD/Kova/releases/latest) — just note that manual installs like these won't get automatic updates.
 
 ## Building from source
 
@@ -130,6 +157,10 @@ Custom themes follow the same base path, under a `themes/` subfolder. Full refer
 **Theme library** — open the Inspector, expand **Theme**, and click **More Themes…** to browse and install community themes from the [KovaMD/Themes](https://github.com/KovaMD/Themes) repository. Each download is verified against a SHA-256 checksum. Installed themes appear in the picker immediately.
 
 **Custom themes** — place YAML theme files in the `themes/` subfolder of your config directory (see Keybindings above for platform paths). They appear in the Inspector alongside built-in themes. See the [Themes](https://wiki.kova.md/themes/) wiki page for the full YAML format.
+
+## Support
+
+Kova is free and community funded. If you'd like to support development, you can donate via [Open Collective](https://opencollective.com/kovamd).
 
 ## License
 
