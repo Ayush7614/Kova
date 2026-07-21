@@ -29,7 +29,13 @@ jobs:
           ## What's new
 
           ### New features
-          - **Kova CLI — present, validate, import, and export decks from the terminal**: after a standard install, `kova` works as a full command-line tool on macOS, Windows, and Linux. `kova --present FILE` launches straight into presentation mode with an optional `--theme=NAME|PATH` override; `kova --check FILE` validates a deck headlessly (frontmatter errors, unknown keys/themes/layouts/directives, missing local media, empty decks) and exits 0/1, designed for CI use; `kova --import marp|pptx|url IN OUT` and `kova --export pptx|pdf IN OUT` run the exact same conversion and export pipelines as the in-app modals and Present/Export buttons, fully headless. Windows and macOS installs now also register `kova` on PATH automatically, so it's usable from a terminal immediately. Built following @a1880's original batch-mode suggestion (closes #94, #163, #165).
+          - **Kova CLI — present, validate, import, and export decks from the terminal**: after a standard install, `kova` works as a full command-line tool on macOS, Windows, and Linux. Built following @a1880's original batch-mode suggestion (closes #94, #163, #165).
+            - `kova --present FILE` — launch straight into presentation mode; `--theme=NAME|PATH` overrides the deck's theme for the run.
+            - `kova --check FILE` — validate a deck headlessly (frontmatter errors, unknown keys/themes/layouts/directives, missing local media, empty decks) and exit 0/1, designed for CI use.
+            - `kova --import marp|pptx|url IN OUT` — convert a Marp deck, PPTX file, or remote URL into Kova Markdown, via the same pipeline as the in-app import modals.
+            - `kova --export pptx|pdf IN OUT` — export a deck straight from the terminal, via the same pipeline as the Present/Export buttons.
+            - `kova --help` / `kova --version`.
+            - Windows and macOS installs now also register `kova` on PATH automatically, so it's usable from a terminal immediately.
 
           ### Security
           - **Fixed** an SSRF guard bypass in the URL fetcher behind "Import from URL" and remote image embeds: private/loopback hostnames were blocked, but a URL whose host was already an IP literal (`http://127.0.0.1/...`, cloud metadata's `http://169.254.169.254/...`) skipped the guard entirely. Found while building the CLI's `--import url` path; both IPv4 and IPv6 loopback are now rejected, including via redirects.
