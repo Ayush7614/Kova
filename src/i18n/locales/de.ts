@@ -114,6 +114,7 @@ const de: DeepPartial<Messages> = {
     slideOptionsAriaLabel: 'Folienoptionen', // Slide options
     moveUp: 'Nach oben verschieben', // Move up
     moveDown: 'Nach unten verschieben', // Move down
+    newSlide: 'Neue Folie', // New slide
     duplicateSlide: 'Folie duplizieren', // Duplicate slide
     showSlide: 'Folie anzeigen', // Show slide
     hideSlide: 'Folie ausblenden', // Hide slide
@@ -270,6 +271,9 @@ const de: DeepPartial<Messages> = {
   app: {
     connecting: 'Verbindung wird hergestellt …', // Connecting…
     dropToOpen: 'Hierher ziehen zum Öffnen', // Drop to open
+    presentLoading: 'Bereite Präsentation vor …', // Preparing presentation…
+    cliInstallSuccess: "'kova' wurde installiert in {{dir}}. Frisch geöffnete Kommandofenster können kova nun aufrufen.", // The 'kova' command was installed to {{dir}}. Newly opened terminals can now run kova.
+    cliInstallFailure: "Konnte 'kova' nicht automatisch installieren. Starte dies als Ersatz in einem Terminal-Fenster:\n\n{{command}}", // Couldn't install the 'kova' command automatically. Run this in a terminal instead:\n\n{{command}}
     menuFile: 'Datei', // File
     menuEdit: 'Bearbeiten', // Edit
     menuNew: 'Neu', // New
@@ -315,6 +319,7 @@ const de: DeepPartial<Messages> = {
     },
     pptxExportFailed: 'PPTX-Export fehlgeschlagen: {{error}}', // PPTX export failed: {{error}}
     pdfExportFallback: 'Der einfache PDF-Renderer wurde verwendet (nativer Export nicht verfügbar); Handout-, N-up- und Papieroptionen wurden nicht angewendet.', // Used the basic PDF renderer (native export unavailable); handout/N-up/paper options were not applied.
+    pdfExportFallbackReason: 'Ursache: {{error}}', // Reason: {{error}}
     pdfExportFailed: 'PDF-Export fehlgeschlagen:\n{{error}}', // PDF export failed:\n{{error}}
     htmlExportFailed: 'HTML-Export fehlgeschlagen:\n{{error}}', // HTML export failed:\n{{error}}
     printCompleteWithWarnings: {
@@ -350,6 +355,7 @@ const de: DeepPartial<Messages> = {
     present: 'Präsentieren', // Present
     view: 'Ansicht', // View
     toggleInspector: 'Inspektor ein-/ausblenden', // Toggle Inspector
+    installCli: "Installiere 'kova' im Suchpfad PATH", // Install 'kova' Command in PATH
   },
   settings: {
     windowTitle: 'Einstellungen', // Settings
@@ -421,7 +427,7 @@ const de: DeepPartial<Messages> = {
     checking: 'Wird geprüft…', // Checking…
     upToDate: 'Auf dem neuesten Stand (v{{version}})', // Up to date (v{{version}})
     updateCheckError: 'Update-Server konnte nicht erreicht werden', // Could not reach update server
-    updateInstallError: 'Heruntergeladen, aber das Update konnte nicht verifiziert oder installiert werden', // Downloaded, but the update could not be verified or installed
+    updateInstallError: 'Heruntergeladen, aber das Update ließ sich nicht verifizieren oder installieren', // Downloaded, but the update could not be verified or installed
     updateAvailable: '{{version}} verfügbar', // {{version}} available
     updateNow: 'Jetzt aktualisieren', // Update Now
     downloading: '{{version}} wird heruntergeladen{{pct}}', // Downloading {{version}}{{pct}}
