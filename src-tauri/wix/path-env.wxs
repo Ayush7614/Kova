@@ -13,11 +13,19 @@
 
   The RegistryValue exists only as the component KeyPath - an Environment
   element cannot be one, and every component must have one.
+
+  Condition gates this on ADDTOPATH (issue #168, default "1" - see
+  path-checkbox-dialog.wxs), the public property the install-wizard
+  checkbox and/or `msiexec ADDTOPATH=0` set. A false Component Condition
+  makes MSI treat the whole component as absent for this install, which is
+  the standard way to make a component optional; it does not affect the
+  ComponentRef wiring in tauri.conf.json.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
       <Component Id="KovaPathEnv" Guid="D2626A48-7CD3-429B-89FA-B61EC6EE3A4A" Win64="yes">
+        <Condition>ADDTOPATH = 1</Condition>
         <Environment Id="KovaPathEnv"
                      Name="PATH"
                      Value="[INSTALLDIR]"
