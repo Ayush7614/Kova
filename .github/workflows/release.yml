@@ -346,17 +346,40 @@ jobs:
       # tauri-action writes latest.json to the project root (process.cwd()),
       # not under src-tauri/target — it's generated in the action's Node
       # process and only ever touches the bundle dir for the .sig files.
+      #
+      # tauri-action's own updater-json step fetches the release's *current*
+      # latest.json and merges it into what it writes locally, so a slower
+      # job (macOS, with notarisation) can end up carrying another platform's
+      # signature exactly as it stood at that fetch — e.g. Windows's before
+      # the SignPath re-sign step overwrote it with the real one. The
+      # finalize job's merge is last-write-wins over an unordered `find`, so
+      # that stale duplicate can clobber the correct entry depending on
+      # enumeration order, shipping a latest.json whose signature doesn't
+      # match the hosted binary (issue #166). Strip every key that isn't this
+      # job's own platform so there's nothing left to collide on.
       - name: Save platform latest.json artifact
         shell: bash
         run: |
+          set -euo pipefail
           LATEST="latest.json"
           if [ ! -f "$LATEST" ]; then
             echo "latest.json not found — skipping artifact upload"
             exit 0
           fi
+
+          case "${{ matrix.platform }}" in
+            windows-latest) PREFIX=windows- ;;
+            macos-latest)   PREFIX=darwin- ;;
+            ubuntu-22.04)   PREFIX=linux- ;;
+            *) echo "::error::Unhandled matrix.platform '${{ matrix.platform }}' — add its platforms-key prefix here." >&2; exit 1 ;;
+          esac
+
           mkdir -p "$RUNNER_TEMP/platform-latest"
-          cp "$LATEST" "$RUNNER_TEMP/platform-latest/latest.json"
-          echo "Found: $LATEST"
+          jq --arg prefix "$PREFIX" \
+             '.platforms |= with_entries(select(.key | startswith($prefix)))' \
+             "$LATEST" > "$RUNNER_TEMP/platform-latest/latest.json"
+          echo "Found: $LATEST (kept platforms starting with '$PREFIX')"
+          jq '.platforms | keys' "$RUNNER_TEMP/platform-latest/latest.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: latest-json-${{ matrix.platform }}
