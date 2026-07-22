@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { mermaidSvgCache } from './mermaidSvgCache';
 import { svgToPngDataUrl } from './svgToPng';
 import { queuedMermaidRender } from './mermaidRenderQueue';
+import { buildMermaidRenderSource } from './mermaidSource';
 import { imageMime } from './imageMime';
 import { buildExportMermaidInit } from './mermaidExportTheme';
 import type { AspectRatio } from '../types';
@@ -123,7 +124,7 @@ async function captureSlide(slideEl: HTMLElement, theme: Theme): Promise<string>
       // diagrams within this loop — see mermaidRenderQueue.ts.
       try {
         const init = buildExportMermaidInit(theme);
-        const src  = source.trimStart().startsWith('%%{') ? source : init + source;
+        const src  = buildMermaidRenderSource(source, init);
         const id = `pdf-mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const result = await queuedMermaidRender(id, src);
         mermaidSvgCache.set(source, result.svg);

@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { mermaidSvgCache } from './mermaidSvgCache';
 import { svgToPngDataUrl } from './svgToPng';
 import { queuedMermaidRender } from './mermaidRenderQueue';
+import { buildMermaidRenderSource } from './mermaidSource';
 import { imageMime } from './imageMime';
 import { buildExportMermaidInit, parseChannels } from './mermaidExportTheme';
 import { autoSplitElements, groupProgressRuns, splitByColumnBreaks } from '../layout/elementGrouping';
@@ -31,11 +32,10 @@ async function mermaidToDataUrl(value: string, t: Theme): Promise<{ dataUrl: str
   // serialized via queuedMermaidRender against every other render() call in
   // the app (not just other calls within this export) — see mermaidRenderQueue.ts.
   const init = buildExportMermaidInit(t);
-  const normalised = value.replace(/\\n/g, '<br/>');
   const id = `pptx-mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   try {
-    const src = normalised.trimStart().startsWith('%%{') ? normalised : init + normalised;
+    const src = buildMermaidRenderSource(value, init);
     const { svg } = await queuedMermaidRender(id, src);
     return await svgToPngDataUrl(svg, t.colors.background);
   } catch {

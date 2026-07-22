@@ -7,6 +7,7 @@ import { QRCode } from 'react-qr-code';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { SlideElement, ListItem } from '../../engine/types';
 import { mermaidSvgCache } from '../../engine/export/mermaidSvgCache';
+import { buildMermaidRenderSource } from '../../engine/export/mermaidSource';
 import { queuedMermaidRender } from '../../engine/export/mermaidRenderQueue';
 import { useT } from '../../i18n';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -19,26 +20,6 @@ function parseSizeHint(title?: string): React.CSSProperties | null {
   const t = title.trim();
   if (/^\d+(\.\d+)?(px|%|em|rem|cqi|vw)$/.test(t)) return { width: t, height: 'auto' };
   return null;
-}
-
-// Strips any `securityLevel` key from a user-supplied `%%{init: {...}}%%` pragma
-// so users cannot downgrade from the application's enforced 'strict' setting.
-// All other init keys (theme, themeVariables, etc.) are preserved unchanged.
-function sanitizeMermaidSource(source: string): string {
-  // Replace literal \n sequences in node labels with <br/> — Mermaid v11 hangs on \n.
-  const normalised = source.replace(/\\n/g, '<br/>');
-  return normalised.replace(
-    /^(%%\{init:\s*)(\{[\s\S]*?\})(\s*\}%%)(\r?\n)?/m,
-    (match, prefix, jsonStr, suffix, nl) => {
-      try {
-        const config = JSON.parse(jsonStr) as Record<string, unknown>;
-        delete config.securityLevel;
-        return `${prefix}${JSON.stringify(config)}${suffix}${nl ?? '\n'}`;
-      } catch {
-        return match; // leave unparseable pragma as-is
-      }
-    },
-  );
 }
 
 // ── Element renderer ──────────────────────────────────────────────────────────
@@ -435,10 +416,9 @@ export function MermaidDiagram({ value, caption }: { value: string; caption?: st
     };
     setSvg('');
     setMermaidError('');
-    // Sanitize first: strip any user-supplied securityLevel override, then
-    // prepend theme init when no custom pragma is present.
-    const sanitized = sanitizeMermaidSource(value);
-    const src = sanitized.trimStart().startsWith('%%{') ? sanitized : mermaidInit + sanitized;
+    // Enforce Mermaid security policy, then prepend theme init only when the
+    // diagram has no leading Mermaid config.
+    const src = buildMermaidRenderSource(value, mermaidInit);
     const renderId = `${baseId}-${++counter.current}`;
     queuedMermaidRender(renderId, src)
       .then(({ svg: out }: { svg: string }) => {
