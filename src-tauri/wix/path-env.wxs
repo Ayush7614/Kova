@@ -20,9 +20,24 @@
   makes MSI treat the whole component as absent for this install, which is
   the standard way to make a component optional; it does not affect the
   ComponentRef wiring in tauri.conf.json.
+
+  The <UI><DialogRef .../></UI> below is load-bearing, not decorative: a
+  WiX Fragment is an all-or-nothing linking unit (confirmed by inspecting
+  the actual built MSI with `msiinfo` after the checkbox page shipped with
+  no error but silently didn't exist - Dialog/Property/ControlEvent tables
+  had nothing from path-checkbox-dialog.wxs at all). tauri.conf.json's
+  componentRefs is what makes THIS Fragment reachable from the product;
+  nothing was pulling in path-checkbox-dialog.wxs's Fragment, so light.exe
+  dropped it whole, silently. Referencing PathOptDlg here - any single
+  symbol in that Fragment would do - pulls in the entire thing: the
+  Dialog, the ADDTOPATH Property, and both override Publish rows.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
+    <UI>
+      <DialogRef Id="PathOptDlg" />
+    </UI>
+
     <DirectoryRef Id="INSTALLDIR">
       <Component Id="KovaPathEnv" Guid="D2626A48-7CD3-429B-89FA-B61EC6EE3A4A" Win64="yes">
         <Condition>ADDTOPATH = 1</Condition>

@@ -24,6 +24,13 @@
   path-env.wxs, is evaluated) keep today's always-add-PATH behaviour.
   Power users can pass `ADDTOPATH=0` on the msiexec command line for a
   scripted install with no dialog involved at all.
+
+  This whole Fragment is otherwise unreachable from the product (nothing
+  Ref's the Dialog, Property, or Publish rows here), and WiX Fragments are
+  linked as an all-or-nothing unit — light.exe silently drops an
+  unreferenced one, no error. path-env.wxs's <UI><DialogRef Id="PathOptDlg"
+  /></UI> is what anchors this file into the build; don't remove it there
+  without replacing it some other way.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
