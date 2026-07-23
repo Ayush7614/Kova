@@ -3,8 +3,14 @@
 // fidelity, and multi-bg tiling are deliberately dropped (Tier 2). Per-slide
 // text colour (`_color` / `_class: invert`) is now mapped onto Kova's native
 // `<!-- color -->` / `<!-- _class: invert -->` directives.
+//
+// `![bg]` lines are preserved as native `![bg…](…)` so the parser can choose
+// full-bleed (image-only) vs text-over-background (issue #169) — previously
+// every bare `![bg]` was forced to `layout:full-bleed` + a plain image, which
+// dropped overlay title/body.
 
 import yaml from 'js-yaml';
+import { formatBgLine, parseBgLine } from '../parser/bgImage';
 
 export interface MarpImportResult {
   markdown: string;
@@ -13,9 +19,6 @@ export interface MarpImportResult {
 }
 
 const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
-// A background-image line, e.g. `![bg left:40%](path.jpg)`. Captures the
-// modifier string and the URL (first whitespace-delimited token inside `()`).
-const BG_LINE = /^!\[bg([^\]]*)\]\(\s*([^)\s]+)[^)]*\)\s*$/;
 const SIZE_KW = /\b[wh]:\d+%?/g;
 const COMMENT = /<!--([\s\S]*?)-->/g;
 
@@ -113,17 +116,18 @@ function transformSlide(slide: string, dropTag: (l: string) => string): string {
   const out: string[] = [];
   let bgUsed = false;
 
-  // Pass 1: background-image lines → layout directive + plain image.
+  // Pass 1: preserve Marp `![bg…](…)` as native bg lines so overlay text is
+  // kept (native parser sets backgroundImage when the slide has title/body).
   for (const line of slide.split(/\r?\n/)) {
-    const bg = line.match(BG_LINE);
-    if (bg) {
-      const mods = bg[1];
-      // logged only — image is kept, just unsized
-      if (/(fit|cover|\d+%|:\s*\d)/.test(mods)) dropTag('bg-sizing');
+    const parsed = parseBgLine(line);
+    if (parsed) {
+      // Percentage / explicit Marp size tokens we don't map — log and drop.
+      // `fit`/`contain` are kept via formatBgLine; bare `cover` is the default.
+      const mods = (line.match(/^!\[bg([^\]]*)\]/)?.[1] ?? '');
+      if (/(\d+%|:\s*\d)/.test(mods)) dropTag('bg-sizing');
       if (bgUsed) { out.push(dropTag('bg-extra')); continue; }
       bgUsed = true;
-      const layout = /\b(left|right)\b/.test(mods) ? 'split' : 'full-bleed';
-      out.push(`<!-- layout:${layout} -->`, `![](${bg[2]})`);
+      out.push(formatBgLine(parsed));
       continue;
     }
     out.push(line);
