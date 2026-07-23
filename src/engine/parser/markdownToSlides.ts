@@ -676,6 +676,8 @@ function referenceInlineToHtml(raw: string): string {
 
 function escUrl(url: string): string {
   const lower = url.trim().toLowerCase();
+  // Images stay on the network/local schemes; links also allow mailto:/tel:
+  // via escLinkUrl (issue #176).
   const ALLOWED = ['https:', 'http:', 'asset:', 'tauri:'];
   if (!ALLOWED.some(s => lower.startsWith(s))) return '#';
   return url.replace(/"/g, '%22');
@@ -692,11 +694,16 @@ const BARE_HOST_RE = /^[^\s/?#]+\.[a-z]{2,}(?:[/?#]|$)/i;
 // expect them to just work (issue #142), unlike images which are normally
 // local files. Treat protocol-relative and bare-host links as https; anything
 // else unrecognised still falls through to escUrl's allow-list/strip.
+// Contact schemes (mailto:/tel:) are allowed for links only (issue #176).
 function escLinkUrl(url: string): string {
   const trimmed = url.trim();
   if (trimmed.startsWith('//')) return escUrl('https:' + trimmed);
   if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed) && BARE_HOST_RE.test(trimmed)) {
     return escUrl('https://' + trimmed);
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('mailto:') || lower.startsWith('tel:')) {
+    return trimmed.replace(/"/g, '%22');
   }
   return escUrl(trimmed);
 }

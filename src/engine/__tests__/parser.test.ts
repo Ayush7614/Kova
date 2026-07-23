@@ -318,6 +318,18 @@ describe('element parsing', () => {
     expect(para?.type === 'paragraph' && para.html).toContain('<a href="#">link text</a>');
   });
 
+  it('preserves mailto: links (issue #176)', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n[Email me](mailto:ada@example.com)\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.html).toContain('<a href="mailto:ada@example.com">Email me</a>');
+  });
+
+  it('preserves tel: links (issue #176)', () => {
+    const { slides } = parseDocument(doc('## Slide\n\n[Call](tel:+15551212)\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.html).toContain('<a href="tel:+15551212">Call</a>');
+  });
+
   it('leaves plain table cell text unchanged', () => {
     const { slides } = parseDocument(doc([
       '## Slide',
