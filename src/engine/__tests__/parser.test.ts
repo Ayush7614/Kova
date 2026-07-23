@@ -365,6 +365,19 @@ describe('inline HTML generation', () => {
     expect(para?.type === 'paragraph' && para.html).toContain('<em>italic</em>');
   });
 
+  it('preserves <u> underline tags from the editor (issue #175)', () => {
+    const { slides } = parseDocument(doc('## Slide\n\nThis is <u>underlined</u> text.\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.html).toContain('<u>underlined</u>');
+  });
+
+  it('strips non-allowlisted inline HTML tags', () => {
+    const { slides } = parseDocument(doc('## Slide\n\nHello <span>world</span>.\n'));
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.html).toContain('world');
+    expect(para?.type === 'paragraph' && para.html).not.toContain('<span>');
+  });
+
   it('escapes HTML entities in text nodes', () => {
     const { slides } = parseDocument(doc('## Slide\n\n1 < 2 & 3 > 0\n'));
     const para = slides[0].elements.find((e) => e.type === 'paragraph');

@@ -653,6 +653,13 @@ function inlineToHtml(children: Node[]): string {
           return `<code>${escHtml(node.value as string)}</code>`;
         }
       }
+      // Raw HTML inlines from the editor (e.g. Mod-U → <u>…</u>). remark emits
+      // bare `html` nodes with no children, so the default branch would drop them.
+      case 'html': {
+        const v = String(node.value ?? '').trim().toLowerCase();
+        if (v === '<u>' || v === '</u>') return String(node.value).trim();
+        return '';
+      }
       default:            return node.children ? inlineToHtml(node.children) : '';
     }
   }).join('');
