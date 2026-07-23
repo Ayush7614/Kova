@@ -31,8 +31,10 @@ Kova turns plain Markdown into polished slides — with live preview, multiple l
 | Platform | Download |
 |---|---|
 | **macOS** (Apple Silicon + Intel) | [**Download .dmg**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_macOS.dmg) |
-| **Windows 10/11** | [**Download .msi**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows.msi) · [Setup .exe](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows_setup.exe) |
+| **Windows 10/11** | [**Download .msi**](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows.msi) (installs for all users) · [Setup .exe](https://github.com/KovaMD/Kova/releases/latest/download/Kova_Windows_setup.exe) (installs for just you) |
 | **Linux** | [See install options ↓](#linux) |
+
+Both Windows installers let you skip adding Kova to PATH so `kova` works from a terminal. The `.exe` (per-user) always uses your own user PATH; the `.msi` (all users) lets you pick system PATH, your user PATH only, or neither.
 
 ## Linux
 

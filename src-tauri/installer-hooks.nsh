@@ -16,6 +16,13 @@
 ;
 ; Terminals opened before the install won't see the new PATH — Windows only
 ; delivers WM_SETTINGCHANGE to new processes.
+;
+; PATH addition is opt-out via a Yes/No prompt (issue #168) rather than a
+; wizard-page checkbox: Tauri's NSIS template only exposes four fixed hook
+; macros (PRE/POSTINSTALL, PRE/POSTUNINSTALL), not a way to add a new page,
+; and both spare Finish-page checkbox slots (MUI_FINISHPAGE_SHOWREADME /
+; MUI_FINISHPAGE_RUN) are already used for the desktop shortcut and "run
+; Kova now" options. A plain MessageBox needs no template fork.
 
 !include "WinMessages.nsh"
 
@@ -55,6 +62,10 @@ FunctionEnd
 !insertmacro KOVA_STRIDX_FUNC "un."
 
 !macro NSIS_HOOK_POSTINSTALL
+  ; /SD IDYES: silent installs (`/S`) keep today's default of adding PATH,
+  ; since the message box never displays and IDYES is used automatically.
+  MessageBox MB_YESNO|MB_ICONQUESTION "Add the Kova install folder to your PATH?$\r$\n$\r$\nThis lets you run 'kova' from Command Prompt or PowerShell." /SD IDYES IDNO kova_path_done
+
   ReadRegStr $0 HKCU "Environment" "Path"
   Push $0
   Push "$INSTDIR"

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adds a "PATH" page to the MSI install wizard (issue #168) letting the
+  user pick system PATH / their own PATH only / no PATH entry, even though
+  the app itself always installs per-machine (Tauri's WiX bundler has no
+  per-user install mode at all — this only changes which registry hive the
+  Environment component targets, not where Kova's files go). The stock
+  WixUI_InstallDir sequence has no spare page for this (the Exit dialog's
+  one optional checkbox is already used for "Launch Kova" in main.wxs), so
+  this splices a new dialog in between InstallDirDlg and VerifyReadyDlg.
+
+  Overriding stock WixUI_InstallDir navigation: WiX/MSI evaluates every
+  Publish row for a given Dialog+Control+Event in ascending Order, and for
+  NewDialog events the last row whose condition is true wins (each fires in
+  turn; the last navigation call is what's shown). So to redirect
+  InstallDirDlg's Next button here instead of straight to VerifyReadyDlg,
+  we add a new row with the SAME condition as the stock one
+  (WixUI_InstallDir.wxs, Order="4") but a higher Order — never a bare "1"
+  condition, or path validation on the Change-folder browse button would be
+  bypassed. Same pattern for VerifyReadyDlg's Back button (stock Order="1"
+  condition "NOT Installed").
+
+  PATHSCOPE defaults to "system" (matches the only behaviour this installer
+  had before issue #168) so both a plain `msiexec /i` silent install and an
+  interactive install that never reaches this page (the property is
+  public/all-caps, so it carries from the UI sequence into the execute
+  sequence where the Environment components' Conditions, in path-env.wxs,
+  are evaluated) keep adding to the system PATH. Power users can pass
+  PATHSCOPE=user or PATHSCOPE=none on the msiexec command line for a
+  scripted install with no dialog involved at all. The "user" choice writes
+  HKCU, not HKLM, so it needs no elevation of its own — though the overall
+  MSI is always elevated anyway to install into Program Files.
+
+  This whole Fragment is otherwise unreachable from the product (nothing
+  Ref's the Dialog, Property, or Publish rows here), and WiX Fragments are
+  linked as an all-or-nothing unit — light.exe silently drops an
+  unreferenced one, no error. path-env.wxs's <UI><DialogRef Id="PathOptDlg"
+  /></UI> is what anchors this file into the build; don't remove it there
+  without replacing it some other way.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <Property Id="PATHSCOPE" Value="system" />
+
+    <UI>
+      <Dialog Id="PathOptDlg" Width="370" Height="270" Title="!(loc.InstallDirDlg_Title)">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="Command-Line Access" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="Choose where to add Kova to PATH." />
+
+        <Control Id="PathLabel" Type="Text" X="20" Y="60" Width="330" Height="24" NoPrefix="yes" Text="Kova includes a command-line interface (kova --present, --check, --import, --export). Adding it to PATH lets you run 'kova' from a terminal." />
+
+        <Control Id="PathScopeGroup" Type="RadioButtonGroup" X="20" Y="90" Width="330" Height="60" Property="PATHSCOPE">
+          <RadioButtonGroup Property="PATHSCOPE">
+            <RadioButton Value="system" X="0" Y="0" Width="330" Height="16" Text="Add to the system PATH (every user on this machine, recommended)" />
+            <RadioButton Value="user" X="0" Y="20" Width="330" Height="16" Text="Add to my PATH only" />
+            <RadioButton Value="none" X="0" Y="40" Width="330" Height="16" Text="Don't add Kova to PATH" />
+          </RadioButtonGroup>
+        </Control>
+
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="InstallDirDlg">1</Publish>
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+        </Control>
+      </Dialog>
+
+      <!-- Redirect InstallDirDlg's Next button here instead of straight to
+           VerifyReadyDlg. Same condition as the stock Order="4" row
+           (WixUI_InstallDir.wxs) so a not-yet-validated path can't skip
+           past InvalidDirDlg; higher Order so this row wins. -->
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="PathOptDlg" Order="5">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+
+      <!-- Redirect VerifyReadyDlg's Back button here instead of straight to
+           InstallDirDlg. Same condition as the stock Order="1" row. Stock
+           also has two Order="2" rows (Installed AND (NOT)PATCH, both
+           false here) — use Order="3" rather than "2" so there's no tie
+           with those to worry about; ties on Order are unspecified. -->
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="PathOptDlg" Order="3">NOT Installed</Publish>
+    </UI>
+  </Fragment>
+</Wix>

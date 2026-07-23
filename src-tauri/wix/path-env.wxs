@@ -1,23 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Appends the install directory to the system PATH so `kova` works from a
-  terminal after an MSI install (docs/plans/kova-cli.md, Phase D). The NSIS
-  installer does the same via installer-hooks.nsh; WiX never runs those
-  hooks, so the MSI needs its own declarative version.
+  Appends the install directory to PATH so `kova` works from a terminal
+  after an MSI install (docs/plans/kova-cli.md, Phase D; scope choice added
+  for issue #168). The NSIS installer does the same via
+  installer-hooks.nsh; WiX never runs those hooks, so the MSI needs its own
+  declarative version.
 
-  System="yes" (machine PATH, not per-user) matches the MSI's install scope:
-  Tauri's WiX template installs per-machine under ProgramFiles64Folder.
+  Two Components, System="yes"/"no", cover the two scope choices from
+  path-checkbox-dialog.wxs's PATHSCOPE radio buttons independently of the
+  app's own install location: Tauri's WiX template always installs
+  per-machine under ProgramFiles64Folder (there's no per-user mode for the
+  MSI at all), but an Environment component's System attribute is its own,
+  separate setting - "user" scope still writes HKCU\Environment, not
+  HKLM\...\Environment, with no elevation needed for that specific write
+  (the overall MSI install is elevated regardless, to reach Program Files).
+  Windows Installer is documented to resolve HKCU in this Environment-table
+  context to the *launching* user's hive even from that elevated install,
+  not SYSTEM's profile - worth double-checking on a real Windows VM, since
+  it can't be verified from this Linux dev box.
+
   Windows Installer handles the append, repair, and removal-on-uninstall
   itself (Permanent="no"), so unlike the NSIS side there is no hand-rolled
   dedupe or excise logic to maintain.
 
-  The RegistryValue exists only as the component KeyPath - an Environment
-  element cannot be one, and every component must have one.
+  Each RegistryValue exists only as its component's KeyPath - an
+  Environment element cannot be one, and every component must have one.
+  Deliberately scoped to match: HKLM for the system component, HKCU for
+  the user one.
+
+  Conditions gate each component on PATHSCOPE (issue #168, default
+  "system" - see path-checkbox-dialog.wxs), the public property the
+  install-wizard radio buttons and/or `msiexec PATHSCOPE=user|none` set. A
+  false Component Condition makes MSI treat the whole component as absent
+  for this install, which is the standard way to make a component
+  optional; it does not affect the ComponentRef wiring in tauri.conf.json -
+  BOTH components still need their own ComponentRef there (that wiring is
+  what makes each one install-able at all; Condition only decides whether
+  it actually does on a given run).
+
+  The <UI><DialogRef .../></UI> below is load-bearing, not decorative: a
+  WiX Fragment is an all-or-nothing linking unit (confirmed by inspecting
+  the actual built MSI with `msiinfo` after the checkbox page shipped with
+  no error but silently didn't exist - Dialog/Property/ControlEvent tables
+  had nothing from path-checkbox-dialog.wxs at all). tauri.conf.json's
+  componentRefs is what makes THIS Fragment reachable from the product;
+  nothing was pulling in path-checkbox-dialog.wxs's Fragment, so light.exe
+  dropped it whole, silently. Referencing PathOptDlg here - any single
+  symbol in that Fragment would do - pulls in the entire thing: the
+  Dialog, the PATHSCOPE Property, and both override Publish rows.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
+    <UI>
+      <DialogRef Id="PathOptDlg" />
+    </UI>
+
     <DirectoryRef Id="INSTALLDIR">
       <Component Id="KovaPathEnv" Guid="D2626A48-7CD3-429B-89FA-B61EC6EE3A4A" Win64="yes">
+        <Condition>PATHSCOPE = "system"</Condition>
         <Environment Id="KovaPathEnv"
                      Name="PATH"
                      Value="[INSTALLDIR]"
@@ -27,6 +67,23 @@
                      System="yes" />
         <RegistryValue Root="HKLM"
                        Key="Software\Kova\PathEnv"
+                       Name="installed"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+
+      <Component Id="KovaPathEnvUser" Guid="51DFCFE1-6C13-468A-A1DA-9C5606A54DAC" Win64="yes">
+        <Condition>PATHSCOPE = "user"</Condition>
+        <Environment Id="KovaPathEnvUser"
+                     Name="PATH"
+                     Value="[INSTALLDIR]"
+                     Permanent="no"
+                     Part="last"
+                     Action="set"
+                     System="no" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Kova\PathEnvUser"
                        Name="installed"
                        Type="integer"
                        Value="1"
