@@ -888,6 +888,30 @@ function htmlToInlineRuns(
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const el = node as Element;
       const tag = el.tagName.toLowerCase();
+
+      // KaTeX emits both MathML (accessible) and HTML layers; walking both
+      // concatenates duplicated text (e.g. "x2x^2x2"). Prefer the TeX source
+      // from the MathML annotation and skip the rest of the subtree (issue #170).
+      if (el.classList?.contains('katex')) {
+        const ann = el.querySelector('annotation[encoding="application/x-tex"]');
+        const tex = ann?.textContent?.trim();
+        if (tex) {
+          runs.push({
+            text: tex,
+            options: {
+              color,
+              italic: true,
+              ...(bold ? { bold: true } : {}),
+              ...(href ? { hyperlink: { url: href } } : {}),
+            },
+          });
+          return;
+        }
+        // Fallback: strip MathML and walk only the visual HTML layer once.
+        const mathml = el.querySelector('.katex-mathml');
+        mathml?.remove();
+      }
+
       const isBold = tag === 'strong' || tag === 'b';
       // '#' is escUrl's sentinel for a stripped/invalid href (see markdownToSlides.ts) — never link to it.
       const linkHref = tag === 'a' ? el.getAttribute('href') : null;
