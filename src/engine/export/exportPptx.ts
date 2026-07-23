@@ -887,6 +887,7 @@ function htmlToInlineRuns(
     italic: boolean,
     isCode: boolean,
     strike: boolean,
+    underline: boolean,
     color: string,
     href: string | null,
   ) {
@@ -901,6 +902,7 @@ function htmlToInlineRuns(
           ...(italic ? { italic: true } : {}),
           ...(isCode ? { fontFace: codeFont } : {}),
           ...(strike ? { strike: true } : {}),
+          ...(underline ? { underline: { style: 'sng' } } : {}),
           ...(href   ? { hyperlink: { url: href } } : {}),
         },
       });
@@ -917,6 +919,7 @@ function htmlToInlineRuns(
             italic: true,
             ...(bold ? { bold: true } : {}),
             ...(strike ? { strike: true } : {}),
+            ...(underline ? { underline: { style: 'sng' } } : {}),
             ...(href ? { hyperlink: { url: href } } : {}),
           },
         });
@@ -938,6 +941,7 @@ function htmlToInlineRuns(
           italic || tag === 'em' || tag === 'i',
           isCode || tag === 'code',
           strike || tag === 'del' || tag === 's',
+          underline || tag === 'u',
           // Link colour wins over bold colour when both apply (e.g. a bolded
           // link, or bold text nested inside a link), matching the existing
           // precedent that link text always takes accentColor regardless of
@@ -951,7 +955,7 @@ function htmlToInlineRuns(
     }
   }
 
-  for (const child of div.childNodes) walk(child, false, false, false, false, defaultColor, null);
+  for (const child of div.childNodes) walk(child, false, false, false, false, false, defaultColor, null);
   return runs.length > 0 ? runs : [{ text: stripHtml(html) || ' ', options: { color: defaultColor } }];
 }
 
