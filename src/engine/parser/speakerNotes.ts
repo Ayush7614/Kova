@@ -5,7 +5,8 @@ export function extractSpeakerNotes(slideContent: string): { content: string; no
 
   for (let i = 0; i < lines.length; i++) {
     const t = lines[i].trim();
-    if (t.startsWith('```')) inFence = !inFence;
+    // Match backtick and tilde fences (CommonMark); same as bgImage / slide split.
+    if (/^(`{3,}|~{3,})/.test(t)) inFence = !inFence;
     if (!inFence && t === '???') {
       return {
         content: lines.slice(0, i).join('\n').trim(),

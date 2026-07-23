@@ -58,9 +58,9 @@ describe('extractSpeakerNotes', () => {
     expect(notes).toBe('Note one\n\n???\n\nNote two');
   });
 
-  it('splits on ??? inside a ~~~ tilde fence (only backtick fences are recognised)', () => {
-    const { content, notes } = extractSpeakerNotes('~~~\n???\n~~~\n\nAfter');
-    expect(content).toBe('~~~');
-    expect(notes).toBe('~~~\n\nAfter');
+  it('ignores ??? inside a tilde fence (issue #179)', () => {
+    const { content, notes } = extractSpeakerNotes('~~~\n???\n~~~\n\n???\n\nReal notes');
+    expect(content).toContain('???'); // the one inside the fence stays
+    expect(notes).toBe('Real notes');
   });
 });
