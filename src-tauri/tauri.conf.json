@@ -63,7 +63,7 @@
       },
       "wix": {
         "fragmentPaths": ["wix/path-env.wxs", "wix/path-checkbox-dialog.wxs"],
-        "componentRefs": ["KovaPathEnv"]
+        "componentRefs": ["KovaPathEnv", "KovaPathEnvUser"]
       }
     },
     "linux": {

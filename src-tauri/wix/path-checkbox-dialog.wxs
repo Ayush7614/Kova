@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Adds an "Add to PATH" checkbox page to the MSI install wizard (issue
-  #168): the stock WixUI_InstallDir sequence has no spare checkbox slot
-  (the Exit dialog's one optional checkbox is already used for "Launch
-  Kova" in main.wxs), so this splices a new dialog in between InstallDirDlg
-  and VerifyReadyDlg.
+  Adds a "PATH" page to the MSI install wizard (issue #168) letting the
+  user pick system PATH / their own PATH only / no PATH entry, even though
+  the app itself always installs per-machine (Tauri's WiX bundler has no
+  per-user install mode at all — this only changes which registry hive the
+  Environment component targets, not where Kova's files go). The stock
+  WixUI_InstallDir sequence has no spare page for this (the Exit dialog's
+  one optional checkbox is already used for "Launch Kova" in main.wxs), so
+  this splices a new dialog in between InstallDirDlg and VerifyReadyDlg.
 
   Overriding stock WixUI_InstallDir navigation: WiX/MSI evaluates every
   Publish row for a given Dialog+Control+Event in ascending Order, and for
@@ -17,13 +20,16 @@
   bypassed. Same pattern for VerifyReadyDlg's Back button (stock Order="1"
   condition "NOT Installed").
 
-  ADDTOPATH defaults to "1" (checked) so both a plain `msiexec /i` silent
-  install and an interactive install that never reaches this page (the
-  property is public/all-caps, so it carries from the UI sequence into the
-  execute sequence where the Environment component's Condition, in
-  path-env.wxs, is evaluated) keep today's always-add-PATH behaviour.
-  Power users can pass `ADDTOPATH=0` on the msiexec command line for a
-  scripted install with no dialog involved at all.
+  PATHSCOPE defaults to "system" (matches the only behaviour this installer
+  had before issue #168) so both a plain `msiexec /i` silent install and an
+  interactive install that never reaches this page (the property is
+  public/all-caps, so it carries from the UI sequence into the execute
+  sequence where the Environment components' Conditions, in path-env.wxs,
+  are evaluated) keep adding to the system PATH. Power users can pass
+  PATHSCOPE=user or PATHSCOPE=none on the msiexec command line for a
+  scripted install with no dialog involved at all. The "user" choice writes
+  HKCU, not HKLM, so it needs no elevation of its own — though the overall
+  MSI is always elevated anyway to install into Program Files.
 
   This whole Fragment is otherwise unreachable from the product (nothing
   Ref's the Dialog, Property, or Publish rows here), and WiX Fragments are
@@ -34,7 +40,7 @@
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
-    <Property Id="ADDTOPATH" Value="1" />
+    <Property Id="PATHSCOPE" Value="system" />
 
     <UI>
       <Dialog Id="PathOptDlg" Width="370" Height="270" Title="!(loc.InstallDirDlg_Title)">
@@ -43,10 +49,17 @@
         <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
 
         <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="Command-Line Access" />
-        <Control Id="Description" Type="Text" X="25" Y="23" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="Choose whether to add Kova to your PATH." />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="Choose where to add Kova to PATH." />
 
-        <Control Id="PathLabel" Type="Text" X="20" Y="60" Width="330" Height="40" NoPrefix="yes" Text="Kova includes a command-line interface (kova --present, --check, --import, --export). Adding the install folder to your PATH lets you run 'kova' from Command Prompt or PowerShell." />
-        <Control Id="AddToPathCheckBox" Type="CheckBox" X="20" Y="105" Width="330" Height="18" CheckBoxValue="1" Property="ADDTOPATH" Text="Add Kova to my PATH (recommended)" />
+        <Control Id="PathLabel" Type="Text" X="20" Y="60" Width="330" Height="24" NoPrefix="yes" Text="Kova includes a command-line interface (kova --present, --check, --import, --export). Adding it to PATH lets you run 'kova' from a terminal." />
+
+        <Control Id="PathScopeGroup" Type="RadioButtonGroup" X="20" Y="90" Width="330" Height="60" Property="PATHSCOPE">
+          <RadioButtonGroup Property="PATHSCOPE">
+            <RadioButton Value="system" X="0" Y="0" Width="330" Height="16" Text="Add to the system PATH (every user on this machine, recommended)" />
+            <RadioButton Value="user" X="0" Y="20" Width="330" Height="16" Text="Add to my PATH only" />
+            <RadioButton Value="none" X="0" Y="40" Width="330" Height="16" Text="Don't add Kova to PATH" />
+          </RadioButtonGroup>
+        </Control>
 
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
           <Publish Event="NewDialog" Value="InstallDirDlg">1</Publish>
