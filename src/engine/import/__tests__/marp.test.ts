@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { isMarp, importMarp } from '../marp';
+import { parseDocument } from '../../parser/markdownToSlides';
 
 describe('isMarp', () => {
   it('detects marp:true frontmatter only', () => {
@@ -22,11 +23,29 @@ describe('isMarp', () => {
 });
 
 describe('importMarp', () => {
-  it('maps ![bg] to full-bleed and strips marp:true', () => {
+  it('preserves ![bg] as native bg (image-only → full-bleed via parser)', () => {
     const { markdown } = importMarp('---\nmarp: true\n---\n![bg](a.jpg)');
-    expect(markdown).toContain('<!-- layout:full-bleed -->');
-    expect(markdown).toContain('![](a.jpg)');
+    expect(markdown).toContain('![bg](a.jpg)');
+    expect(markdown).not.toContain('<!-- layout:full-bleed -->');
+    expect(markdown).not.toContain('![](a.jpg)');
     expect(markdown).not.toContain('marp: true');
+  });
+
+  it('preserves ![bg] + title so overlay text survives import (issue #169)', () => {
+    const { markdown } = importMarp(
+      '---\nmarp: true\n---\n![bg](hero.jpg)\n\n# Title on the photo\n\nBody text.',
+    );
+    expect(markdown).toContain('![bg](hero.jpg)');
+    expect(markdown).toContain('# Title on the photo');
+    expect(markdown).toContain('Body text.');
+    expect(markdown).not.toContain('<!-- layout:full-bleed -->');
+    expect(markdown).not.toContain('![](hero.jpg)');
+
+    // End-to-end: native parser must set backgroundImage (not full-bleed-only).
+    const { slides } = parseDocument(markdown);
+    expect(slides[0].backgroundImage?.src).toBe('hero.jpg');
+    expect(slides[0].layout).not.toBe('full-bleed');
+    expect(slides[0].title).toBe('Title on the photo');
   });
 
   it('drops a style block-scalar without leaking its CSS as frontmatter', () => {
@@ -43,9 +62,10 @@ describe('importMarp', () => {
     expect(markdown).toContain('show_slide_number: true'); // paginate after the block still parsed
   });
 
-  it('maps ![bg left] to split', () => {
+  it('preserves ![bg left] as native bg (split via parser)', () => {
     const { markdown } = importMarp('---\nmarp: true\n---\n![bg left](a.jpg)\n\n# Title');
-    expect(markdown).toContain('<!-- layout:split -->');
+    expect(markdown).toContain('![bg left](a.jpg)');
+    expect(markdown).not.toContain('<!-- layout:split -->');
   });
 
   it('maps frontmatter size and paginate', () => {
@@ -89,21 +109,34 @@ describe('importMarp', () => {
     expect(markdown.split(/^---$/m).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('maps ![bg right] to split', () => {
+  it('preserves ![bg right] as native bg', () => {
     const { markdown } = importMarp('---\nmarp: true\n---\n![bg right](a.jpg)\n\n# Title');
-    expect(markdown).toContain('<!-- layout:split -->');
+    expect(markdown).toContain('![bg right](a.jpg)');
+    expect(markdown).not.toContain('<!-- layout:split -->');
   });
 
-  it('logs bg-sizing when fit/cover modifiers are present', () => {
-    const { dropped } = importMarp('---\nmarp: true\n---\n![bg fit](a.jpg)');
+  it('maps ![bg fit] to native contain and does not drop the line', () => {
+    const { markdown, dropped } = importMarp('---\nmarp: true\n---\n![bg fit](a.jpg)');
+    expect(markdown).toContain('![bg contain](a.jpg)');
+    expect(dropped).not.toContain('bg-sizing');
+  });
+
+  it('logs bg-sizing for percentage modifiers we do not map', () => {
+    const { markdown, dropped } = importMarp('---\nmarp: true\n---\n![bg left:40%](a.jpg)\n\n# Title');
     expect(dropped).toContain('bg-sizing');
+    expect(markdown).toContain('![bg left](a.jpg)');
   });
 
   it('drops a second background image on the same slide', () => {
     const { markdown, dropped } = importMarp('---\nmarp: true\n---\n![bg](a.jpg)\n![bg](b.jpg)');
     expect(dropped).toContain('bg-extra');
-    expect(markdown).toContain('![](a.jpg)');
-    expect(markdown).not.toContain('![](b.jpg)');
+    expect(markdown).toContain('![bg](a.jpg)');
+    expect(markdown).not.toContain('![bg](b.jpg)');
+  });
+
+  it('preserves bg paths that contain spaces', () => {
+    const { markdown } = importMarp('---\nmarp: true\n---\n![bg](my photo.jpg)\n\n# Title');
+    expect(markdown).toContain('![bg](my photo.jpg)');
   });
 
   it('strips Marp image size keywords from alt text', () => {
