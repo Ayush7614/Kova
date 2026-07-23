@@ -376,8 +376,9 @@ function BspLayout({ slide }: { slide: Slide }) {
     rightGroups = groups.slice(1);
   }
 
-  // Text panes top-align like every other text-holding layout (split, title-content,
-  // two-column); non-text panes (image/chart/table) stay vertically centered for balance.
+  // Text panes top-align like other text-vs-text layouts (title-content, two-column);
+  // non-text panes (image/chart/table), and split's text pane (paired with a visual),
+  // stay vertically centered for balance.
   const paneClass = (g: SlideElement[]) => 'sl-bsp__pane' + (isGroupPureText(g) ? ' sl-bsp__pane--text' : '');
   const subpaneClass = (g: SlideElement[]) => 'sl-bsp__subpane' + (isGroupPureText(g) ? ' sl-bsp__pane--text' : '');
 
