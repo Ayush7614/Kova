@@ -859,6 +859,16 @@ const HLJS_STYLE: Record<string, { color: string; bold?: true; italic?: true }> 
 
 type PptxRun = { text: string; options: Record<string, unknown> };
 
+// KaTeX emits both MathML (accessible) and HTML layers. Walking both text
+// nodes concatenates duplicated runs (e.g. "x2x^2x2") — issue #170. Prefer
+// the TeX source from the MathML annotation when present.
+function katexTexSource(el: Element): string | null {
+  if (!el.classList?.contains('katex')) return null;
+  const ann = el.querySelector('annotation[encoding="application/x-tex"]');
+  const tex = ann?.textContent?.trim();
+  return tex || null;
+}
+
 // Walk markdown-generated HTML (bold, italic, code, links) into PptxGenJS runs.
 function htmlToInlineRuns(
   html: string,
@@ -888,6 +898,25 @@ function htmlToInlineRuns(
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const el = node as Element;
       const tag = el.tagName.toLowerCase();
+
+      const tex = katexTexSource(el);
+      if (tex !== null) {
+        runs.push({
+          text: tex,
+          options: {
+            color,
+            italic: true,
+            ...(bold ? { bold: true } : {}),
+            ...(href ? { hyperlink: { url: href } } : {}),
+          },
+        });
+        return;
+      }
+      // Fallback: strip MathML and walk only the visual HTML layer once.
+      if (el.classList?.contains('katex')) {
+        el.querySelector('.katex-mathml')?.remove();
+      }
+
       const isBold = tag === 'strong' || tag === 'b';
       // '#' is escUrl's sentinel for a stripped/invalid href (see markdownToSlides.ts) — never link to it.
       const linkHref = tag === 'a' ? el.getAttribute('href') : null;
@@ -1522,7 +1551,33 @@ function stripHtml(html: string): string {
   // entity decoding — inlineToHtml() escapes & < > into entities, and
   // textContent decodes them back correctly (including numeric entities),
   // instead of leaving e.g. "AT&amp;T" as literal text in the exported pptx.
+  // Walk with the same KaTeX helper as htmlToInlineRuns so table cells don't
+  // reintroduce the MathML+HTML duplication (issue #170 / PR #174 review).
   const div = document.createElement('div');
   div.innerHTML = withAltText;
-  return div.textContent ?? '';
+  return flattenHtmlText(div);
+}
+
+/** Plain-text flatten that collapses KaTeX roots to a single TeX fragment. */
+function flattenHtmlText(root: Node): string {
+  let out = '';
+  function walk(node: Node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.textContent ?? '';
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node as Element;
+    const tex = katexTexSource(el);
+    if (tex !== null) {
+      out += tex;
+      return;
+    }
+    if (el.classList?.contains('katex')) {
+      el.querySelector('.katex-mathml')?.remove();
+    }
+    for (const child of node.childNodes) walk(child);
+  }
+  walk(root);
+  return out;
 }
