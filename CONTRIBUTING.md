@@ -41,7 +41,7 @@ Commit messages follow `type(scope): summary` (`fix(toc): …`, `feat: …`) —
 ## Markdown syntax conventions
 
 This is the part that matters most for contributors adding a feature, since
-it's easy to accumulate one-off ad-hoc syntax over time. Kova currently uses
+it's easy to accumulate one-off ad hoc syntax over time. Kova currently uses
 four distinct forms, each with a specific job. If you're adding a new
 directive, find which category it belongs to below rather than inventing a
 fifth form.
