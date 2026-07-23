@@ -869,6 +869,32 @@ function katexTexSource(el: Element): string | null {
   return tex || null;
 }
 
+// Inline formatting state accumulated while walking down the DOM. Bundled
+// into one object (rather than one positional bool per attribute) so adding
+// a new inline format only touches this type and the two places that read
+// or derive it, not every walk() call site.
+interface RunFormatting {
+  bold: boolean;
+  italic: boolean;
+  isCode: boolean;
+  strike: boolean;
+  underline: boolean;
+  color: string;
+  href: string | null;
+}
+
+// Options shared by every run regardless of node kind; callers layer on
+// italic/fontFace since those two vary for the KaTeX-TeX-source case.
+function baseRunOptions(f: RunFormatting): Record<string, unknown> {
+  return {
+    color: f.color,
+    ...(f.bold      ? { bold: true }                    : {}),
+    ...(f.strike    ? { strike: true }                  : {}),
+    ...(f.underline ? { underline: { style: 'sng' } }    : {}),
+    ...(f.href      ? { hyperlink: { url: f.href } }     : {}),
+  };
+}
+
 // Walk markdown-generated HTML (bold, italic, code, links) into PptxGenJS runs.
 function htmlToInlineRuns(
   html: string,
@@ -881,29 +907,16 @@ function htmlToInlineRuns(
   div.innerHTML = html;
   const runs: PptxRun[] = [];
 
-  function walk(
-    node: Node,
-    bold: boolean,
-    italic: boolean,
-    isCode: boolean,
-    strike: boolean,
-    underline: boolean,
-    color: string,
-    href: string | null,
-  ) {
+  function walk(node: Node, f: RunFormatting) {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent ?? '';
       if (!text) return;
       runs.push({
         text,
         options: {
-          color,
-          ...(bold   ? { bold: true }   : {}),
-          ...(italic ? { italic: true } : {}),
-          ...(isCode ? { fontFace: codeFont } : {}),
-          ...(strike ? { strike: true } : {}),
-          ...(underline ? { underline: { style: 'sng' } } : {}),
-          ...(href   ? { hyperlink: { url: href } } : {}),
+          ...baseRunOptions(f),
+          ...(f.italic ? { italic: true }        : {}),
+          ...(f.isCode ? { fontFace: codeFont }  : {}),
         },
       });
     } else if (node.nodeType === Node.ELEMENT_NODE) {
@@ -914,14 +927,7 @@ function htmlToInlineRuns(
       if (tex !== null) {
         runs.push({
           text: tex,
-          options: {
-            color,
-            italic: true,
-            ...(bold ? { bold: true } : {}),
-            ...(strike ? { strike: true } : {}),
-            ...(underline ? { underline: { style: 'sng' } } : {}),
-            ...(href ? { hyperlink: { url: href } } : {}),
-          },
+          options: { ...baseRunOptions(f), italic: true },
         });
         return;
       }
@@ -933,29 +939,33 @@ function htmlToInlineRuns(
       const isBold = tag === 'strong' || tag === 'b';
       // '#' is escUrl's sentinel for a stripped/invalid href (see markdownToSlides.ts) — never link to it.
       const linkHref = tag === 'a' ? el.getAttribute('href') : null;
-      const nextHref = linkHref && linkHref !== '#' ? linkHref : href;
+      const nextHref = linkHref && linkHref !== '#' ? linkHref : f.href;
       for (const child of node.childNodes) {
-        walk(
-          child,
-          bold   || isBold,
-          italic || tag === 'em' || tag === 'i',
-          isCode || tag === 'code',
-          strike || tag === 'del' || tag === 's',
-          underline || tag === 'u',
+        walk(child, {
+          bold: f.bold || isBold,
+          italic: f.italic || tag === 'em' || tag === 'i',
+          isCode: f.isCode || tag === 'code',
+          strike: f.strike || tag === 'del' || tag === 's',
+          underline: f.underline || tag === 'u',
           // Link colour wins over bold colour when both apply (e.g. a bolded
           // link, or bold text nested inside a link), matching the existing
           // precedent that link text always takes accentColor regardless of
           // surrounding formatting. `nextHref` stays truthy for every
           // descendant of an `<a>`, so this holds even past an intervening
           // <strong>.
-          (tag === 'a' || nextHref) ? accentColor : (isBold ? boldColor : color),
-          nextHref,
-        );
+          color: (tag === 'a' || nextHref) ? accentColor : (isBold ? boldColor : f.color),
+          href: nextHref,
+        });
       }
     }
   }
 
-  for (const child of div.childNodes) walk(child, false, false, false, false, false, defaultColor, null);
+  for (const child of div.childNodes) {
+    walk(child, {
+      bold: false, italic: false, isCode: false, strike: false, underline: false,
+      color: defaultColor, href: null,
+    });
+  }
   return runs.length > 0 ? runs : [{ text: stripHtml(html) || ' ', options: { color: defaultColor } }];
 }
 
