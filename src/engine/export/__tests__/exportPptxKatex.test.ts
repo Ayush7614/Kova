@@ -39,4 +39,30 @@ describe('exportPptx inline KaTeX (issue #170)', () => {
     expect(text).toContain('Compare');
     expect(text).not.toMatch(/aab\^2/);
   });
+
+  it('does not garble inline math in table cells (stripHtml path)', async () => {
+    const text = await slide1Text(
+      '## Table\n\n| formula |\n|--------|\n| $x^2$ |\n',
+    );
+    expect(text).toContain('x^2');
+    expect(text).not.toMatch(/x2x\^2x2/);
+    expect(text).not.toMatch(/x2x2/);
+  });
+
+  it('does not garble inline math in list items', async () => {
+    const text = await slide1Text(
+      '## List\n\n- The term $x^2$ appears here\n',
+    );
+    expect(text).toContain('x^2');
+    expect(text).toContain('The term');
+    expect(text).not.toMatch(/x2x\^2x2/);
+  });
+
+  it('does not garble inline math in a blockquote', async () => {
+    const text = await slide1Text(
+      '## Quote\n\n> Energy is $E=mc^2$ roughly\n',
+    );
+    expect(text).toContain('E=mc^2');
+    expect(text).not.toMatch(/Emc2E=mc\^2/);
+  });
 });
