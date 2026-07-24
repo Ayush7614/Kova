@@ -107,8 +107,8 @@ const EXPORT_USAGE: &str = "--export requires: --export <pptx|pdf> <input> <outp
 const USAGE: &str = "\
 Usage:
   kova [FILE...]                            open file(s) in the editor
-  kova --present <FILE>                     present FILE directly
-  kova --check <FILE>                       validate FILE and exit
+  kova --present <FILE.md>                  present FILE directly (.md/.markdown only)
+  kova --check <FILE.md>                    validate FILE and exit (.md/.markdown only)
   kova --import <marp|pptx|url> <IN> <OUT>  convert IN to Kova Markdown
   kova --export <pptx|pdf> <IN> <OUT>       export IN via Kova's engine
 
@@ -160,6 +160,16 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
                 let Some(file) = take_value(inline, &args, &mut i) else {
                     return CliArgs::Error("--present requires a file argument".into());
                 };
+                // --present is a standalone, headless run independent of the
+                // desktop app's editor state (issue #185) — require the same
+                // .md/.markdown extension --import/--export already do,
+                // rather than silently reading whatever it's pointed at
+                // (issue #186).
+                if !has_extension(&file, &[".md", ".markdown"]) {
+                    return CliArgs::Error(format!(
+                        "--present expects a .md file, got '{file}'"
+                    ));
+                }
                 if let Err(e) = set_action(&mut action, Action::Present(file)) {
                     return e;
                 }
@@ -276,6 +286,18 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
                 }
             }
             other => {
+                // A single-dash near-miss of a known long flag (e.g. `-check`
+                // for `--check`) used to fall all the way through to the
+                // silent-ignore editor-launch path below, with the intended
+                // flag's value misread as a file to open (issue #186). Exact
+                // match only — no fuzzy matching — so platform-injected
+                // single-dash flags we don't recognise (macOS `-psn_...`,
+                // desktop-file launch args) keep being silently ignored.
+                if let Some(hint) = single_dash_typo_hint(other) {
+                    return CliArgs::Error(format!(
+                        "unknown option '{other}' — did you mean '{hint}'?"
+                    ));
+                }
                 if unknown.is_none() {
                     unknown = Some(other.to_string());
                 }
@@ -288,7 +310,16 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
     if check && action.is_none() {
         match positionals.len() {
             0 => return CliArgs::Error("--check requires a file or an action to gate".into()),
-            1 => action = Some(Action::CheckOnly(positionals.remove(0))),
+            1 => {
+                let file = positionals.remove(0);
+                // Consistent with --present/--import/--export (issue #186) —
+                // --check as a modifier on those already validates their own
+                // input extension; this covers standalone --check FILE.
+                if !has_extension(&file, &[".md", ".markdown"]) {
+                    return CliArgs::Error(format!("--check expects a .md file, got '{file}'"));
+                }
+                action = Some(Action::CheckOnly(file));
+            }
             _ => return CliArgs::Error("--check validates one file at a time".into()),
         }
     }
@@ -312,6 +343,19 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
         // desktop files pass flags Kova has never handled.
         CliArgs::Run(RunArgs { action: None, theme: None, check: false, open: positionals })
     }
+}
+
+/// Long flags a single missing dash could turn into a silently-ignored typo
+/// (`-check` → `--check`). Exact match only — see the call site in
+/// `parse_cli_args` for why fuzzy matching would be unsafe here.
+const KNOWN_LONG_FLAGS: &[&str] = &["--present", "--check", "--theme", "--import", "--export"];
+
+fn single_dash_typo_hint(arg: &str) -> Option<&'static str> {
+    if !arg.starts_with('-') || arg.starts_with("--") {
+        return None;
+    }
+    let candidate = format!("-{arg}");
+    KNOWN_LONG_FLAGS.iter().find(|&&f| f == candidate).copied()
 }
 
 fn split_eq(arg: &str) -> (&str, Option<&str>) {
@@ -558,10 +602,41 @@ mod tests {
     }
 
     #[test]
+    fn present_accepts_markdown_extension() {
+        let run = expect_run(&["--present", "talk.markdown"]);
+        assert_eq!(run.action, Some(Action::Present("talk.markdown".into())));
+    }
+
+    #[test]
+    fn present_rejects_non_markdown_extension() {
+        // --present is a standalone, headless run independent of the desktop
+        // app (issue #185) — it must not silently read an arbitrary file as
+        // Markdown (issue #186).
+        assert_eq!(
+            expect_error(&["--present", "talk.txt"]),
+            "--present expects a .md file, got 'talk.txt'"
+        );
+    }
+
+    #[test]
     fn check_standalone_takes_positional_file() {
         let run = expect_run(&["--check", "talk.md"]);
         assert_eq!(run.action, Some(Action::CheckOnly("talk.md".into())));
         assert!(run.check);
+    }
+
+    #[test]
+    fn check_standalone_accepts_markdown_extension() {
+        let run = expect_run(&["--check", "talk.markdown"]);
+        assert_eq!(run.action, Some(Action::CheckOnly("talk.markdown".into())));
+    }
+
+    #[test]
+    fn check_standalone_rejects_non_markdown_extension() {
+        assert_eq!(
+            expect_error(&["--check", "talk.txt"]),
+            "--check expects a .md file, got 'talk.txt'"
+        );
     }
 
     #[test]
@@ -860,6 +935,46 @@ mod tests {
     fn psn_argument_tolerated() {
         let run = expect_run(&["-psn_0_12345", "--present", "talk.md"]);
         assert_eq!(run.action, Some(Action::Present("talk.md".into())));
+    }
+
+    // -- single-dash typos of known flags (issue #186) -----------------------
+    //
+    // These used to fall through to the silent-ignore editor-launch path,
+    // with the file argument that followed misread as a positional to open.
+
+    #[test]
+    fn single_dash_check_typo_is_error() {
+        assert_eq!(
+            expect_error(&["-check", "talk.md"]),
+            "unknown option '-check' — did you mean '--check'?"
+        );
+    }
+
+    #[test]
+    fn single_dash_present_typo_is_error() {
+        assert_eq!(
+            expect_error(&["-present", "talk.md"]),
+            "unknown option '-present' — did you mean '--present'?"
+        );
+    }
+
+    #[test]
+    fn single_dash_typo_with_inline_value_is_error() {
+        assert_eq!(
+            expect_error(&["-theme=firefly", "--present", "talk.md"]),
+            "unknown option '-theme' — did you mean '--theme'?"
+        );
+    }
+
+    #[test]
+    fn genuinely_unknown_single_dash_flag_still_tolerated() {
+        // Not a near-miss of any known flag — must keep falling through to
+        // the silent-ignore editor-launch path, same as -psn_ above, since
+        // this is exactly the platform-launcher-argument case that path
+        // exists for.
+        let run = expect_run(&["-x", "talk.md"]);
+        assert_eq!(run.action, None);
+        assert_eq!(run.open, vec!["talk.md".to_string()]);
     }
 
     // -- help / version -----------------------------------------------------
