@@ -140,6 +140,138 @@ describe('parsePptx table geometry', () => {
   });
 });
 
+// ── Chrome suppression (issue #192) ────────────────────────────────────────────
+
+// One slide tagging its own header/footer text and logo image with Kova's
+// 'kova:' objectName prefix (set on export), alongside an ordinary untagged
+// textbox that must NOT be affected by the skip.
+const CHROME_SLIDE_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld ${NS}>
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr/>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="2" name="kova:footer-text"/>
+          <p:cNvSpPr/>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="0" y="6500000"/><a:ext cx="9144000" cy="200000"/></a:xfrm></p:spPr>
+        <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>My Deck | 2026-07-24</a:t></a:r></a:p></p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="3" name="TextBox 3"/>
+          <p:cNvSpPr/>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="0" y="1000000"/><a:ext cx="9144000" cy="1000000"/></a:xfrm></p:spPr>
+        <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Ordinary body text</a:t></a:r></a:p></p:txBody>
+      </p:sp>
+      <p:pic>
+        <p:nvPicPr>
+          <p:cNvPr id="4" name="kova:logo"/>
+          <p:cNvPicPr/>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill><a:blip r:embed="rIdLogo"/></p:blipFill>
+        <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="500000" cy="500000"/></a:xfrm></p:spPr>
+      </p:pic>
+    </p:spTree>
+  </p:cSld>
+</p:sld>`;
+
+async function buildChromeFixtureBase64(): Promise<string> {
+  const zip = new JSZip();
+  zip.file('ppt/presentation.xml', PRESENTATION_XML);
+  zip.file('ppt/_rels/presentation.xml.rels', PRESENTATION_RELS);
+  zip.file('ppt/slides/slide1.xml', CHROME_SLIDE_XML);
+  return zip.generateAsync({ type: 'base64' });
+}
+
+describe('parsePptx chrome suppression', () => {
+  it('skips kova:-tagged header/footer/logo shapes without writing an asset, keeping ordinary content', async () => {
+    const b64 = await buildChromeFixtureBase64();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_file_b64') return b64;
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+
+    const result = await parsePptx('/fake/deck.pptx', '/fake/dest');
+    const { blocks } = result.slides[0];
+
+    expect(blocks.some((b) => b.text?.includes('My Deck'))).toBe(false);
+    expect(blocks.some((b) => b.kind === 'image')).toBe(false);
+    expect(blocks.some((b) => b.text === 'Ordinary body text')).toBe(true);
+    expect(result.warnings.some((w) => /Skipped 2 Kova theme element/.test(w))).toBe(true);
+  });
+
+  it('skips native ftr/hdr/sldNum/dt placeholders with real text, but not empty inherited ones', async () => {
+    const nativePhSlideXml = (footerText: string) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld ${NS}>
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr/>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="2" name="Footer Placeholder 2"/>
+          <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
+          <p:nvPr><p:ph type="ftr"/></p:nvPr>
+        </p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="0" y="6500000"/><a:ext cx="3000000" cy="200000"/></a:xfrm></p:spPr>
+        <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${footerText}</a:t></a:r></a:p></p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="3" name="Content Placeholder 3"/>
+          <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
+          <p:nvPr><p:ph type="body"/></p:nvPr>
+        </p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="0" y="1000000"/><a:ext cx="9144000" cy="1000000"/></a:xfrm></p:spPr>
+        <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Real slide content</a:t></a:r></a:p></p:txBody>
+      </p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:sld>`;
+
+    const presXml2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation ${NS}>
+  <p:sldIdLst><p:sldId id="256" r:id="rId1"/><p:sldId id="257" r:id="rId2"/></p:sldIdLst>
+  <p:sldSz cx="9144000" cy="6858000"/>
+</p:presentation>`;
+    const presRels2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide2.xml"/>
+</Relationships>`;
+
+    const zip = new JSZip();
+    zip.file('ppt/presentation.xml', presXml2);
+    zip.file('ppt/_rels/presentation.xml.rels', presRels2);
+    zip.file('ppt/slides/slide1.xml', nativePhSlideXml('Acme Corp Confidential'));
+    zip.file('ppt/slides/slide2.xml', nativePhSlideXml('')); // empty footer, inherited/unfilled
+    const b64 = await zip.generateAsync({ type: 'base64' });
+
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_file_b64') return b64;
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+
+    const result = await parsePptx('/fake/deck.pptx', '/fake/dest');
+    expect(result.slides).toHaveLength(2);
+
+    const allText = result.slides.flatMap((s) => s.blocks.map((b) => b.text));
+    expect(allText).not.toContain('Acme Corp Confidential');
+    expect(allText).toContain('Real slide content');
+
+    // Only the non-empty ftr on slide 1 counts — the empty one on slide 2 must not.
+    expect(result.warnings.filter((w) => /Skipped \d+ native/.test(w))).toHaveLength(1);
+    expect(result.warnings.some((w) => /Skipped 1 native/.test(w))).toBe(true);
+  });
+});
+
 // ── Cross-slide image dedup (issue #192) ───────────────────────────────────────
 
 function picXml(rId: string): string {

@@ -8,7 +8,7 @@ const P   = 'http://schemas.openxmlformats.org/presentationml/2006/main';
 const R   = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
 // Placeholder types we care about
-type PhType = 'ctrTitle' | 'title' | 'subTitle' | 'body' | 'obj' | 'other';
+type PhType = 'ctrTitle' | 'title' | 'subTitle' | 'body' | 'obj' | 'ftr' | 'hdr' | 'sldNum' | 'dt' | 'other';
 
 export interface PptxBlock {
   kind: 'ctrTitle' | 'title' | 'body' | 'image' | 'table';
@@ -228,7 +228,17 @@ function mapPhType(t: string): PhType {
   if (t === 'subTitle') return 'subTitle';
   if (t === 'body')     return 'body';
   if (t === 'obj')      return 'obj';
+  if (t === 'ftr')      return 'ftr';
+  if (t === 'hdr')      return 'hdr';
+  if (t === 'sldNum')   return 'sldNum';
+  if (t === 'dt')       return 'dt';
   return 'other';
+}
+
+// p:cNvPr@name is presentationml-only for p:sp/p:pic (no a:cNvPr variant),
+// so a single-namespace lookup is enough, unlike the ph/txBody dual lookups above.
+function getObjectName(shape: Element): string | null {
+  return shape.getElementsByTagNameNS(P, 'cNvPr')[0]?.getAttribute('name') ?? null;
 }
 
 // ── Table extraction ──────────────────────────────────────────────────────────
@@ -285,6 +295,10 @@ async function extractSpeakerNotes(
     const ph = nvPr?.getElementsByTagNameNS(P, 'ph')[0];
     if (ph?.getAttribute('type') === 'sldImg') continue;
 
+    // Native footer/header/date/slide-number placeholders inherited from the
+    // notes master — page chrome, not notes content.
+    if (phType === 'ftr' || phType === 'hdr' || phType === 'sldNum' || phType === 'dt') continue;
+
     const txBody = sp.getElementsByTagNameNS(P, 'txBody')[0]
                 ?? sp.getElementsByTagNameNS(A, 'txBody')[0]
                 ?? null;
@@ -311,6 +325,7 @@ async function extractSlideBlocks(
   warnings: string[],
   slidePath: string,
   imageCache: Map<string, string>,
+  chromeSkipCounts: { kova: number; native: number },
 ): Promise<PptxBlock[]> {
   const blocks: PptxBlock[] = [];
   const spTree = q(slideDoc, P, 'spTree') ?? q(slideDoc, A, 'spTree');
@@ -320,6 +335,14 @@ async function extractSlideBlocks(
 
   // ── Text shapes (p:sp) ────────────────────────────────────────────────────
   for (const sp of qAll(spTree, P, 'sp')) {
+    const objectName = getObjectName(sp);
+    if (objectName?.startsWith('kova:')) {
+      // Kova's own header/footer/slide-number text — regenerated from the
+      // current theme on export, not slide content to round-trip.
+      chromeSkipCounts.kova++;
+      continue;
+    }
+
     const txBody = sp.getElementsByTagNameNS(P, 'txBody')[0]
                 ?? sp.getElementsByTagNameNS(A, 'txBody')[0]
                 ?? null;
@@ -336,6 +359,10 @@ async function extractSlideBlocks(
       blocks.push({ kind: 'ctrTitle', text: text.trim(), isMultiPara, ...norm });
     } else if (phType === 'title') {
       blocks.push({ kind: 'title', text: text.trim(), isMultiPara, ...norm });
+    } else if (phType === 'ftr' || phType === 'hdr' || phType === 'sldNum' || phType === 'dt') {
+      // Native PowerPoint footer/header/date/slide-number placeholders — page
+      // chrome, not slide content.
+      chromeSkipCounts.native++;
     } else {
       // body / subTitle / obj / textbox / other — all become body blocks
       blocks.push({ kind: 'body', text: text.trim(), isMultiPara, ...norm });
@@ -344,6 +371,13 @@ async function extractSlideBlocks(
 
   // ── Pictures (p:pic) ──────────────────────────────────────────────────────
   for (const pic of qAll(spTree, P, 'pic')) {
+    const picObjectName = getObjectName(pic);
+    if (picObjectName === 'kova:logo') {
+      // Theme logo — regenerated from the current theme on export, not an asset to re-import.
+      chromeSkipCounts.kova++;
+      continue;
+    }
+
     const blipFill = pic.getElementsByTagNameNS(P, 'blipFill')[0]
                   ?? pic.getElementsByTagNameNS(A, 'blipFill')[0]
                   ?? null;
@@ -495,6 +529,7 @@ export async function parsePptx(filePath: string, destDir: string): Promise<Pptx
   // 5. Parse each slide
   const slides: PptxParsedSlide[] = [];
   const imageCache = new Map<string, string>(); // sha256 hex -> already-saved asset filename
+  const chromeSkipCounts = { kova: 0, native: 0 };
 
   for (let i = 0; i < slideZipPaths.length; i++) {
     const slidePath = slideZipPaths[i];
@@ -515,7 +550,7 @@ export async function parsePptx(filePath: string, destDir: string): Promise<Pptx
 
     const blocks = await extractSlideBlocks(
       slideDoc, slideRels, zip, slideW, slideH, i, destDir, warnings, slidePath,
-      imageCache,
+      imageCache, chromeSkipCounts,
     );
     const speakerNotes = await extractSpeakerNotes(slideRels, slidePath, zip);
     slides.push({ blocks, speakerNotes });
@@ -529,6 +564,17 @@ export async function parsePptx(filePath: string, destDir: string): Promise<Pptx
       presentationTitle = titleBlock.text;
       break;
     }
+  }
+
+  // Summarise skipped chrome as at most two lines, rather than one warning per
+  // shape — a themed deck can have 4 chrome shapes on every slide, and the
+  // import UI's "N items skipped" count would otherwise read as if something
+  // went wrong instead of the round-trip cleanly avoiding duplication.
+  if (chromeSkipCounts.kova > 0) {
+    warnings.push(`Skipped ${chromeSkipCounts.kova} Kova theme element(s) (header/footer/logo) — regenerated from the current theme, not duplicated.`);
+  }
+  if (chromeSkipCounts.native > 0) {
+    warnings.push(`Skipped ${chromeSkipCounts.native} native footer/header/date/slide-number placeholder(s) — not reconstructed on import.`);
   }
 
   return { slides, presentationTitle, warnings };

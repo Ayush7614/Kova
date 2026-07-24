@@ -738,17 +738,18 @@ function addBarText(
   segments: string[],
   x: number, y: number, w: number, h: number,
   fontSize: number, color: string, fontFace: string,
+  objectName: string,
 ) {
   if (segments.length <= 1) {
-    s.addText(segments[0] ?? '', { x, y, w, h, fontSize, color, fontFace, align: 'left', valign: 'middle' });
+    s.addText(segments[0] ?? '', { x, y, w, h, fontSize, color, fontFace, align: 'left', valign: 'middle', objectName });
     return;
   }
   const [left = '', center = '', ...rest] = segments;
   const right = rest.join(' | ');
   const colW = w / 3;
-  if (left)   s.addText(left,   { x,            y, w: colW, h, fontSize, color, fontFace, align: 'left',   valign: 'middle' });
-  if (center) s.addText(center, { x: x + colW,  y, w: colW, h, fontSize, color, fontFace, align: 'center', valign: 'middle' });
-  if (right)  s.addText(right,  { x: x + colW * 2, y, w: colW, h, fontSize, color, fontFace, align: 'right',  valign: 'middle' });
+  if (left)   s.addText(left,   { x,            y, w: colW, h, fontSize, color, fontFace, align: 'left',   valign: 'middle', objectName });
+  if (center) s.addText(center, { x: x + colW,  y, w: colW, h, fontSize, color, fontFace, align: 'center', valign: 'middle', objectName });
+  if (right)  s.addText(right,  { x: x + colW * 2, y, w: colW, h, fontSize, color, fontFace, align: 'right',  valign: 'middle', objectName });
 }
 
 function addHeaderBar(s: PS, t: Theme, meta: Meta) {
@@ -760,7 +761,7 @@ function addHeaderBar(s: PS, t: Theme, meta: Meta) {
   const vars = { title: meta.docTitle, date: meta.docDate, slideNumber: meta.slideNum, totalSlides: meta.totalSlides };
   const segs = t.header.text.split('|').map((p) => resolveTemplate(p.trim(), vars));
   if (segs.some(Boolean)) {
-    addBarText(s, segs, M, 0, W - M * 2, HEAD_H, 10, hex(t.colors.title_text), firstFont(t.fonts.body));
+    addBarText(s, segs, M, 0, W - M * 2, HEAD_H, 10, hex(t.colors.title_text), firstFont(t.fonts.body), 'kova:header-text');
   }
 }
 
@@ -778,7 +779,7 @@ function addFooterBar(s: PS, t: Theme, meta: Meta, H: number) {
   const segs = t.footer.text.split('|').map((p) => resolveTemplate(p.trim(), vars));
   const textW = W - M * 2 - (showNum ? 1.1 : 0);
   if (segs.some(Boolean)) {
-    addBarText(s, segs, M, footY + 0.02, textW, FOOT_H - 0.02, 9, hex(t.colors.text), firstFont(t.fonts.body));
+    addBarText(s, segs, M, footY + 0.02, textW, FOOT_H - 0.02, 9, hex(t.colors.text), firstFont(t.fonts.body), 'kova:footer-text');
   }
   if (showNum) {
     s.addText(`${meta.slideNum} / ${meta.totalSlides}`, {
@@ -786,6 +787,7 @@ function addFooterBar(s: PS, t: Theme, meta: Meta, H: number) {
       fontSize: 9, color: hex(t.colors.text),
       fontFace: firstFont(t.fonts.body),
       align: 'right', valign: 'middle',
+      objectName: 'kova:slidenum',
     });
   }
 }
@@ -812,7 +814,7 @@ function addLogo(
   }
   const transparency = Math.round((1 - Math.min(1, Math.max(0, opacity))) * 100);
   try {
-    s.addImage({ data: logoDataUrl, x: lx, y: ly, w: LOGO_W, h: LOGO_H, transparency });
+    s.addImage({ data: logoDataUrl, x: lx, y: ly, w: LOGO_W, h: LOGO_H, transparency, objectName: 'kova:logo' });
   } catch { /* ignore */ }
 }
 
