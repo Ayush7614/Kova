@@ -1539,7 +1539,13 @@ export default function App() {
           await finish(lines.join('\n'));
           return;
         }
-        const outcome = await runPdfExportCapture([...visibleSlides], coldExport.output, {});
+        // Match the GUI export button: honour the persisted "paper size"
+        // setting (including "Match slide size") instead of always A4 (#187).
+        const outcome = await runPdfExportCapture(
+          [...visibleSlides],
+          coldExport.output,
+          { paper: settings.pdfPageSize },
+        );
         const lines = [`wrote '${coldExport.output}'`];
         if (outcome.usedFallback) {
           lines.push(`note: native PDF export failed, used raster fallback (${outcome.fallbackReason})`);
@@ -1550,7 +1556,7 @@ export default function App() {
         await fail(err instanceof Error ? err.message : String(err));
       }
     })();
-  }, [coldExport, filePath, visibleSlides, frontmatter, activeTheme, settings.locale, runPdfExportCapture]);
+  }, [coldExport, filePath, visibleSlides, frontmatter, activeTheme, settings.locale, settings.pdfPageSize, runPdfExportCapture]);
 
   const handleExportHtml = useCallback(async () => {
     if (visibleSlides.length === 0) return;
