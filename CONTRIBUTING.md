@@ -12,14 +12,14 @@ welcome?", general chat with the dev team — join
 opening an issue. Issues are still the right place for bug reports and feature
 proposals that need to be tracked.
 
-## Getting set up
+## Getting Set Up
 
 **Prerequisites:** [Node.js](https://nodejs.org/) 18+, [Rust](https://rustup.rs/)
 (stable), and the [Tauri prerequisites](https://tauri.app/start/prerequisites/)
 for your platform.
 
 ```bash
-git clone https://github.com/KovaMD/Kova.git
+git clone https://github.com/<your-username>/Kova.git
 cd Kova
 npm install
 npm run tauri dev      # development — hot-reload
