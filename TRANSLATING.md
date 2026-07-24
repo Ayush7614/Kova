@@ -7,7 +7,7 @@ object of English strings, grouped by feature area (`presentation`,
 tree; the app takes care of the rest, including making your language show up
 in **Settings → Appearance → Display language**.
 
-## Adding a locale
+## Adding a Locale
 
 1. **Copy the English file** to `src/i18n/locales/<code>.ts`, using the
    language's [ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes)
