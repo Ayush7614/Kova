@@ -4,13 +4,34 @@
 
 const KEY = 'kova:recentFiles';
 const MAX = 10;
+const WIN_EXTENDED_PREFIX = '\\\\?\\';
+
+// Strip the Windows `\\?\` extended-length prefix that Rust's
+// std::fs::canonicalize adds (see src-tauri/src/commands/window.rs for the
+// same fix applied there) — without this, a file opened once via the CLI
+// (--present/--check canonicalise their path) and once via the GUI's Open
+// dialog dedupe as two different entries for the same file (issue #185).
+function normalizePath(path: string): string {
+  return path.startsWith(WIN_EXTENDED_PREFIX) ? path.slice(WIN_EXTENDED_PREFIX.length) : path;
+}
 
 export function loadRecentFiles(): string[] {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string').slice(0, MAX) : [];
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const p of parsed) {
+      if (typeof p !== 'string') continue;
+      const norm = normalizePath(p);
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+      result.push(norm);
+      if (result.length >= MAX) break;
+    }
+    return result;
   } catch {
     return [];
   }
@@ -18,13 +39,15 @@ export function loadRecentFiles(): string[] {
 
 // Prepend `path` (deduped), cap at MAX, persist, return the new list.
 export function addRecentFile(path: string): string[] {
-  const next = [path, ...loadRecentFiles().filter((p) => p !== path)].slice(0, MAX);
+  const norm = normalizePath(path);
+  const next = [norm, ...loadRecentFiles().filter((p) => p !== norm)].slice(0, MAX);
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* full/unavailable — recents are a convenience */ }
   return next;
 }
 
 export function removeRecentFile(path: string): string[] {
-  const next = loadRecentFiles().filter((p) => p !== path);
+  const norm = normalizePath(path);
+  const next = loadRecentFiles().filter((p) => p !== norm);
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
   return next;
 }

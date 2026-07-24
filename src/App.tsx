@@ -1184,8 +1184,12 @@ export default function App() {
 
   // Maintain the "Open Recent" list whenever a file becomes the open document.
   useEffect(() => {
+    // --present is a one-shot, headless presentation run — it must operate
+    // independently of the desktop app's own state, same as it already skips
+    // the last-session record above (issue #185).
+    if (coldPresent) return;
     if (filePath) setRecents(addRecentFile(filePath));
-  }, [filePath]);
+  }, [filePath, coldPresent]);
 
   const handleMarkdownDrop = useCallback((path: string) => {
     const doOpen = async () => {
