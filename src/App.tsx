@@ -1175,7 +1175,24 @@ export default function App() {
   // actually quits. Mirrors the literal on-screen state: clears the record
   // when there's no open file (e.g. after File > New) rather than leaving a
   // stale pointer to whatever was open before.
+  const lastSessionMountedRef = useRef(false);
   useEffect(() => {
+    // Skip the very first run: on mount, filePath/coldPresent are still
+    // their initial values (null/false) regardless of launch type, because
+    // the cold-start/restore effects above only update them after an await.
+    // Without this guard, that first pass unconditionally wrote
+    // saveLastSession(null) — deleting any existing session — before the
+    // restore effect or a CLI --present run had a chance to even read it.
+    // For a normal restore this self-corrected a moment later when the
+    // real filePath landed, but for --present it didn't: the restore effect
+    // bails early once cli.present is set, and coldPresent stays true for
+    // the rest of the process, so the deletion was never undone — running
+    // --present was silently erasing the "reopen last file" record on every
+    // launch (issue #185).
+    if (!lastSessionMountedRef.current) {
+      lastSessionMountedRef.current = true;
+      return;
+    }
     // A presentation-only run (kova --present) must not clobber the editor's
     // last-session record — the user never opened this file for editing.
     if (coldPresent) return;
