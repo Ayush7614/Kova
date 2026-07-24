@@ -1,6 +1,6 @@
-# Security
+# Security Policy
 
-## Reporting a vulnerability
+## Reporting a Vulnerability
 
 Report privately via [GitHub Security
 Advisories](https://github.com/KovaMD/Kova/security/advisories/new) — visible
@@ -8,7 +8,7 @@ only to you and the maintainers until a fix ships. Or ping us in the [Matrix
 room](https://matrix.to/#/#kova-md:matrix.org) and we'll open the advisory.
 Please don't use public issues. We aim to acknowledge within a few days.
 
-## Verifying a download
+## Verifying a Download
 
 You don't have to trust the release binaries blindly — every release can be
 checked back to the source.
@@ -43,7 +43,7 @@ The APT and RPM repositories (`deb.kova.md`, `rpm.kova.md`) are GPG-signed;
 `apt`/`dnf` verify signatures automatically once the key is added (see the
 README). Desktop auto-updates are signed with Tauri's updater key.
 
-## What runs on the code
+## What Runs on the Code
 
 - Dependency and code scanning via [Snyk](https://snyk.io) on pull requests.
 - Releases are built only from tagged commits on this repository, in GitHub
