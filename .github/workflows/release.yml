@@ -29,17 +29,30 @@ jobs:
           ## What's new
 
           ### New features
-          - **Kova CLI — present, validate, import, and export decks from the terminal**: after a standard install, `kova` works as a full command-line tool on macOS, Windows, and Linux. Built following @a1880's original batch-mode suggestion (closes #94, #163, #165).
-            - `kova --present FILE` — launch straight into presentation mode; `--theme=NAME|PATH` overrides the deck's theme for the run.
-            - `kova --check FILE` — validate a deck headlessly (frontmatter errors, unknown keys/themes/layouts/directives, missing local media, empty decks) and exit 0/1, designed for CI use.
-            - `kova --import marp|pptx|url IN OUT` — convert a Marp deck, PPTX file, or remote URL into Kova Markdown, via the same pipeline as the in-app import modals.
-            - `kova --export pptx|pdf IN OUT` — export a deck straight from the terminal, via the same pipeline as the Present/Export buttons.
-            - `kova --help` / `kova --version`.
-            - Windows installs now register `kova` on PATH automatically. On **macOS**, run **Kova → Install 'kova' Command in PATH** from the app's menu bar once to make it available in Terminal — this is a deliberate, user-initiated step (same pattern as VS Code's "install shell command"), not automatic.
-            - Full usage guide: [wiki.kova.md/command-line](https://wiki.kova.md/command-line).
+          - **Heading and bold text colours are now editable from the Inspector** — previously only settable via YAML (`theme_overrides`/`.theme.yaml`), the theme colour pickers now include separate rows for heading and bold text, falling back to the body text colour until set (completes #146, requested by @florian-krieger).
+          - **Windows installers let you skip adding Kova to PATH** — the `.exe` (NSIS) installer now asks before writing to your user PATH, and the `.msi` gets a new wizard step to choose system PATH / user-only PATH / none; silent installs keep today's defaults (reported by @a1880, closes #168).
+          - Updated German localization: new strings for the CLI's install/uninstall messages, the `--present` loading screen, and the PDF export fallback reason, plus fixes for a dropped-letter typo, a placeholder mismatch that broke thousands-separator formatting, and an adjective agreement error (credit @a1880, #167).
+
+          ### Bug fixes
+          - **Fixed** auto-update shipping a `latest.json` whose signature didn't match the hosted binary on some platforms, breaking updates entirely (reported by @a1880, closes #166).
+          - **Fixed** `kova --present` wiping the "reopen last file" record on every launch, and polluting the desktop app's Open Recent list (reported by @a1880, closes #185).
+          - **Fixed** `kova --present`/`--check` silently accepting non-Markdown input; a single-dash typo of a long flag (e.g. `-check`) now errors with a suggestion instead of silently trying to open it as a file (reported by @a1880, closes #186).
+          - **Fixed** `kova --check` being silently dropped when combined with `--import`, so invalid output could be written without a validation error (reported and fixed by @Ayush7614, closes #178).
+          - **Fixed** `kova --export pdf` always falling back to A4 instead of honouring the persisted "Match slide size" setting (reported by @a1880, closes #187).
+          - **Fixed** PPTX export garbling inline KaTeX math, e.g. `$x^2$` exporting as `x2x^2x2` (reported and fixed by @Ayush7614, closes #170).
+          - **Fixed** importing a Marp deck with a bare `![bg]` forcing full-bleed and dropping overlaid title/body text — native `![bg]`/`![bg left]`/`![bg right]` backgrounds are now preserved on import (reported and fixed by @Ayush7614, closes #169).
+          - **Fixed** PPTX export dropping strikethrough (`~~text~~`) formatting (reported and fixed by @Ayush7614, closes #177).
+          - **Fixed** underline applied via Ctrl+U or the Format menu never showing up in the preview or PPTX export (reported and fixed by @Ayush7614, closes #175).
+          - **Fixed** `mailto:` and `tel:` links being neutralized to `#` instead of working as links (reported and fixed by @Ayush7614, closes #176).
+          - **Fixed** a `???` speaker-note marker inside a `~~~` fenced code block incorrectly splitting the notes (reported and fixed by @Ayush7614, closes #179).
+          - **Fixed** Mermaid diagrams not detecting YAML front-matter config blocks (only the `%%init%%` directive), across the live preview and PDF/PPTX export (by @florian-hubertSE, #164).
+          - Fixed the split layout's text pane top-aligning instead of vertically centering to match its paired image/chart.
 
           ### Security
-          - **Fixed** an SSRF guard bypass in the URL fetcher behind "Import from URL" and remote image embeds: private/loopback hostnames were blocked, but a URL whose host was already an IP literal (`http://127.0.0.1/...`, cloud metadata's `http://169.254.169.254/...`) skipped the guard entirely. Found while building the CLI's `--import url` path; both IPv4 and IPv6 loopback are now rejected, including via redirects.
+          - **Updated** the `dompurify` dependency to 3.4.12, fixing an incomplete-disallow-list bug (SNYK-JS-DOMPURIFY-18170233) that could let sanitized attributes get reinjected into rendered HTML; pulled in transitively via `mermaid` and `jspdf`'s `canvg` dependency.
+
+          ### Packaging
+          - Windows installers are now signed with SignPath's production certificate, having previously used test-signing while the production application was pending approval.
 
           ---
 
