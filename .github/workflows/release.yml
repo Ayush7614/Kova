@@ -211,10 +211,18 @@ jobs:
           path: ${{ runner.temp }}/signpath-unsigned
           retention-days: 1
 
+      # RUNNER_DEBUG=1 unlocks this action's own core.debug() calls, which
+      # otherwise silently swallow the real rejection reason: the actual
+      # HTTP status/statusText on failure, and — more usefully — a `logs`
+      # array the SignPath connector sends back that the action relays via
+      # redirectConnectorLogsToActionLogs() before surfacing only the
+      # generic top-level `error` string. Remove once we're past debugging.
       - name: Submit Windows binaries to SignPath for signing
         if: matrix.platform == 'windows-latest'
         id: signpath
         uses: signpath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2.2
+        env:
+          RUNNER_DEBUG: '1'
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: 6aea854d-5015-451b-80a3-a1031e70eb9e
