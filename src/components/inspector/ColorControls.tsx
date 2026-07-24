@@ -11,12 +11,17 @@ interface Props {
   onChartPaletteReset: () => void;
 }
 
-const COLOR_FIELDS: Array<{ key: keyof ThemeColors; labelKey: MessageKey }> = [
+const COLOR_FIELDS: Array<{ key: keyof ThemeColors; labelKey: MessageKey; fallbackKey?: keyof ThemeColors }> = [
   { key: 'primary',     labelKey: 'inspector.colorPrimary' },
   { key: 'accent',      labelKey: 'inspector.colorAccent' },
   { key: 'background',  labelKey: 'inspector.colorBackground' },
   { key: 'text',        labelKey: 'inspector.colorText' },
   { key: 'title_text',  labelKey: 'inspector.colorTitleText' },
+  // Optional overrides (issue #146) — fall back to `text` when unset, same
+  // precedence themeToVars() already uses, so the picker never shows a
+  // blank/uncontrolled input for a theme that hasn't set these yet.
+  { key: 'heading',     labelKey: 'inspector.colorHeading', fallbackKey: 'text' },
+  { key: 'bold',        labelKey: 'inspector.colorBold',    fallbackKey: 'text' },
   { key: 'section_bg',  labelKey: 'inspector.colorSectionBg' },
   { key: 'code_bg',     labelKey: 'inspector.colorCodeBg' },
 ];
@@ -45,26 +50,30 @@ export function ColorControls({ colors, onChange, onChartColorChange, onChartPal
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      {COLOR_FIELDS.map(({ key, labelKey }) => (
-        <div key={key} style={colorRowStyle}>
-          <label
-            htmlFor={`color-${key}`}
-            style={{ fontSize: 11, color: 'var(--text-label)', flex: 1, cursor: 'pointer' }}
-          >
-            {t(labelKey)}
-          </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input
-              id={`color-${key}`}
-              type="color"
-              value={colors[key] as string}
-              onChange={(e) => onChange(key, e.target.value)}
-              style={colorInputStyle}
-            />
-            <span style={hexLabelStyle}>{colors[key] as string}</span>
+      {COLOR_FIELDS.map(({ key, labelKey, fallbackKey }) => {
+        const value = (colors[key] as string | undefined)
+          ?? (fallbackKey ? (colors[fallbackKey] as string) : '#000000');
+        return (
+          <div key={key} style={colorRowStyle}>
+            <label
+              htmlFor={`color-${key}`}
+              style={{ fontSize: 11, color: 'var(--text-label)', flex: 1, cursor: 'pointer' }}
+            >
+              {t(labelKey)}
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input
+                id={`color-${key}`}
+                type="color"
+                value={value}
+                onChange={(e) => onChange(key, e.target.value)}
+                style={colorInputStyle}
+              />
+              <span style={hexLabelStyle}>{value}</span>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Collapsible diagram palette */}
       <div style={{ marginTop: 4, borderTop: '1px solid var(--border)', paddingTop: 6 }}>

@@ -64,6 +64,8 @@ const en = {
     colorBackground: 'Background',
     colorText: 'Text',
     colorTitleText: 'Title text',
+    colorHeading: 'Heading',
+    colorBold: 'Bold text',
     colorSectionBg: 'Section bg',
     colorCodeBg: 'Code bg',
     diagramPalette: 'Diagram palette',
