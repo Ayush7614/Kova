@@ -48,7 +48,7 @@ jobs:
           | Platform | Download | Note |
           |---|---|---|
           | **macOS** (Apple Silicon + Intel) | `.dmg` | Signed and notarised — double-click to install |
-          | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Test-signed via [SignPath](https://signpath.io) — SmartScreen warning still expected |
+          | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Signed via [SignPath](https://signpath.io) — SmartScreen may still warn until publisher reputation builds up |
           | **Linux** | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), or `.flatpakref` | Install via your package manager |
           | **Linux AppImage** | `.AppImage` | Graphics libs stripped for compatibility with Arch/Fedora/etc. Supports auto-update. |
 
@@ -206,9 +206,10 @@ jobs:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: 6aea854d-5015-451b-80a3-a1031e70eb9e
           project-slug: kova
-          # TODO: switch to 'release-signing' once SignPath's production
-          # certificate application is approved (see 0.6.17 release notes).
-          signing-policy-slug: test-signing
+          # SignPath's production certificate application was approved, so real
+          # tag pushes get release-signing; workflow_dispatch (manual/test) runs
+          # stay on test-signing so they don't spend production signing quota.
+          signing-policy-slug: ${{ github.event_name == 'push' && 'release-signing' || 'test-signing' }}
           artifact-configuration-slug: Windows_Executable_Samples
           github-artifact-id: ${{ steps.upload-unsigned-windows.outputs.artifact-id }}
           wait-for-completion: true
