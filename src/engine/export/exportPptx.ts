@@ -1267,6 +1267,12 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
         runs.push({ text: el.src, options: { fontSize: 11, color: hex(t.colors.accent), breakLine: true, paraSpaceAfter: 4 } });
         break;
 
+      case 'youtube':
+        // Mirrors the addMediaSlide YouTube placeholder styling above.
+        runs.push({ text: `▶ ${el.label || 'YouTube Video'}`, options: { fontSize: 16, bold: true, breakLine: true } });
+        runs.push({ text: el.url, options: { fontSize: 11, color: hex(t.colors.accent), breakLine: true, paraSpaceAfter: 4 } });
+        break;
+
       // Images and tables handled separately below
       default:
         break;
