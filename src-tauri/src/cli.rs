@@ -773,6 +773,24 @@ mod tests {
     }
 
     #[test]
+    fn check_with_import_keeps_check_modifier() {
+        // --check used to be accepted then ignored for --import (issue #178).
+        // The parser must keep the modifier so the frontend can gate the write.
+        let run = expect_run(&["--check", "--import", "marp", "in.md", "out.md"]);
+        assert!(run.check);
+        assert_eq!(
+            run.action,
+            Some(Action::Import {
+                format: ImportFormat::Marp,
+                input: "in.md".into(),
+                output: "out.md".into(),
+            })
+        );
+        let reversed = expect_run(&["--import", "marp", "in.md", "out.md", "--check"]);
+        assert!(reversed.check);
+    }
+
+    #[test]
     fn theme_equals_and_space_forms_match() {
         let a = expect_run(&["--theme=gruvbox-dark", "--present", "t.md"]);
         let b = expect_run(&["--theme", "gruvbox-dark", "--present", "t.md"]);

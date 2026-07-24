@@ -37,6 +37,7 @@ import { I18nProvider, useLocaleTranslator, formatFallbackDate } from './i18n';
 
 import { parseDocument } from './engine/parser/markdownToSlides';
 import { collectDiagnostics, formatCheckReport } from './engine/parser/diagnostics';
+import { evaluateImportCheck } from './engine/cli/importCheckGate';
 import { extractFrontmatter, patchFrontmatter } from './engine/parser/frontmatter';
 import { parseBgLine, formatBgLine } from './engine/parser/bgImage';
 import { fetchUpdate } from './engine/updater';
@@ -149,7 +150,8 @@ async function knownThemeIds(): Promise<string[]> {
 // runs entirely outside React state, and the process exits from here.
 // Mirrors the exact conversion each in-app import flow uses (ImportPptxModal,
 // ImportUrlModal, the Marp-detection prompt) so CLI output matches the GUI's.
-async function runCliImport(imp: PendingImport): Promise<void> {
+// When `--check` is also set, validate markdown before writing (issue #178).
+async function runCliImport(imp: PendingImport, check: boolean): Promise<void> {
   const finish = async (report: string) => {
     await invoke('cli_stdout', { text: report }).catch(() => {});
     await invoke('cli_exit', { code: 0 }).catch(() => {});
@@ -157,10 +159,29 @@ async function runCliImport(imp: PendingImport): Promise<void> {
   const fail = async (message: string) => {
     await invoke('cli_exit', { message, code: 1 }).catch(() => {});
   };
+  const checkCtx = async (docDir: string) => ({
+    docDir,
+    themeIds: await knownThemeIds(),
+    fileExists: (p: string) =>
+      invoke<boolean>('path_exists', { path: p }).then(Boolean).catch(() => false),
+  });
+  /** Run --check on markdown; returns false when the write must be skipped. */
+  const gate = async (markdown: string, label: string, docDir: string): Promise<boolean> => {
+    const result = await evaluateImportCheck(check, markdown, label, await checkCtx(docDir));
+    if (!result.enabled) return true;
+    await invoke('cli_stdout', { text: result.report }).catch(() => {});
+    if (result.errors > 0) {
+      await invoke('cli_exit', { code: 1 }).catch(() => {});
+      return false;
+    }
+    return true;
+  };
 
   try {
     if (imp.format === 'marp') {
       const text: string = await invoke('read_file', { path: imp.input });
+      // Check the import input before converting / writing (issue #178).
+      if (!(await gate(text, imp.input, dirOf(imp.input)))) return;
       const { markdown, dropped } = importMarp(text);
       await invoke('write_file', { path: imp.output, content: markdown });
       const suffix = dropped.length > 0 ? ` (simplified: ${dropped.join(', ')})` : '';
@@ -169,9 +190,11 @@ async function runCliImport(imp: PendingImport): Promise<void> {
     }
     if (imp.format === 'pptx') {
       // Media referenced by the deck is extracted alongside the output file,
-      // same as the in-app import modal.
+      // same as the in-app import modal. PPTX itself isn't Markdown — check
+      // the converted deck before writing so --check still gates the output.
       const parsed = await parsePptx(imp.input, dirOf(imp.output));
       const markdown = pptxToMarkdown(parsed);
+      if (!(await gate(markdown, imp.output, dirOf(imp.output)))) return;
       await invoke('write_file', { path: imp.output, content: markdown });
       const lines = [`wrote '${imp.output}' (${parsed.slides.length} slides)`];
       for (const w of parsed.warnings) lines.push(`warning: ${w}`);
@@ -181,6 +204,7 @@ async function runCliImport(imp: PendingImport): Promise<void> {
     // url — fetched verbatim, no conversion (matches ImportUrlModal: if the
     // remote content is a Marp deck, that's detected on open, not on fetch).
     const text: string = await invoke('fetch_url_text', { url: imp.input });
+    if (!(await gate(text, imp.output, dirOf(imp.output)))) return;
     await invoke('write_file', { path: imp.output, content: text });
     await finish(`wrote '${imp.output}'`);
   } catch (err) {
@@ -1042,7 +1066,7 @@ export default function App() {
       // runs and exits before any of the present/check logic below.
       if (cli?.import) {
         coldLoadStartedRef.current = true;
-        await runCliImport(cli.import);
+        await runCliImport(cli.import, cli.check);
         return;
       }
       // --present FILE, standalone --check FILE (which never shows a window:
