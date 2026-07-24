@@ -139,3 +139,101 @@ describe('parsePptx table geometry', () => {
     expect(grouped!.normW).toBeCloseTo(2000000 / 9144000, 5);
   });
 });
+
+// ── Cross-slide image dedup (issue #192) ───────────────────────────────────────
+
+function picXml(rId: string): string {
+  return `<p:pic>
+    <p:nvPicPr><p:cNvPr id="2" name="Picture 1"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+    <p:blipFill><a:blip r:embed="${rId}"/></p:blipFill>
+    <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1000000" cy="1000000"/></a:xfrm></p:spPr>
+  </p:pic>`;
+}
+
+function pictureSlideXml(pic: string): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld ${NS}>
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr/>
+      ${pic}
+    </p:spTree>
+  </p:cSld>
+</p:sld>`;
+}
+
+function slideRelsXml(rId: string, target: string): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${target}"/>
+</Relationships>`;
+}
+
+async function buildImageDedupFixtureBase64(): Promise<string> {
+  const presXml3 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation ${NS}>
+  <p:sldIdLst>
+    <p:sldId id="256" r:id="rId1"/><p:sldId id="257" r:id="rId2"/><p:sldId id="258" r:id="rId3"/>
+  </p:sldIdLst>
+  <p:sldSz cx="9144000" cy="6858000"/>
+</p:presentation>`;
+  const presRels3 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide2.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide3.xml"/>
+</Relationships>`;
+
+  const zip = new JSZip();
+  zip.file('ppt/presentation.xml', presXml3);
+  zip.file('ppt/_rels/presentation.xml.rels', presRels3);
+
+  // Slide 1 and 2 embed byte-identical content under distinct media paths —
+  // mirrors real pptx exports, where each per-slide picture insert gets its
+  // own media entry even when the source bytes (e.g. a repeated logo) match.
+  zip.file('ppt/slides/slide1.xml', pictureSlideXml(picXml('rId10')));
+  zip.file('ppt/slides/_rels/slide1.xml.rels', slideRelsXml('rId10', '../media/imageA.png'));
+  zip.file('ppt/media/imageA.png', 'AAAA');
+
+  zip.file('ppt/slides/slide2.xml', pictureSlideXml(picXml('rId10')));
+  zip.file('ppt/slides/_rels/slide2.xml.rels', slideRelsXml('rId10', '../media/imageA2.png'));
+  zip.file('ppt/media/imageA2.png', 'AAAA');
+
+  // Slide 3 embeds genuinely different content — must NOT be deduped away.
+  zip.file('ppt/slides/slide3.xml', pictureSlideXml(picXml('rId10')));
+  zip.file('ppt/slides/_rels/slide3.xml.rels', slideRelsXml('rId10', '../media/imageB.png'));
+  zip.file('ppt/media/imageB.png', 'BBBB');
+
+  return zip.generateAsync({ type: 'base64' });
+}
+
+describe('parsePptx image dedup', () => {
+  it('reuses the saved filename for byte-identical images, writing distinct-content images separately', async () => {
+    const b64 = await buildImageDedupFixtureBase64();
+    const writtenFilenames: string[] = [];
+    mockedInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'read_file_b64') return b64;
+      if (cmd === 'write_asset_bytes') {
+        const filename = String(args?.filename);
+        writtenFilenames.push(filename);
+        return filename;
+      }
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+
+    const result = await parsePptx('/fake/deck.pptx', '/fake/dest');
+    expect(result.slides).toHaveLength(3);
+
+    // One write for the "AAAA" content, one for "BBBB" — the second "AAAA"
+    // occurrence (slide 2) is deduped and never reaches write_asset_bytes.
+    expect(writtenFilenames).toHaveLength(2);
+
+    const img1 = result.slides[0].blocks.find((b) => b.kind === 'image');
+    const img2 = result.slides[1].blocks.find((b) => b.kind === 'image');
+    const img3 = result.slides[2].blocks.find((b) => b.kind === 'image');
+    expect(img1?.assetFilename).toBeDefined();
+    expect(img2?.assetFilename).toBe(img1?.assetFilename);
+    expect(img3?.assetFilename).not.toBe(img1?.assetFilename);
+  });
+});

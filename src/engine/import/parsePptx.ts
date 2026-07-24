@@ -70,6 +70,11 @@ function base64ToUint8Array(b64: string): Uint8Array {
   return bytes;
 }
 
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 // ── Text extraction from txBody ───────────────────────────────────────────────
 
 // Return whether the txBody's lstStyle declares a bullet at the given indent level.
@@ -305,6 +310,7 @@ async function extractSlideBlocks(
   destDir: string,
   warnings: string[],
   slidePath: string,
+  imageCache: Map<string, string>,
 ): Promise<PptxBlock[]> {
   const blocks: PptxBlock[] = [];
   const spTree = q(slideDoc, P, 'spTree') ?? q(slideDoc, A, 'spTree');
@@ -370,19 +376,23 @@ async function extractSlideBlocks(
 
     imgCounter++;
     const imgBytes = await mediaFile.async('uint8array');
-    const imgBase64 = uint8ArrayToBase64(imgBytes);
-    const suggestedName = `pptx_slide${slideIndex + 1}_img${imgCounter}.${ext}`;
+    const hash = await sha256Hex(imgBytes);
 
-    let savedName: string;
-    try {
-      savedName = await invoke<string>('write_asset_bytes', {
-        data: imgBase64,
-        filename: suggestedName,
-        destDir,
-      });
-    } catch (err) {
-      warnings.push(`Slide ${slideIndex + 1}: failed to save image — ${err}`);
-      continue;
+    let savedName = imageCache.get(hash);
+    if (!savedName) {
+      const imgBase64 = uint8ArrayToBase64(imgBytes);
+      const suggestedName = `pptx_slide${slideIndex + 1}_img${imgCounter}.${ext}`;
+      try {
+        savedName = await invoke<string>('write_asset_bytes', {
+          data: imgBase64,
+          filename: suggestedName,
+          destDir,
+        });
+      } catch (err) {
+        warnings.push(`Slide ${slideIndex + 1}: failed to save image — ${err}`);
+        continue;
+      }
+      imageCache.set(hash, savedName);
     }
 
     const geom = getComposedGeom(pic);
@@ -484,6 +494,7 @@ export async function parsePptx(filePath: string, destDir: string): Promise<Pptx
 
   // 5. Parse each slide
   const slides: PptxParsedSlide[] = [];
+  const imageCache = new Map<string, string>(); // sha256 hex -> already-saved asset filename
 
   for (let i = 0; i < slideZipPaths.length; i++) {
     const slidePath = slideZipPaths[i];
@@ -504,6 +515,7 @@ export async function parsePptx(filePath: string, destDir: string): Promise<Pptx
 
     const blocks = await extractSlideBlocks(
       slideDoc, slideRels, zip, slideW, slideH, i, destDir, warnings, slidePath,
+      imageCache,
     );
     const speakerNotes = await extractSpeakerNotes(slideRels, slidePath, zip);
     slides.push({ blocks, speakerNotes });
