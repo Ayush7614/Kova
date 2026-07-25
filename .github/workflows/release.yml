@@ -51,9 +51,6 @@ jobs:
           ### Security
           - **Updated** the `dompurify` dependency to 3.4.12, fixing an incomplete-disallow-list bug (SNYK-JS-DOMPURIFY-18170233) that could let sanitized attributes get reinjected into rendered HTML; pulled in transitively via `mermaid` and `jspdf`'s `canvg` dependency.
 
-          ### Packaging
-          - Windows installers are now signed with SignPath's production certificate, having previously used test-signing while the production application was pending approval.
-
           ---
 
           ## Installation
@@ -61,7 +58,7 @@ jobs:
           | Platform | Download | Note |
           |---|---|---|
           | **macOS** (Apple Silicon + Intel) | `.dmg` | Signed and notarised — double-click to install |
-          | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Signed via [SignPath](https://signpath.io) — SmartScreen may still warn until publisher reputation builds up |
+          | **Windows 10/11** | `.msi` or `_x64-setup.exe` | Test-signed via [SignPath](https://signpath.io) — SmartScreen warning still expected |
           | **Linux** | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), or `.flatpakref` | Install via your package manager |
           | **Linux AppImage** | `.AppImage` | Graphics libs stripped for compatibility with Arch/Fedora/etc. Supports auto-update. |
 
@@ -228,10 +225,15 @@ jobs:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: 6aea854d-5015-451b-80a3-a1031e70eb9e
           project-slug: kova
-          # SignPath's production certificate application was approved, so real
-          # tag pushes get release-signing; workflow_dispatch (manual/test) runs
-          # stay on test-signing so they don't spend production signing quota.
-          signing-policy-slug: ${{ github.event_name == 'push' && 'release-signing' || 'test-signing' }}
+          # TEMPORARY: release-signing is approved on SignPath's side but every
+          # submission to it fails with an opaque "Invalid request to SignPath
+          # API." — ruled out submitter permissions, token identity (tried 3),
+          # the GitHub App installation/repo access, and the default artifact
+          # configuration. Debug logging shows a real 400 with an empty `logs`
+          # array, so there's nothing more diagnosable from the GitHub Actions
+          # side. Reported to SignPath support; reverted to test-signing so
+          # Windows releases aren't blocked while we wait on their reply.
+          signing-policy-slug: test-signing
           artifact-configuration-slug: Windows_Executable_Samples
           github-artifact-id: ${{ steps.upload-unsigned-windows.outputs.artifact-id }}
           wait-for-completion: true
