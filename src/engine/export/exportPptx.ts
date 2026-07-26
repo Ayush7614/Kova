@@ -1329,15 +1329,40 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
     });
   }
 
-  // Tables: split remaining height proportionally based on how many text runs precede the table
+  // Table + any remaining images (elements.length === 1 && type === 'image' is
+  // caught by the fast path at the top of this function; this is for an image
+  // that shares its area with other content, e.g. a table, or any element mix
+  // reached via an explicit ||| column break) share the space left below the
+  // text runs. Without this, such images used to fall through the switch's
+  // `default` case above and vanish from the export with no warning.
   const tableEl = elements.find((e) => e.type === 'table');
-  if (tableEl && tableEl.type === 'table') {
+  const imageEls = elements.filter((e) => e.type === 'image') as Extract<SlideElement, { type: 'image' }>[];
+  if (tableEl?.type === 'table' || imageEls.length > 0) {
     const textFrac = runs.length > 0 ? Math.min(0.5, 0.15 + runs.length * 0.08) : 0;
-    const tableY = area.y + area.h * textFrac;
-    const capH = tableEl.caption ? CAPTION_H : 0;
-    const tableH = area.h * (1 - textFrac - 0.02) - capH;
-    addTable(s, tableEl, t, { x: area.x, y: tableY, w: area.w, h: tableH }, tc);
-    addCaption(s, tableEl.caption, t, area.x, tableY + tableH, area.w);
+    const belowY = area.y + area.h * textFrac;
+    const belowH = area.h * (1 - textFrac - 0.02);
+    // With both a table and image(s) present, give the table the larger share
+    // (it usually carries the primary content) and stack the image(s) below it.
+    const tableFrac = tableEl?.type === 'table' && imageEls.length > 0 ? 0.6 : 1;
+
+    if (tableEl?.type === 'table') {
+      const tableH = belowH * tableFrac;
+      const capH = tableEl.caption ? CAPTION_H : 0;
+      addTable(s, tableEl, t, { x: area.x, y: belowY, w: area.w, h: tableH - capH }, tc);
+      addCaption(s, tableEl.caption, t, area.x, belowY + tableH - capH, area.w);
+    }
+
+    if (imageEls.length > 0) {
+      const imagesY = belowY + belowH * (tableEl?.type === 'table' ? tableFrac : 0);
+      const imagesH = belowH * (1 - (tableEl?.type === 'table' ? tableFrac : 0));
+      const perImgH = imagesH / imageEls.length;
+      imageEls.forEach((img, i) => {
+        const capH = img.caption ? CAPTION_H : 0;
+        const y = imagesY + i * perImgH;
+        tryAddImage(s, img.src, { x: area.x, y, w: area.w, h: perImgH - capH }, warnings, imgAr(img));
+        addCaption(s, img.caption, t, area.x, y + perImgH - capH, area.w);
+      });
+    }
   }
 }
 
