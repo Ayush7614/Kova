@@ -451,7 +451,10 @@ async function extractSlideBlocks(
       blocks.push({ kind: 'table', ...tableData, ...norm });
     } else if (uri.includes('/chart')) {
       warnings.push(`Slide ${slideIndex + 1}: chart skipped — not supported`);
-    } else if (uri.includes('SmartArt') || uri.includes('smartArt')) {
+    } else if (uri.includes('/diagram')) {
+      // OOXML SmartArt graphicFrames declare this URI (drawingml/2006/diagram);
+      // 'SmartArt'/'smartArt' never appears in it, so that never matched a real
+      // file — SmartArt silently vanished with no warning instead of this one.
       warnings.push(`Slide ${slideIndex + 1}: SmartArt skipped — not supported`);
     }
   }

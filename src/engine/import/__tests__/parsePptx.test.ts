@@ -340,6 +340,50 @@ async function buildImageDedupFixtureBase64(): Promise<string> {
   return zip.generateAsync({ type: 'base64' });
 }
 
+// ── SmartArt warning (real OOXML URI, not a literal 'SmartArt' substring) ────
+
+const SMARTART_SLIDE_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld ${NS}>
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr/>
+      <p:graphicFrame>
+        <p:nvGraphicFramePr>
+          <p:cNvPr id="2" name="Diagram 1"/>
+          <p:cNvGraphicFramePr/>
+          <p:nvPr/>
+        </p:nvGraphicFramePr>
+        <p:xfrm><a:off x="0" y="0"/><a:ext cx="1000000" cy="1000000"/></p:xfrm>
+        <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/diagram">
+          <dgm:relIds xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" r:dm="rId2" r:lo="rId3" r:qs="rId4" r:cs="rId5"/>
+        </a:graphicData></a:graphic>
+      </p:graphicFrame>
+    </p:spTree>
+  </p:cSld>
+</p:sld>`;
+
+async function buildSmartArtFixtureBase64(): Promise<string> {
+  const zip = new JSZip();
+  zip.file('ppt/presentation.xml', PRESENTATION_XML);
+  zip.file('ppt/_rels/presentation.xml.rels', PRESENTATION_RELS);
+  zip.file('ppt/slides/slide1.xml', SMARTART_SLIDE_XML);
+  return zip.generateAsync({ type: 'base64' });
+}
+
+describe('parsePptx SmartArt', () => {
+  it('warns on a real SmartArt graphicFrame (drawingml/2006/diagram URI) instead of silently dropping it', async () => {
+    const b64 = await buildSmartArtFixtureBase64();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_file_b64') return b64;
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+
+    const result = await parsePptx('/fake/deck.pptx', '/fake/dest');
+    expect(result.warnings.some((w) => w.includes('SmartArt skipped'))).toBe(true);
+  });
+});
+
 describe('parsePptx image dedup', () => {
   it('reuses the saved filename for byte-identical images, writing distinct-content images separately', async () => {
     const b64 = await buildImageDedupFixtureBase64();

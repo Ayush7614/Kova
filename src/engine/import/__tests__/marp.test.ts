@@ -184,6 +184,14 @@ describe('importMarp', () => {
     expect(markdown).toContain('# Hi');
   });
 
+  it('keeps both effects of _class: lead invert (a common Marp dark-title-slide pattern)', () => {
+    const { markdown, dropped } = importMarp('---\nmarp: true\n---\n<!-- _class: lead invert -->\n# Hi');
+    expect(markdown).toContain('<!-- layout:title -->');
+    expect(markdown).toContain('<!-- _class: invert -->');
+    expect(dropped.join(' ')).not.toContain('lead');
+    expect(dropped.join(' ')).not.toContain('invert');
+  });
+
   it('imports decks whose frontmatter uses spaced marp: true', () => {
     const { markdown } = importMarp('---\nmarp:  true\ntitle: Deck\n---\n# Slide');
     expect(markdown).toContain('title: "Deck"');

@@ -148,11 +148,20 @@ function transformSlide(slide: string, dropTag: (l: string) => string): string {
     const c = inner.trim();
     const cls = c.match(/^_class\s*:\s*(.+)$/);
     if (cls) {
+      // `lead` and `invert` are independent Kova directives (layout override,
+      // per-slide colour invert) and markdownToSlides.ts matches each on its
+      // own regex, so both can be emitted together — `_class: lead invert`
+      // (a common Marp dark-title-slide pattern) used to only keep whichever
+      // of the two an early `if...return` hit first, silently dropping the
+      // other with no dropTag record of the loss.
       const classes = cls[1].trim().split(/\s+/);
-      if (classes.includes('lead')) return '<!-- layout:title -->';
-      if (classes.includes('invert')) return '<!-- _class: invert -->';
-      dropTag(`_class:${cls[1].trim()}`);
-      return '';
+      const known = new Set(['lead', 'invert']);
+      const parts: string[] = [];
+      if (classes.includes('lead')) parts.push('<!-- layout:title -->');
+      if (classes.includes('invert')) parts.push('<!-- _class: invert -->');
+      const unknown = classes.filter((cl) => !known.has(cl));
+      if (unknown.length) dropTag(`_class:${unknown.join(' ')}`);
+      return parts.join('\n');
     }
     const color = c.match(/^_?color\s*:\s*(.+)$/);
     if (color) {
