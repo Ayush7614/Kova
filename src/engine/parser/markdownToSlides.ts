@@ -39,7 +39,7 @@ let prevConstKey = '';
 // exactly '---', the same way a plain regex split would — except a '---'
 // line inside a fenced code block (e.g. a YAML sample) doesn't count as a
 // boundary, mirroring the inFencedCode tracking preprocess() already does.
-function splitIntoRawSlides(body: string): string[] {
+export function splitIntoRawSlides(body: string): string[] {
   const slides: string[] = [];
   let current: string[] = [];
   let inFencedCode = false;
