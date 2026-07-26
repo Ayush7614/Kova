@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import type { Slide, AspectRatio } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
 import { SlideRenderer } from '../preview/SlideRenderer';
-import { SLIDE_W, formatTime, ScaledSlideBox, LaserDot } from './presentationShared';
+import { SLIDE_W, formatTime, ScaledSlideBox, LaserDot, usePresentationNav } from './presentationShared';
 import { useT } from '../../i18n';
 import './PresentationOverlay.css';
 
@@ -38,9 +38,6 @@ export function PresentationOverlay({
   const [hudVisible, setHudVisible] = useState(true);
   const [laserActive, setLaserActive] = useState(false);
   const [blankMode, setBlankMode] = useState<'black' | 'white' | null>(null);
-  const [jumpInput, setJumpInput] = useState<string | null>(null);
-  const jumpInputRef = useRef(jumpInput);
-  jumpInputRef.current = jumpInput;
   const [laserPos, setLaserPos] = useState<{ x: number; y: number } | null>(null);
   const [scale, setScale] = useState(() => {
     // Mirror the CSS: min(100vw, (100vh - HUD_H) * ar.w / ar.h) / SLIDE_W
@@ -50,7 +47,6 @@ export function PresentationOverlay({
   const [elapsed, setElapsed] = useState(0);
   const startTime = useRef(Date.now());
   const idleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const lastWheelTime = useRef(0);
   const overlayRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
 
@@ -80,16 +76,6 @@ export function PresentationOverlay({
     return () => clearInterval(id);
   }, [showTimer]);
 
-  // ── Navigation helpers ─────────────────────────────────────────────────────
-
-  const goNext = useCallback(() => {
-    if (currentIndex < total - 1) onNavigate(currentIndex + 1);
-  }, [currentIndex, total, onNavigate]);
-
-  const goPrev = useCallback(() => {
-    if (currentIndex > 0) onNavigate(currentIndex - 1);
-  }, [currentIndex, onNavigate]);
-
   // ── Mouse/key idle → hide HUD and cursor ──────────────────────────────────
 
   const resetIdle = useCallback(() => {
@@ -98,74 +84,19 @@ export function PresentationOverlay({
     idleTimer.current = setTimeout(() => setHudVisible(false), 3000);
   }, []);
 
-  // ── Keyboard handler ───────────────────────────────────────────────────────
+  // ── Navigation (keyboard + wheel), shared with PresenterOverlay ────────────
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
-      resetIdle(); // keep HUD up while navigating by keyboard, not just mouse
-      switch (e.key) {
-        case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
-          e.preventDefault(); e.stopPropagation(); goNext(); break;
-        case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
-          e.preventDefault(); e.stopPropagation(); goPrev(); break;
-        case 'Home':
-          e.preventDefault(); e.stopPropagation(); onNavigate(0); break;
-        case 'End':
-          e.preventDefault(); e.stopPropagation(); onNavigate(total - 1); break;
-        case 'n': case 'N':
-          e.preventDefault(); e.stopPropagation();
-          if (slide?.speakerNotes) setShowNotes((p) => !p);
-          break;
-        case 'b': case 'B':
-          e.preventDefault(); e.stopPropagation();
-          setBlankMode((m) => m === 'black' ? null : 'black'); break;
-        case 'w': case 'W':
-          e.preventDefault(); e.stopPropagation();
-          setBlankMode((m) => m === 'white' ? null : 'white'); break;
-        case 'l': case 'L':
-          e.preventDefault(); e.stopPropagation();
-          setLaserActive((p) => !p);
-          break;
-        case 'Escape':
-          e.preventDefault(); e.stopPropagation(); onExit(); break;
-        case 'Enter':
-          // Real keystrokes on the focused jump input never reach here (the
-          // HTMLInputElement check above returns early); this only fires for
-          // synthetic keydowns forwarded from the audience window, whose
-          // target is `window` rather than the input element.
-          if (jumpInputRef.current !== null) {
-            e.preventDefault(); e.stopPropagation();
-            const n = parseInt(jumpInputRef.current, 10);
-            if (!isNaN(n)) onNavigate(Math.min(Math.max(n - 1, 0), total - 1));
-            setJumpInput(null);
-          }
-          break;
-        default:
-          if (/^\d$/.test(e.key)) {
-            e.preventDefault(); e.stopPropagation();
-            setJumpInput(e.key);
-          }
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [goNext, goPrev, onNavigate, total, onExit, slide, resetIdle]);
-
-  // ── Scroll wheel handler ───────────────────────────────────────────────────
-
-  useEffect(() => {
-    const handler = (e: WheelEvent) => {
-      e.preventDefault();
-      const now = Date.now();
-      if (now - lastWheelTime.current < 300) return;
-      lastWheelTime.current = now;
-      resetIdle();
-      if (e.deltaY > 0) goNext(); else goPrev();
-    };
-    window.addEventListener('wheel', handler, { passive: false });
-    return () => window.removeEventListener('wheel', handler);
-  }, [goNext, goPrev, resetIdle]);
+  const { goNext, goPrev, jumpInput, setJumpInput } = usePresentationNav({
+    total, currentIndex, onNavigate, onExit,
+    // Only toggle when the slide actually has notes — there's nothing for
+    // this audience-facing overlay to show otherwise (contrast
+    // PresenterOverlay, which always toggles and shows a placeholder).
+    onToggleNotes: () => { if (slide?.speakerNotes) setShowNotes((p) => !p); },
+    onToggleBlankBlack: () => setBlankMode((m) => m === 'black' ? null : 'black'),
+    onToggleBlankWhite: () => setBlankMode((m) => m === 'white' ? null : 'white'),
+    onToggleLaser: () => setLaserActive((p) => !p),
+    resetIdle,
+  });
 
   // Clear laser position when deactivated
   useEffect(() => { if (!laserActive) setLaserPos(null); }, [laserActive]);

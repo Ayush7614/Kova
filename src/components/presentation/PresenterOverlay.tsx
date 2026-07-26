@@ -4,7 +4,7 @@ import type { Slide, AspectRatio } from '../../engine/types';
 import type { Theme } from '../../engine/theme';
 import type { NotesFontSize } from '../../store/settings';
 import { SlideRenderer } from '../preview/SlideRenderer';
-import { SLIDE_W, formatTime, ScaledSlideBox, LaserDot } from './presentationShared';
+import { SLIDE_W, formatTime, ScaledSlideBox, LaserDot, usePresentationNav } from './presentationShared';
 import { useT } from '../../i18n';
 import './PresenterOverlay.css';
 
@@ -58,12 +58,8 @@ export function PresenterOverlay({
   const [showNotes, setShowNotes]       = useState(true);
   const [laserActive, setLaserActive]   = useState(false);
   const [blankMode, setBlankMode]       = useState<'black' | 'white' | null>(null);
-  const [jumpInput, setJumpInput]       = useState<string | null>(null);
-  const jumpInputRef = useRef(jumpInput);
-  jumpInputRef.current = jumpInput;
   const [laserPos, setLaserPos]         = useState<{ x: number; y: number } | null>(null);
   const startTime      = useRef(Date.now());
-  const lastWheelTime  = useRef(0);
   const overlayRef     = useRef<HTMLDivElement>(null);
   const currentFrameRef = useRef<HTMLDivElement>(null);
   const nextFrameRef    = useRef<HTMLDivElement>(null);
@@ -154,74 +150,18 @@ export function PresenterOverlay({
     window.addEventListener('mouseup', onUp);
   }, [rightW]);
 
-  const goNext = useCallback(() => {
-    if (currentIndex < total - 1) onNavigate(currentIndex + 1);
-  }, [currentIndex, total, onNavigate]);
+  // ── Navigation (keyboard + wheel), shared with PresentationOverlay ─────────
+  // No resetIdle here (this HUD is always visible, unlike the audience
+  // overlay's auto-hide), and notes always toggle regardless of content
+  // (this view shows a "no notes for this slide" placeholder either way).
 
-  const goPrev = useCallback(() => {
-    if (currentIndex > 0) onNavigate(currentIndex - 1);
-  }, [currentIndex, onNavigate]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
-      switch (e.key) {
-        case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
-          e.preventDefault(); e.stopPropagation(); goNext(); break;
-        case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
-          e.preventDefault(); e.stopPropagation(); goPrev(); break;
-        case 'Home':
-          e.preventDefault(); e.stopPropagation(); onNavigate(0); break;
-        case 'End':
-          e.preventDefault(); e.stopPropagation(); onNavigate(total - 1); break;
-        case 'n': case 'N':
-          e.preventDefault(); e.stopPropagation();
-          setShowNotes((p) => !p); break;
-        case 'b': case 'B':
-          e.preventDefault(); e.stopPropagation();
-          setBlankMode((m) => m === 'black' ? null : 'black'); break;
-        case 'w': case 'W':
-          e.preventDefault(); e.stopPropagation();
-          setBlankMode((m) => m === 'white' ? null : 'white'); break;
-        case 'l': case 'L':
-          e.preventDefault(); e.stopPropagation();
-          setLaserActive((p) => !p); break;
-        case 'Escape':
-          e.preventDefault(); e.stopPropagation(); onExit(); break;
-        case 'Enter':
-          // Real keystrokes on the focused jump input never reach here (the
-          // HTMLInputElement check above returns early); this only fires for
-          // synthetic keydowns forwarded from the audience window, whose
-          // target is `window` rather than the input element.
-          if (jumpInputRef.current !== null) {
-            e.preventDefault(); e.stopPropagation();
-            const n = parseInt(jumpInputRef.current, 10);
-            if (!isNaN(n)) onNavigate(Math.min(Math.max(n - 1, 0), total - 1));
-            setJumpInput(null);
-          }
-          break;
-        default:
-          if (/^\d$/.test(e.key)) {
-            e.preventDefault(); e.stopPropagation();
-            setJumpInput(e.key);
-          }
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [goNext, goPrev, onNavigate, total, onExit]);
-
-  useEffect(() => {
-    const handler = (e: WheelEvent) => {
-      e.preventDefault();
-      const now = Date.now();
-      if (now - lastWheelTime.current < 300) return;
-      lastWheelTime.current = now;
-      if (e.deltaY > 0) goNext(); else goPrev();
-    };
-    window.addEventListener('wheel', handler, { passive: false });
-    return () => window.removeEventListener('wheel', handler);
-  }, [goNext, goPrev]);
+  const { goNext, goPrev, jumpInput, setJumpInput } = usePresentationNav({
+    total, currentIndex, onNavigate, onExit,
+    onToggleNotes: () => setShowNotes((p) => !p),
+    onToggleBlankBlack: () => setBlankMode((m) => m === 'black' ? null : 'black'),
+    onToggleBlankWhite: () => setBlankMode((m) => m === 'white' ? null : 'white'),
+    onToggleLaser: () => setLaserActive((p) => !p),
+  });
 
   if (!slide) return null;
 

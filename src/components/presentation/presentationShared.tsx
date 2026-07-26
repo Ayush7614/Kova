@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 // Virtual slide width every overlay scales from (matches ThumbnailPanel).
 export const SLIDE_W = 960;
@@ -34,4 +34,114 @@ export function LaserDot({ x, y, color }: { x: number; y: number; color: string 
       }}
     />
   );
+}
+
+export interface UsePresentationNavOpts {
+  total: number;
+  currentIndex: number;
+  onNavigate: (index: number) => void;
+  onExit: () => void;
+  onToggleNotes: () => void;
+  onToggleBlankBlack: () => void;
+  onToggleBlankWhite: () => void;
+  onToggleLaser: () => void;
+  /**
+   * HUD-auto-hide reset, called on every key/wheel navigation event. Only
+   * PresentationOverlay has an idle/HUD-hide concept — PresenterOverlay's
+   * HUD is always visible, so it omits this and gets the no-op default.
+   * Kept as an explicit parameter (rather than silently unified away) so
+   * this one real behavioural difference between the two callers stays
+   * visible instead of becoming an implicit drift risk.
+   */
+  resetIdle?: () => void;
+}
+
+/**
+ * Keyboard (arrows/Home/End/n/b/w/l/Escape/digit-jump/Enter) and scroll-wheel
+ * navigation, shared by PresentationOverlay and PresenterOverlay — both
+ * listened on `window` with near-identical handlers. `onToggleNotes` is a
+ * caller-supplied callback rather than a hook-owned setter because the two
+ * callers differ here too: PresentationOverlay only toggles when the slide
+ * actually has speaker notes (there's nothing for the audience-facing
+ * overlay to show otherwise), PresenterOverlay always toggles (its own view
+ * shows a "no notes for this slide" placeholder either way).
+ */
+export function usePresentationNav({
+  total, currentIndex, onNavigate, onExit,
+  onToggleNotes, onToggleBlankBlack, onToggleBlankWhite, onToggleLaser,
+  resetIdle,
+}: UsePresentationNavOpts) {
+  const [jumpInput, setJumpInput] = useState<string | null>(null);
+  const jumpInputRef = useRef(jumpInput);
+  jumpInputRef.current = jumpInput;
+  const lastWheelTime = useRef(0);
+
+  const goNext = useCallback(() => {
+    if (currentIndex < total - 1) onNavigate(currentIndex + 1);
+  }, [currentIndex, total, onNavigate]);
+
+  const goPrev = useCallback(() => {
+    if (currentIndex > 0) onNavigate(currentIndex - 1);
+  }, [currentIndex, onNavigate]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement) return;
+      resetIdle?.(); // keep the HUD up while navigating by keyboard, not just mouse
+      switch (e.key) {
+        case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
+          e.preventDefault(); e.stopPropagation(); goNext(); break;
+        case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
+          e.preventDefault(); e.stopPropagation(); goPrev(); break;
+        case 'Home':
+          e.preventDefault(); e.stopPropagation(); onNavigate(0); break;
+        case 'End':
+          e.preventDefault(); e.stopPropagation(); onNavigate(total - 1); break;
+        case 'n': case 'N':
+          e.preventDefault(); e.stopPropagation(); onToggleNotes(); break;
+        case 'b': case 'B':
+          e.preventDefault(); e.stopPropagation(); onToggleBlankBlack(); break;
+        case 'w': case 'W':
+          e.preventDefault(); e.stopPropagation(); onToggleBlankWhite(); break;
+        case 'l': case 'L':
+          e.preventDefault(); e.stopPropagation(); onToggleLaser(); break;
+        case 'Escape':
+          e.preventDefault(); e.stopPropagation(); onExit(); break;
+        case 'Enter':
+          // Real keystrokes on the focused jump input never reach here (the
+          // HTMLInputElement check above returns early); this only fires for
+          // synthetic keydowns forwarded from the audience window, whose
+          // target is `window` rather than the input element.
+          if (jumpInputRef.current !== null) {
+            e.preventDefault(); e.stopPropagation();
+            const n = parseInt(jumpInputRef.current, 10);
+            if (!isNaN(n)) onNavigate(Math.min(Math.max(n - 1, 0), total - 1));
+            setJumpInput(null);
+          }
+          break;
+        default:
+          if (/^\d$/.test(e.key)) {
+            e.preventDefault(); e.stopPropagation();
+            setJumpInput(e.key);
+          }
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [goNext, goPrev, onNavigate, total, onExit, onToggleNotes, onToggleBlankBlack, onToggleBlankWhite, onToggleLaser, resetIdle]);
+
+  useEffect(() => {
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const now = Date.now();
+      if (now - lastWheelTime.current < 300) return;
+      lastWheelTime.current = now;
+      resetIdle?.();
+      if (e.deltaY > 0) goNext(); else goPrev();
+    };
+    window.addEventListener('wheel', handler, { passive: false });
+    return () => window.removeEventListener('wheel', handler);
+  }, [goNext, goPrev, resetIdle]);
+
+  return { goNext, goPrev, jumpInput, setJumpInput };
 }
