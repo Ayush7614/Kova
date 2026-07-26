@@ -38,7 +38,7 @@ export type MessageKey = DotPaths<Messages>;
 // missing ones fall back to English at lookup time. A translated PluralForms
 // entry only needs the categories the target language's grammar requires;
 // `other` is the recommended minimum but is left optional here so a partial
-// locale file still type-checks — TRANSLATING.md explains why it should
+// locale file still type-checks — .github/TRANSLATING.md explains why it should
 // always be filled in in practice.
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends string

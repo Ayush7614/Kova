@@ -115,7 +115,7 @@ describe('createTranslator — pluralization (Intl.PluralRules)', () => {
   });
 
   it('falls back to `other` when the selected category is missing from a partial locale', () => {
-    // A locale that only bothered to translate `other` — still valid, per TRANSLATING.md.
+    // A locale that only bothered to translate `other` — still valid, per .github/TRANSLATING.md.
     const partial = { layout: { estimatedMinutes: { other: '{{count}} min(y)' } } };
     const t = createTranslator(partial, 'ru');
     expect(t('layout.estimatedMinutes', { count: 2 })).toBe('2 min(y)'); // "few" missing -> other

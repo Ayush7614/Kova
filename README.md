@@ -140,7 +140,7 @@ npm run tauri build    # release binary
 
 Nix users can skip the prerequisites: `nix develop` drops you in a shell with Rust, Node, and Tauri ready.
 
-See the [Contributing guide](https://wiki.kova.md/contributing/) for more details, or [TRANSLATING.md](TRANSLATING.md) if you'd like to add a language.
+See the [Contributing guide](https://wiki.kova.md/contributing/) for more details, or [TRANSLATING.md](.github/TRANSLATING.md) if you'd like to add a language.
 
 ## Keybindings
 

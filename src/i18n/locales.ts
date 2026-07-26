@@ -9,7 +9,7 @@ export interface LocaleDef {
 }
 
 // Registering a community locale = add one entry here, importing its
-// translation tree from './locales/<code>'. See TRANSLATING.md.
+// translation tree from './locales/<code>'. See .github/TRANSLATING.md.
 export const LOCALES: LocaleDef[] = [
   { code: 'en', label: 'English', messages: null },
   { code: 'de', label: 'Deutsch', messages: de },
