@@ -329,13 +329,15 @@ export default function App() {
   // Resolve the raw logo path to a data URL via IPC so the image works in both
   // windows regardless of asset-protocol scope restrictions on Windows.
   useEffect(() => {
+    let cancelled = false;
     const raw = rawLogoSrc;
     if (!raw) { setResolvedLogoUrl(undefined); return; }
     if (/^(https?:|data:)/i.test(raw)) { setResolvedLogoUrl(raw); return; }
     const mime = imageMime(raw);
     invoke<string>('read_file_b64', { path: raw })
-      .then((b64) => setResolvedLogoUrl(`data:${mime};base64,${b64}`))
-      .catch(() => setResolvedLogoUrl(undefined));
+      .then((b64) => { if (!cancelled) setResolvedLogoUrl(`data:${mime};base64,${b64}`); })
+      .catch(() => { if (!cancelled) setResolvedLogoUrl(undefined); });
+    return () => { cancelled = true; };
   }, [rawLogoSrc]);
 
   useEffect(() => {
@@ -442,8 +444,6 @@ export default function App() {
   // sees the current dirty state when it fires synchronously after a watcher event.
   const isDirtyRef = useRef(isDirty);
   isDirtyRef.current = isDirty;
-  const externalChangeDialogRef = useRef(showExternalChangeDialog);
-  externalChangeDialogRef.current = showExternalChangeDialog;
   // Captures the file path at the moment the external-change dialog is opened,
   // so the Reload button always reloads the file that triggered the alert even
   // if the user somehow navigates to a different file before clicking.

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { parsePptx } from '../engine/import/parsePptx';
@@ -52,7 +52,6 @@ export function ImportPptxModal({ onImported, onClose }: ImportPptxModalProps) {
   const [progress, setProgress]     = useState('');
   const [doneState, setDoneState]   = useState<DoneState | null>(null);
   const [errorMsg, setErrorMsg]     = useState('');
-  const warningsOpenRef             = useRef(false);
   const [warningsOpen, setWarningsOpen] = useState(false);
 
   // ── File picker ─────────────────────────────────────────────────────────────
@@ -238,7 +237,7 @@ export function ImportPptxModal({ onImported, onClose }: ImportPptxModalProps) {
                     background: 'var(--bg-input)', border: '1px solid var(--border-alt)',
                     borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer',
                   }}
-                  onClick={() => { warningsOpenRef.current = !warningsOpenRef.current; setWarningsOpen(o => !o); }}
+                  onClick={() => setWarningsOpen(o => !o)}
                 >
                   <span>{t('modals.importPptxItemsSkipped', { count: doneState.warnings.length })}</span>
                   <span>{warningsOpen ? '▲' : '▼'}</span>
