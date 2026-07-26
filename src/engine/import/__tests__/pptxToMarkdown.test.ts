@@ -233,3 +233,115 @@ describe('pptxToMarkdown', () => {
     expect(visibleText).toContain('Important content after divider');
   });
 });
+
+describe('pptxToMarkdown — general Markdown escaping', () => {
+  it('does not turn body text starting with a number+period into a real ordered list', () => {
+    const md = pptxToMarkdown(makeResult({
+      slides: [{
+        blocks: [{ kind: 'body', text: '1. Read this first', normX: 0, normY: 0.2, normW: 1, normH: 0.3 }],
+        speakerNotes: '',
+      }],
+    }));
+    const { slides } = parseDocument(md);
+    expect(slides[0].elements.find((e) => e.type === 'list')).toBeUndefined();
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.text).toBe('1. Read this first');
+  });
+
+  it('does not turn body text starting with # into a competing heading', () => {
+    const md = pptxToMarkdown(makeResult({
+      slides: [{
+        blocks: [
+          { kind: 'title', text: 'Slide Title', normX: 0, normY: 0, normW: 1, normH: 0.2 },
+          { kind: 'body', text: '# Not a heading', normX: 0, normY: 0.2, normW: 1, normH: 0.3 },
+        ],
+        speakerNotes: '',
+      }],
+    }));
+    const { slides } = parseDocument(md);
+    expect(slides).toHaveLength(1);
+    expect(slides[0].title).toBe('Slide Title');
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.text).toBe('# Not a heading');
+  });
+
+  it('does not turn body text starting with > into a blockquote', () => {
+    const md = pptxToMarkdown(makeResult({
+      slides: [{
+        blocks: [{ kind: 'body', text: '> Quoted in the original deck', normX: 0, normY: 0.2, normW: 1, normH: 0.3 }],
+        speakerNotes: '',
+      }],
+    }));
+    const { slides } = parseDocument(md);
+    expect(slides[0].elements.find((e) => e.type === 'blockquote')).toBeUndefined();
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.text).toBe('> Quoted in the original deck');
+  });
+
+  it('does not turn inline *, _, ` into emphasis/code/links when they occur mid-sentence', () => {
+    const md = pptxToMarkdown(makeResult({
+      slides: [{
+        blocks: [{
+          kind: 'body',
+          text: 'Revenue is 3 * 4 = 12, see user_name and `raw` text, or [Appendix A](page 12)',
+          normX: 0, normY: 0.2, normW: 1, normH: 0.3,
+        }],
+        speakerNotes: '',
+      }],
+    }));
+    const { slides } = parseDocument(md);
+    const para = slides[0].elements.find((e) => e.type === 'paragraph');
+    expect(para?.type === 'paragraph' && para.text)
+      .toBe('Revenue is 3 * 4 = 12, see user_name and `raw` text, or [Appendix A](page 12)');
+    const html = para?.type === 'paragraph' ? para.html : '';
+    expect(html).not.toContain('<em>');
+    expect(html).not.toContain('<code>');
+    expect(html).not.toContain('<a href');
+  });
+
+  it('escapes inline characters in the slide title so they cannot form real emphasis', () => {
+    // Spaced/intraword forms (e.g. "3 * 4", "Report_2026") are never
+    // emphasis-forming in CommonMark regardless of escaping, so they can't
+    // distinguish fixed from unfixed here — use a paired, adjacent-to-text
+    // "*Highlights*" that WOULD become real <em> (consuming the asterisks
+    // as markup, not text) if left unescaped.
+    const md = pptxToMarkdown(makeResult({
+      slides: [{
+        blocks: [{ kind: 'ctrTitle', text: 'Q1 *Highlights* Report', normX: 0, normY: 0, normW: 1, normH: 0.2 }],
+        speakerNotes: '',
+      }],
+    }));
+    const { slides } = parseDocument(md);
+    expect(slides[0].title).toBe('Q1 *Highlights* Report');
+  });
+
+  it('preserves a Kova-synthesized bullet (extractTextBody\'s own "- " prefix) as a real list while still escaping inline characters within it', () => {
+    const md = pptxToMarkdown(makeResult({
+      slides: [{
+        blocks: [{ kind: 'body', text: '- Revenue is *tripled* this year\n- Cost dropped `20%`', normX: 0, normY: 0.2, normW: 1, normH: 0.3 }],
+        speakerNotes: '',
+      }],
+    }));
+    const { slides } = parseDocument(md);
+    const list = slides[0].elements.find((e) => e.type === 'list');
+    expect(list?.type === 'list' && list.items.map((i) => i.text)).toEqual([
+      'Revenue is *tripled* this year',
+      'Cost dropped `20%`',
+    ]);
+    const html = list?.type === 'list' ? list.items.map((i) => i.html).join('') : '';
+    expect(html).not.toContain('<em>');
+    expect(html).not.toContain('<code>');
+  });
+
+  it('escapes a leading heading marker when synthesizing a fresh bullet from multi-paragraph body text', () => {
+    const md = pptxToMarkdown(makeResult({
+      slides: [{
+        blocks: [{ kind: 'body', text: '# First line\nSecond line', normX: 0, normY: 0.2, normW: 1, normH: 0.3 }],
+        speakerNotes: '',
+      }],
+    }));
+    const { slides } = parseDocument(md);
+    const list = slides[0].elements.find((e) => e.type === 'list');
+    expect(list?.type === 'list' && list.items.map((i) => i.text)).toEqual(['# First line', 'Second line']);
+  });
+});

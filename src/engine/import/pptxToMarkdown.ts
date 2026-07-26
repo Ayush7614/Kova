@@ -11,20 +11,68 @@ import type { PptxParseResult, PptxParsedSlide } from './parsePptx';
 // be reinterpreted as Kova syntax on import.
 const CONTROL_SENTINELS = new Set(['---', '???', '|||']);
 
+// ── General Markdown escaping ────────────────────────────────────────────────
+//
+// Plain PPTX body text has no Markdown meaning, but Kova's own parser
+// (remark + remark-gfm) reparses the generated .md, so a body line starting
+// "1. Read this" becomes a real ordered-list item, "# Not a heading" becomes
+// an actual heading, and inline `*`/`_`/`` ` ``/`[`/`<` get reinterpreted as
+// emphasis/code-spans/links/raw HTML wherever they appear. The three exact
+// control sentinels above are Kova's own directive syntax (handled
+// separately below); everything else needs general escaping.
+//
+// Deliberately out of scope: exotic block forms (spaced thematic breaks
+// like "- - -", setext "===" heading underlines) — vanishingly rare in real
+// slide prose, not worth the complexity.
+
+// Escapes characters significant to remark wherever they occur in a line —
+// backslash first, so escaping the rest below can't be double-escaped by a
+// later pass over the same text.
+function escapeInline(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/([*_`[\]<])/g, '\\$1');
+}
+
+// Escapes a block-level marker only when it actually starts the line (up to
+// 3 leading spaces, CommonMark's own tolerance) — heading, blockquote,
+// ordered-list marker. These have no special meaning mid-line, so unlike
+// escapeInline's characters they're only ever escaped here.
+function escapeLeadingMarker(line: string): string {
+  return line
+    .replace(/^(\s{0,3})(#{1,6})(\s|$)/, '$1\\$2$3')
+    .replace(/^(\s{0,3})>/, '$1\\>')
+    .replace(/^(\s{0,3})(\d+)([.)])(\s|$)/, '$1$2\\$3$4')
+    .replace(/^(\s{0,3})([-+])(\s|$)/, '$1\\$2$3');
+}
+
+// Escapes arbitrary plain text so it round-trips as literal text.
+function escapeMarkdownLine(line: string): string {
+  return escapeLeadingMarker(escapeInline(line));
+}
+
+// extractTextBody (parsePptx.ts) already injects a Kova '- ' bullet prefix
+// (indented per level) for text with real PPTX list formatting (buChar/
+// buAutoNum) — that's intentional Kova list syntax, not raw PPTX prose, so
+// its marker must survive unescaped; only the text after it needs inline
+// protection.
+const BULLET_PREFIX_RE = /^(\s*)-\s(.*)$/;
+
+function escapeBodyLine(line: string): string {
+  const bullet = line.match(BULLET_PREFIX_RE);
+  if (bullet) return `${bullet[1]}- ${escapeInline(bullet[2])}`;
+  return escapeControlLine(line);
+}
+
 // Backslash-escapes each character of a line that exactly matches a control
 // sentinel (preserving any surrounding whitespace as-is). CommonMark treats
 // a backslash-escaped ASCII punctuation character as a literal, so e.g.
 // '---' -> '\-\-\-' still renders as the visible text "---" but no longer
 // trim-equals '---', so it survives the raw-string scanners untouched.
+// Anything else falls through to the general escaper above.
 function escapeControlLine(line: string): string {
   const trimmed = line.trim();
-  if (!CONTROL_SENTINELS.has(trimmed)) return line;
+  if (!CONTROL_SENTINELS.has(trimmed)) return escapeMarkdownLine(line);
   const start = line.indexOf(trimmed);
   return line.slice(0, start) + trimmed.replace(/./g, '\\$&') + line.slice(start + trimmed.length);
-}
-
-function escapeControlLines(text: string): string {
-  return text.split('\n').map(escapeControlLine).join('\n');
 }
 
 // ── Table → GFM ──────────────────────────────────────────────────────────────
@@ -56,7 +104,10 @@ function slideToMarkdown(slide: PptxParsedSlide, slideIndex: number): string {
   // ── Title ─────────────────────────────────────────────────────────────────
   if (titleBlock) {
     const level = titleBlock.kind === 'ctrTitle' ? '#' : '##';
-    lines.push(`${level} ${titleBlock.text}`);
+    // Inline-only: titleBlock.text lands mid-line after the heading marker
+    // above, not at fresh line-start, so only Markdown-significant
+    // characters within the text (not leading-marker forms) can corrupt it.
+    lines.push(`${level} ${escapeInline(titleBlock.text ?? '')}`);
   }
 
   // ── Body blocks (sorted by normY already) ─────────────────────────────────
@@ -65,19 +116,26 @@ function slideToMarkdown(slide: PptxParsedSlide, slideIndex: number): string {
 
     switch (block.kind) {
       case 'body': {
-        const text = escapeControlLines(block.text ?? '');
-        if (!text.trim()) break;
+        const raw = block.text ?? '';
+        if (!raw.trim()) break;
 
         // If the text block has multiple lines but none start with '- ',
         // we apply the "body placeholder with multiple paragraphs → bullets" heuristic.
-        const rawLines = text.split('\n').filter((l) => l.trim());
+        const rawLines = raw.split('\n').filter((l) => l.trim());
         const alreadyBulleted = rawLines.some((l) => /^\s*-\s/.test(l));
 
         if (!alreadyBulleted && rawLines.length > 1) {
-          // Multi-paragraph body: convert each non-empty line to a bullet
-          lines.push(...rawLines.map((l) => `- ${l.trim()}`));
+          // Multi-paragraph body: convert each non-empty line to a bullet.
+          // Full escaping (inline + leading-marker) of each line's own
+          // content, since we're wrapping it fresh — a leading '#'/'>'/list
+          // marker here would otherwise become *nested* block syntax inside
+          // the new list item, not just inert text.
+          lines.push(...rawLines.map((l) => `- ${escapeMarkdownLine(l.trim())}`));
         } else {
-          lines.push(text);
+          // Single paragraph, or already using Kova's own '- ' bullet prefix
+          // (escapeBodyLine preserves that marker, only protecting the text
+          // after it — see BULLET_PREFIX_RE above).
+          lines.push(raw.split('\n').map(escapeBodyLine).join('\n'));
         }
         break;
       }
