@@ -751,6 +751,15 @@ export default function App() {
     isExitingRef.current = false;
   }, [slides, visibleSlides, safePresentIndex, coldPresent]);
 
+  // Moved above handlePresentEnter (originally declared much further down)
+  // so its stable-identity useCallback can be listed in handlePresentEnter's
+  // own dependency array without a temporal-dead-zone reference.
+  const handleWarn = useCallback((msg: string) => {
+    setWarnMessage(msg);
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    warnTimerRef.current = setTimeout(() => setWarnMessage(null), 6000);
+  }, []);
+
   const handlePresentEnter = useCallback(async (eOrFromCurrent?: React.MouseEvent | boolean) => {
     if (visibleSlides.length === 0) return;
     isExitingRef.current = false;
@@ -811,9 +820,26 @@ export default function App() {
         // Use `let` so the timeout callback can also reach it.
         let unlistenReady: (() => void) | undefined;
         const readyTimeoutId = setTimeout(() => {
-          // present:ready never fired — window creation silently failed.
-          // Clean up the dangling listener so a future attempt starts fresh.
+          // present:ready never fired — window creation silently failed or its
+          // content is hung. Mirrors the tauri://error and tauri://destroyed
+          // handlers below (reset state, cold-start exits via cli_exit)
+          // rather than just cleaning up the listener and leaving the app
+          // stuck fullscreened with no audience window and no error shown.
+          if (presentSessionRef.current !== sessionId) return; // stale session
           unlistenReady?.();
+          audienceWin.close().catch(() => {});
+          if (coldPresentRef.current) {
+            invoke('set_wake_lock', { active: false }).catch(() => {});
+            invoke('cli_exit', {
+              message: 'presentation window did not respond in time',
+              code: 1,
+            }).catch(() => {});
+            return;
+          }
+          setPresentMode(false);
+          setPresenterMode(false);
+          getCurrentWindow().setFullscreen(false).catch(() => {});
+          handleWarn(t('presentation.audienceWindowTimeout'));
         }, 10_000);
 
         unlistenReady = await listen('present:ready', async () => {
@@ -899,7 +925,7 @@ export default function App() {
 
     setPresentMode(true);
     await getCurrentWindow().setFullscreen(true).catch(() => {});
-  }, [slides, visibleSlides, safeSlideIndex, activeTheme, aspectRatio, docTitle, docDate, settings.presentationMode]);
+  }, [slides, visibleSlides, safeSlideIndex, activeTheme, aspectRatio, docTitle, docDate, settings.presentationMode, handleWarn, t]);
 
   // Cold-start present: enter presentation exactly once, as soon as the file
   // content has been applied (filePath set in the same batch as content).
@@ -1797,12 +1823,6 @@ export default function App() {
       return next;
     }, 'preserve'));
     setIsDirty(true);
-  }, []);
-
-  const handleWarn = useCallback((msg: string) => {
-    setWarnMessage(msg);
-    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
-    warnTimerRef.current = setTimeout(() => setWarnMessage(null), 6000);
   }, []);
 
   function setSlideBackgroundInRaw(raw: string, src: string | null): string {

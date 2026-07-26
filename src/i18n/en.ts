@@ -1,6 +1,6 @@
 // English UI strings — the canonical source of truth. Every other locale file
 // (src/i18n/locales/<code>.ts) is typed as a partial of this tree and falls
-// back to these values for any key it doesn't translate. See TRANSLATING.md.
+// back to these values for any key it doesn't translate. See .github/TRANSLATING.md.
 const en = {
   common: {
     cancel: 'Cancel',
@@ -40,6 +40,7 @@ const en = {
     next: 'Next',
     endOfPresentation: 'End of presentation',
     slideAnnounce: 'Slide {{current}} of {{total}}',
+    audienceWindowTimeout: 'Could not open the presentation display — check your external monitor connection and try again',
   },
   inspector: {
     inspectorTitle: 'Inspector',
