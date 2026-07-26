@@ -420,6 +420,26 @@ describe('inline HTML generation', () => {
     const para = slides[0].elements.find((e) => e.type === 'paragraph');
     expect(para?.type === 'paragraph' && para.html).toContain('<br>');
   });
+
+  it('escapes double quotes in an inline image alt attribute (table cell)', () => {
+    // An image nested inside a table cell/list item/blockquote goes through
+    // inlineToHtml and is later injected via dangerouslySetInnerHTML, so an
+    // unescaped '"' in alt text would break out of the attribute and let an
+    // attacker inject arbitrary attributes (e.g. onerror=) into the DOM.
+    const { slides } = parseDocument(doc([
+      '## Slide',
+      '',
+      '| Img |',
+      '|-----|',
+      '| ![a" onerror="alert(1)"](x.png) |',
+    ].join('\n')));
+    const table = slides[0].elements.find((e) => e.type === 'table');
+    const cell = table?.type === 'table' ? table.rows[0][0] : '';
+    // A real breakout would close the alt attribute with a raw '"' and open
+    // a fresh onerror="..." attribute; escaped, that quote is '&quot;' instead.
+    expect(cell).not.toMatch(/"\s*onerror\s*=\s*"/);
+    expect(cell).toContain('&quot;');
+  });
 });
 
 // ── Math (KaTeX / remark-math) ────────────────────────────────────────────────

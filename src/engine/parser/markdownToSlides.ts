@@ -665,8 +665,12 @@ function inlineToHtml(children: Node[]): string {
   }).join('');
 }
 
+// Escapes '"' too, not just <>&: this is also used to build attribute values
+// (e.g. an inline image's alt="…", always double-quoted in this file), where
+// an unescaped '"' would let crafted markdown break out of the attribute and
+// inject arbitrary HTML/attributes.
 function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // !ref[...] is a bracket-captured raw string that never goes through remark,
