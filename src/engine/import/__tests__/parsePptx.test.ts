@@ -140,6 +140,68 @@ describe('parsePptx table geometry', () => {
   });
 });
 
+// ── Reading-order tie-break ──────────────────────────────────────────────────
+
+// Text (p:sp) and picture (p:pic) shapes are extracted in separate passes —
+// text first, then pictures — before a single normY sort. A stable sort
+// keeps that pass order for any two blocks at the same normY, so an image on
+// the LEFT of same-row text used to come out AFTER it in reading order
+// (insertion order) instead of BEFORE it (actual left-to-right position).
+const SAME_ROW_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld ${NS}>
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr/>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="2" name="Caption"/>
+          <p:cNvSpPr/>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="4572000" y="1000000"/><a:ext cx="4000000" cy="1000000"/></a:xfrm></p:spPr>
+        <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Right-side caption</a:t></a:r></a:p></p:txBody>
+      </p:sp>
+      <p:pic>
+        <p:nvPicPr><p:cNvPr id="3" name="Picture 1"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+        <p:blipFill><a:blip r:embed="rId10"/></p:blipFill>
+        <p:spPr><a:xfrm><a:off x="0" y="1000000"/><a:ext cx="4000000" cy="1000000"/></a:xfrm></p:spPr>
+      </p:pic>
+    </p:spTree>
+  </p:cSld>
+</p:sld>`;
+
+async function buildSameRowFixtureBase64(): Promise<string> {
+  const zip = new JSZip();
+  zip.file('ppt/presentation.xml', PRESENTATION_XML);
+  zip.file('ppt/_rels/presentation.xml.rels', PRESENTATION_RELS);
+  zip.file('ppt/slides/slide1.xml', SAME_ROW_XML);
+  zip.file(
+    'ppt/slides/_rels/slide1.xml.rels',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId10" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>' +
+    '</Relationships>',
+  );
+  zip.file('ppt/media/image1.png', 'PNGDATA');
+  return zip.generateAsync({ type: 'base64' });
+}
+
+describe('parsePptx reading order', () => {
+  it('breaks a same-row normY tie by normX, not pass insertion order', async () => {
+    const b64 = await buildSameRowFixtureBase64();
+    mockedInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'read_file_b64') return b64;
+      if (cmd === 'write_asset_bytes') return String(args?.filename);
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+
+    const result = await parsePptx('/fake/deck.pptx', '/fake/dest');
+    const { blocks } = result.slides[0];
+    expect(blocks.map((b) => b.kind)).toEqual(['image', 'body']);
+  });
+});
+
 // ── Chrome suppression (issue #192) ────────────────────────────────────────────
 
 // One slide tagging its own header/footer text and logo image with Kova's
@@ -205,6 +267,39 @@ describe('parsePptx chrome suppression', () => {
     expect(blocks.some((b) => b.kind === 'image')).toBe(false);
     expect(blocks.some((b) => b.text === 'Ordinary body text')).toBe(true);
     expect(result.warnings.some((w) => /Skipped 2 Kova theme element/.test(w))).toBe(true);
+  });
+
+  it('skips any kova:-prefixed picture, not just the exact literal kova:logo', async () => {
+    // The text-shape check has always been a prefix match (startsWith('kova:'));
+    // the picture-shape check used to be an exact === 'kova:logo' comparison,
+    // so a differently-named kova:-prefixed picture would have been silently
+    // re-imported as real content instead of skipped as chrome.
+    const zip = new JSZip();
+    zip.file('ppt/presentation.xml', PRESENTATION_XML);
+    zip.file('ppt/_rels/presentation.xml.rels', PRESENTATION_RELS);
+    zip.file('ppt/slides/slide1.xml', pictureSlideXml(
+      `<p:pic>
+        <p:nvPicPr><p:cNvPr id="2" name="kova:watermark"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+        <p:blipFill><a:blip r:embed="rId10"/></p:blipFill>
+        <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1000000" cy="1000000"/></a:xfrm></p:spPr>
+      </p:pic>`,
+    ));
+    zip.file('ppt/slides/_rels/slide1.xml.rels', slideRelsXml('rId10', '../media/image1.png'));
+    zip.file('ppt/media/image1.png', 'PNGDATA');
+    const b64 = await zip.generateAsync({ type: 'base64' });
+
+    mockedInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'read_file_b64') return b64;
+      // Must be mocked (not left to throw) so a wrongly-not-skipped image
+      // would actually reach a pushed block — otherwise this test would pass
+      // vacuously regardless of the chrome check, for the wrong reason.
+      if (cmd === 'write_asset_bytes') return String(args?.filename);
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+
+    const result = await parsePptx('/fake/deck.pptx', '/fake/dest');
+    expect(result.slides[0].blocks.some((b) => b.kind === 'image')).toBe(false);
+    expect(result.warnings.some((w) => /Skipped 1 Kova theme element/.test(w))).toBe(true);
   });
 
   it('skips native ftr/hdr/sldNum/dt placeholders with real text, but not empty inherited ones', async () => {

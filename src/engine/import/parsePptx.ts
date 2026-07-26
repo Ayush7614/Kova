@@ -372,8 +372,11 @@ async function extractSlideBlocks(
   // ── Pictures (p:pic) ──────────────────────────────────────────────────────
   for (const pic of qAll(spTree, P, 'pic')) {
     const picObjectName = getObjectName(pic);
-    if (picObjectName === 'kova:logo') {
-      // Theme logo — regenerated from the current theme on export, not an asset to re-import.
+    if (picObjectName?.startsWith('kova:')) {
+      // Kova's own chrome (currently just the theme logo) — regenerated from
+      // the current theme on export, not an asset to re-import. Prefix match
+      // mirrors the text-shape check above so a future kova:-prefixed
+      // picture type is skipped automatically, not silently re-imported.
       chromeSkipCounts.kova++;
       continue;
     }
@@ -459,8 +462,11 @@ async function extractSlideBlocks(
     }
   }
 
-  // Sort by vertical position so reading order matches the slide top-to-bottom
-  blocks.sort((a, b) => a.normY - b.normY);
+  // Sort by vertical position so reading order matches the slide top-to-bottom;
+  // break ties by horizontal position (e.g. an image + caption on the same
+  // row) rather than falling back to insertion order (text, then pics, then
+  // graphicFrames), which doesn't reflect the shapes' actual layout.
+  blocks.sort((a, b) => a.normY - b.normY || a.normX - b.normX);
 
   return blocks;
 }
