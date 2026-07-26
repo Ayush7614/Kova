@@ -39,7 +39,14 @@ pub async fn fetch_url_b64(url: String) -> Result<(String, String), String> {
         "image/jpg" | "image/pjpeg" | "image/x-jpeg" => "image/jpeg".to_string(),
         other => other.to_string(),
     };
+    const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024; // 20 MB, matches fetch_url_text's cap
+    if resp.content_length().unwrap_or(0) > MAX_IMAGE_BYTES {
+        return Err("response too large (max 20 MB)".into());
+    }
     let bytes = resp.bytes().await.map_err(|e| format!("read failed: {e}"))?;
+    if bytes.len() as u64 > MAX_IMAGE_BYTES {
+        return Err("response too large (max 20 MB)".into());
+    }
     Ok((base64::engine::general_purpose::STANDARD.encode(&bytes), mime))
 }
 

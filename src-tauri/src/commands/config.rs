@@ -111,6 +111,16 @@ pub async fn download_and_cache_font(
         return Err("font URL must use HTTPS".into());
     }
 
+    // url/sha256 come from a theme file's `remoteFonts` list — attacker-
+    // influenceable content (a shared/imported theme), same trust tier as an
+    // opened document. Route through the same SSRF guard fetch_url_b64/
+    // fetch_url_text use, rather than a bare reqwest::get with no address
+    // validation at all (see the matching comment in commands/network.rs).
+    let parsed_url = reqwest::Url::parse(&url).map_err(|e| format!("invalid URL: {e}"))?;
+    if crate::net_guard::url_host_is_blocked(&parsed_url) {
+        return Err("refusing to connect to a non-public address".into());
+    }
+
     // sha256 must be exactly 64 lowercase hex chars — used as the filename,
     // so this also prevents any path-traversal via crafted hash strings.
     if sha256.len() != 64 || !sha256.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -144,7 +154,10 @@ pub async fn download_and_cache_font(
 
     const MAX_FONT_BYTES: u64 = 20 * 1024 * 1024; // 20 MB
 
-    let response = reqwest::get(&url)
+    let client = crate::net_guard::build_ssrf_safe_client()?;
+    let response = client
+        .get(&url)
+        .send()
         .await
         .map_err(|e| format!("download failed: {e}"))?;
 
