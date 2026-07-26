@@ -158,6 +158,60 @@ describe('importMarp', () => {
     expect(markdown.match(/^# Slide$/gm)).toHaveLength(1);
   });
 
+  it('does not treat a documented ![bg] example inside a fenced code block as a live background (Pass 1)', () => {
+    // A bare ![bg](x) reformats to itself byte-for-byte (no side/size
+    // modifiers), so an assertion on the fenced example's own text survives
+    // unchanged either way and wouldn't actually distinguish fixed from
+    // unfixed behaviour. The real, distinguishing symptom of the bug: the
+    // fenced example being (mis)parsed as a background consumes the "first
+    // bg" slot, so a REAL ![bg] line later on the same slide gets wrongly
+    // treated as a second background and dropped.
+    const deck = [
+      '---', 'marp: true', '---',
+      '# How backgrounds work', '',
+      '```markdown', '![bg](example.jpg)', '```', '',
+      '![bg](real.jpg)',
+    ].join('\n');
+    const { markdown, dropped } = importMarp(deck);
+    expect(markdown).toContain('```markdown\n![bg](example.jpg)\n```');
+    expect(markdown).toContain('![bg](real.jpg)');
+    expect(dropped).not.toContain('bg-extra');
+    const { slides } = parseDocument(markdown);
+    expect(slides[0].backgroundImage?.src).toBe('real.jpg');
+  });
+
+  it('does not strip a documented image-size example inside a fenced code block (Pass 2)', () => {
+    const deck = [
+      '---', 'marp: true', '---',
+      '# Sizing images', '',
+      '```markdown', '![w:200 h:100](x.png)', '```',
+    ].join('\n');
+    const { markdown, dropped } = importMarp(deck);
+    expect(markdown).toContain('![w:200 h:100](x.png)');
+    expect(dropped).not.toContain('image-size');
+  });
+
+  it('does not turn a documented HTML comment example inside a fenced code block into a directive or note (Pass 3)', () => {
+    const deck = [
+      '---', 'marp: true', '---',
+      '## Class directive', '',
+      'Some body text.', '',
+      '```markdown', '<!-- _class: lead -->', '```',
+    ].join('\n');
+    const { markdown, dropped } = importMarp(deck);
+    // The fenced sample must survive verbatim as a code block...
+    expect(markdown).toContain('```markdown\n<!-- _class: lead -->\n```');
+    // ...not be consumed into a live (unfenced) layout:title directive...
+    expect(markdown).not.toMatch(/^<!-- layout:title -->/m);
+    // ...and not be swallowed into the speaker-note fallback either.
+    expect(markdown).not.toContain('???');
+    expect(dropped).toHaveLength(0);
+    // H2 (not H1) so layout isn't forced to 'title' by the heading itself —
+    // confirms the fence, not the heading level, is what's keeping it out.
+    const { slides } = parseDocument(markdown);
+    expect(slides[0].layout).not.toBe('title');
+  });
+
   it('maps size 16:9 to aspect_ratio', () => {
     const { markdown } = importMarp('---\nmarp: true\nsize: 16:9\n---\n# X');
     expect(markdown).toContain('aspect_ratio: "16:9"');

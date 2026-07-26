@@ -21,6 +21,7 @@ export interface MarpImportResult {
 const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const SIZE_KW = /\b[wh]:\d+%?/g;
 const COMMENT = /<!--([\s\S]*?)-->/g;
+const FENCE_MARKER_RE = /^(`{3,}|~{3,})/;
 
 export function isMarp(src: string): boolean {
   const m = src.match(FM_RE);
@@ -99,7 +100,7 @@ function splitSlides(body: string): string[] {
   let current: string[] = [];
   let inFence = false;
   for (const line of lines) {
-    if (/^(`{3,}|~{3,})/.test(line)) inFence = !inFence;
+    if (FENCE_MARKER_RE.test(line)) inFence = !inFence;
     if (!inFence && line === '---') {
       slides.push(current.join('\n'));
       current = [];
@@ -111,6 +112,29 @@ function splitSlides(body: string): string[] {
   return slides;
 }
 
+// Half-open char-offset ranges of every line that lies strictly inside a
+// fenced code block, using the same ```/~~~ toggle splitSlides above and
+// extractBgImage (../parser/bgImage.ts) already use. Passes 2 and 3 in
+// transformSlide operate on the whole reassembled slide via a single
+// whole-string regex .replace() rather than a line loop, so they can't reuse
+// that toggle directly the way splitSlides/Pass 1 do — this gives them an
+// offset-based equivalent instead, so a slide *documenting* Marp/Kova syntax
+// inside a fenced code sample doesn't get its example content mistaken for a
+// live directive.
+function computeFencedRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const parts = text.split(/(\r\n|\r|\n)/); // alternating: line, delimiter, line, ...
+  let inFence = false;
+  let offset = 0;
+  for (let i = 0; i < parts.length; i += 2) {
+    const line = parts[i];
+    if (FENCE_MARKER_RE.test(line)) inFence = !inFence;
+    else if (inFence) ranges.push([offset, offset + line.length]);
+    offset += line.length + (parts[i + 1]?.length ?? 0);
+  }
+  return ranges;
+}
+
 function transformSlide(slide: string, dropTag: (l: string) => string): string {
   const notes: string[] = [];
   const out: string[] = [];
@@ -118,25 +142,41 @@ function transformSlide(slide: string, dropTag: (l: string) => string): string {
 
   // Pass 1: preserve Marp `![bg…](…)` as native bg lines so overlay text is
   // kept (native parser sets backgroundImage when the slide has title/body).
+  // Fence-aware (same toggle as splitSlides/computeFencedRanges above) so a
+  // slide *documenting* `![bg]` syntax inside a fenced code sample isn't
+  // mistaken for a live background directive.
+  let inFence = false;
   for (const line of slide.split(/\r?\n/)) {
-    const parsed = parseBgLine(line);
-    if (parsed) {
-      // Percentage / explicit Marp size tokens we don't map — log and drop.
-      // `fit`/`contain` are kept via formatBgLine; bare `cover` is the default.
-      const mods = (line.match(/^!\[bg([^\]]*)\]/)?.[1] ?? '');
-      if (/(\d+%|:\s*\d)/.test(mods)) dropTag('bg-sizing');
-      if (bgUsed) { out.push(dropTag('bg-extra')); continue; }
-      bgUsed = true;
-      out.push(formatBgLine(parsed));
-      continue;
+    if (FENCE_MARKER_RE.test(line)) { inFence = !inFence; out.push(line); continue; }
+    if (!inFence) {
+      const parsed = parseBgLine(line);
+      if (parsed) {
+        // Percentage / explicit Marp size tokens we don't map — log and drop.
+        // `fit`/`contain` are kept via formatBgLine; bare `cover` is the default.
+        const mods = (line.match(/^!\[bg([^\]]*)\]/)?.[1] ?? '');
+        if (/(\d+%|:\s*\d)/.test(mods)) dropTag('bg-sizing');
+        if (bgUsed) { out.push(dropTag('bg-extra')); continue; }
+        bgUsed = true;
+        out.push(formatBgLine(parsed));
+        continue;
+      }
     }
     out.push(line);
   }
   let text = out.join('\n');
 
+  // Passes 2-3 operate on the whole reassembled string via a single
+  // whole-string regex .replace() rather than a line loop, so fence-awareness
+  // works by offset instead: compute the fence-protected ranges of `text`
+  // once (re-derived here since Pass 1 rebuilt the string above, so any
+  // range computed against the original `slide` no longer lines up), and
+  // skip any match whose start offset falls inside one.
+  const fencedRanges = computeFencedRanges(text);
+  const isFenced = (offset: number) => fencedRanges.some(([s, e]) => offset >= s && offset < e);
+
   // Pass 2: inline image sizing `![w:200 h:100](url)` → strip keywords.
-  text = text.replace(/!\[([^\]]*)\]/g, (m, alt: string) => {
-    if (!/\b[wh]:\d+%?/.test(alt)) return m;
+  text = text.replace(/!\[([^\]]*)\]/g, (m, alt: string, offset: number) => {
+    if (isFenced(offset) || !/\b[wh]:\d+%?/.test(alt)) return m;
     dropTag('image-size');
     return `![${alt.replace(SIZE_KW, '').replace(/\s+/g, ' ').trim()}]`;
   });
@@ -144,7 +184,8 @@ function transformSlide(slide: string, dropTag: (l: string) => string): string {
   // Pass 3: comments. _class:lead → layout:title; _class:invert → color invert;
   // _color → per-slide text colour. Other Marp directives dropped; our own/Kova
   // directives kept; anything else = a Marp speaker note.
-  text = text.replace(COMMENT, (full, inner: string) => {
+  text = text.replace(COMMENT, (full, inner: string, offset: number) => {
+    if (isFenced(offset)) return full;
     const c = inner.trim();
     const cls = c.match(/^_class\s*:\s*(.+)$/);
     if (cls) {
