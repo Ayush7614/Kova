@@ -8,6 +8,14 @@ import type { CSSProperties, ReactNode } from 'react';
 const BACKDROP_Z = 2000;
 const CARD_Z = 2001;
 
+// Mount-ordered stack of every currently-mounted ModalShell with
+// dismissOnEscape enabled. Each instance still owns its own keydown
+// listener (matches the pre-existing per-instance pattern below), but only
+// fires if it's the topmost entry — otherwise two modals open at once (e.g.
+// PDF export options, then an unsaved-changes confirm dialog on top of it)
+// both close on a single Escape press instead of just the one on top.
+const escapeStack: object[] = [];
+
 interface ModalShellProps {
   onClose: () => void;
   children: ReactNode;
@@ -38,11 +46,23 @@ export function ModalShell({
 
   useEffect(() => {
     if (!dismissOnEscape) return;
+    // Unique per-mount identity — not the close callback itself, which
+    // would need care to keep stable across re-renders; this only needs to
+    // answer "is this instance topmost", which a plain marker object does
+    // regardless of how many times the effect's own deps cause it to rerun.
+    const token = {};
+    escapeStack.push(token);
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key !== 'Escape') return;
+      if (escapeStack[escapeStack.length - 1] !== token) return; // not topmost — ignore
+      onCloseRef.current();
     }
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      const idx = escapeStack.indexOf(token);
+      if (idx >= 0) escapeStack.splice(idx, 1);
+    };
   }, [dismissOnEscape]);
 
   return (
