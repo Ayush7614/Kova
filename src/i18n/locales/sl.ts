@@ -365,7 +365,6 @@ const sl: DeepPartial<Messages> = {
     learnedWordsManage: 'Upravljaj',
     learnedWordsNone: 'Še nobene',
     removeFromDictionary: 'Odstrani iz slovarja',
-    sectionSaving: 'Shranjevanje',
     autosave: 'Samodejno shranjevanje',
     autosaveDescription: 'Samodejno shrani datoteko v rednih intervalih. Začne veljati šele po prvem ročnem shranjevanju.',
     saveEvery: 'Shrani vsakih',
@@ -413,7 +412,6 @@ const sl: DeepPartial<Messages> = {
     restartConfirm: 'Imate neshranjene spremembe. Vseeno ponovno zaženem?',
     sectionAbout: 'O',
     aboutLicense: 'Brezplačna in odprtokodna · Splošna javna licenca GNU GPL v3',
-    hideLicenses: 'Skrij licence',
     showLicenses: 'Licence',
   },
 } as const;

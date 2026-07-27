@@ -43,6 +43,8 @@ export interface AppSettings {
   spellCheckLanguage: string;
   // Presentation
   presentationMode: PresentationMode;
+  presenterWindowed: boolean;
+  presenterAlwaysOnTop: boolean;
   presenterShowNextSlide: boolean;
   presenterShowTimer: boolean;
   presenterNotesFontSize: NotesFontSize;
@@ -75,6 +77,10 @@ function buildDefaults(): AppSettings {
     spellCheckEnabled: true,
     spellCheckLanguage: detectOsLanguage(),
     presentationMode: 'auto',
+    // Preserves existing behaviour (presenter view goes fullscreen) for
+    // anyone upgrading — only changes anything for users who opt in.
+    presenterWindowed: false,
+    presenterAlwaysOnTop: false,
     presenterShowNextSlide: true,
     presenterShowTimer: true,
     presenterNotesFontSize: 'md',

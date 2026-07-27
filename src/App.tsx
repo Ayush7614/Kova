@@ -749,6 +749,7 @@ export default function App() {
     const full = slides.indexOf(visibleSlides[safePresentIndex]);
     if (full >= 0) setCurrentSlideIndex(full);
     await getCurrentWindow().setFullscreen(false).catch(() => {});
+    await getCurrentWindow().setAlwaysOnTop(false).catch(() => {});
     isExitingRef.current = false;
   }, [slides, visibleSlides, safePresentIndex, coldPresent]);
 
@@ -840,6 +841,7 @@ export default function App() {
           setPresentMode(false);
           setPresenterMode(false);
           getCurrentWindow().setFullscreen(false).catch(() => {});
+          getCurrentWindow().setAlwaysOnTop(false).catch(() => {});
           handleWarn(t('presentation.audienceWindowTimeout'));
         }, 10_000);
 
@@ -892,6 +894,7 @@ export default function App() {
           setPresentMode(false);
           setPresenterMode(false);
           getCurrentWindow().setFullscreen(false).catch(() => {});
+          getCurrentWindow().setAlwaysOnTop(false).catch(() => {});
         }).catch(() => {});
 
         // If the audience window is closed externally (compositor, Alt+F4, etc.),
@@ -912,11 +915,18 @@ export default function App() {
           setPresentMode(false);
           setPresenterMode(false);
           getCurrentWindow().setFullscreen(false).catch(() => {});
+          getCurrentWindow().setAlwaysOnTop(false).catch(() => {});
         }).catch(() => {});
 
         if (mode === 'dual') {
           setPresenterMode(true);
-          await getCurrentWindow().setFullscreen(true).catch(() => {});
+          if (settings.presenterWindowed) {
+            if (settings.presenterAlwaysOnTop) {
+              await getCurrentWindow().setAlwaysOnTop(true).catch(() => {});
+            }
+          } else {
+            await getCurrentWindow().setFullscreen(true).catch(() => {});
+          }
           return;
         }
         // Mirror: audience window shows slide, main window also fullscreens with normal overlay
@@ -926,7 +936,7 @@ export default function App() {
 
     setPresentMode(true);
     await getCurrentWindow().setFullscreen(true).catch(() => {});
-  }, [slides, visibleSlides, safeSlideIndex, activeTheme, aspectRatio, docTitle, docDate, settings.presentationMode, handleWarn, t]);
+  }, [slides, visibleSlides, safeSlideIndex, activeTheme, aspectRatio, docTitle, docDate, settings.presentationMode, settings.presenterWindowed, settings.presenterAlwaysOnTop, handleWarn, t]);
 
   // Cold-start present: enter presentation exactly once, as soon as the file
   // content has been applied (filePath set in the same batch as content).

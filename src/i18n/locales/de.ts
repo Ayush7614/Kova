@@ -387,7 +387,6 @@ const de: DeepPartial<Messages> = {
     learnedWordsManage: 'Verwalten', // Manage
     learnedWordsNone: 'Noch keine', // None yet
     removeFromDictionary: 'Aus Wörterbuch entfernen', // Remove from dictionary
-    sectionSaving: 'Speichern', // Saving
     autosave: 'Automatisches Speichern', // Autosave
     autosaveDescription: 'Speichert deine Datei automatisch in regelmäßigen Abständen. Gilt erst nach dem ersten manuellen Speichern.', // Automatically save your file at regular intervals. Only applies after your first manual save.
     saveEvery: 'Speichern alle', // Save every
@@ -436,7 +435,6 @@ const de: DeepPartial<Messages> = {
     restartConfirm: 'Du hast ungespeicherte Änderungen. Trotzdem neu starten?', // You have unsaved changes. Restart anyway?
     sectionAbout: 'Über', // About
     aboutLicense: 'Kostenlos und Open Source · GNU General Public License v3', // Free and open source · GNU General Public License v3
-    hideLicenses: 'Lizenzen ausblenden', // Hide licenses
     showLicenses: 'Lizenzen', // Licenses
   },
 } as const;
