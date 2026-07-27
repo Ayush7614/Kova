@@ -1624,12 +1624,17 @@ export default function App() {
           await finish(lines.join('\n'));
           return;
         }
-        // Match the GUI export button: honour the persisted "paper size"
-        // setting (including "Match slide size") instead of always A4 (#187).
+        // Honour CLI --notes / --per-page / --paper; fall back to settings paper (#187 / #200).
+        const paper = (coldExport.paper as 'a4' | 'letter' | 'slide' | null)
+          ?? settings.pdfPageSize;
+        const perPage = coldExport.per_page ?? 1;
+        const notes = coldExport.notes && perPage === 1
+          ? visibleSlides.map((s) => s.speakerNotes)
+          : undefined;
         const outcome = await runPdfExportCapture(
           [...visibleSlides],
           coldExport.output,
-          { paper: settings.pdfPageSize },
+          { paper, perPage, notes },
         );
         const lines = [`wrote '${coldExport.output}'`];
         if (outcome.usedFallback) {
