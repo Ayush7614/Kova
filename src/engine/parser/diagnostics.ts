@@ -1,5 +1,6 @@
 import yaml from 'js-yaml';
 import { parseDocument } from './markdownToSlides';
+import { COLOR_COMMENT_RE, parseColorValue } from './colorValue';
 import { localPathFromMediaSrc } from '../resolveMediaPath';
 import type { LayoutType, ListItem, Slide } from '../types';
 
@@ -134,6 +135,15 @@ export async function collectDiagnostics(content: string, ctx: CheckContext): Pr
     const layout = line.match(LAYOUT_COMMENT_RE);
     if (layout && !KNOWN_LAYOUTS.has(layout[1])) {
       diags.push({ line: i + 1, severity: 'error', message: `unknown layout '${layout[1]}'` });
+    }
+
+    const color = line.match(COLOR_COMMENT_RE);
+    if (color && parseColorValue(color[1]) === undefined) {
+      diags.push({
+        line: i + 1,
+        severity: 'warning',
+        message: `invalid color '${color[1].trim()}'`,
+      });
     }
 
     const directive = line.trimStart().match(DIRECTIVE_RE);

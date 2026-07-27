@@ -137,6 +137,20 @@ describe('collectDiagnostics', () => {
     const diags = await collectDiagnostics(doc, ctx({ fileExists: async () => false }));
     expect(diags.filter((d) => d.message.includes('shared.png'))).toHaveLength(1);
   });
+  it('warns on invalid <!-- color: … --> values (issue #199)', async () => {
+    const doc = `---\ntitle: T\n---\n\n<!-- color: not-a-color -->\n\n## Slide\nHi\n`;
+    const diags = await collectDiagnostics(doc, ctx());
+    const w = diags.find((d) => d.message.includes('invalid color'));
+    expect(w).toBeDefined();
+    expect(w!.severity).toBe('warning');
+    expect(w!.line).toBe(5);
+  });
+
+  it('does not warn on valid color directives', async () => {
+    const doc = `---\ntitle: T\n---\n\n<!-- color: #fff -->\n\n## Slide\nHi\n`;
+    const diags = await collectDiagnostics(doc, ctx());
+    expect(diags.filter((d) => d.message.includes('invalid color'))).toEqual([]);
+  });
 });
 
 describe('formatCheckReport', () => {
