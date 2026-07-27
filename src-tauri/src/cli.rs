@@ -54,6 +54,12 @@ pub struct PendingExport {
     pub format: ExportFormat,
     pub input: String,
     pub output: String,
+    /// `--notes`: include speaker notes (PDF handout, 1-up).
+    pub notes: bool,
+    /// `--per-page N`: slides per page (1, 2, 4, or 6).
+    pub per_page: Option<u32>,
+    /// `--paper a4|letter|slide`.
+    pub paper: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -69,6 +75,12 @@ pub struct RunArgs {
     pub action: Option<Action>,
     pub theme: Option<ThemeArg>,
     pub check: bool,
+    /// `--notes` with `--export pdf` (speaker-notes handout).
+    pub notes: bool,
+    /// `--per-page` with `--export pdf`.
+    pub per_page: Option<u32>,
+    /// `--paper` with `--export pdf`.
+    pub paper: Option<String>,
     /// Plain-file arguments for the editor launch path (existence filtering
     /// happens in `startup`, keeping the parser filesystem-free).
     pub open: Vec<String>,
@@ -117,6 +129,9 @@ Modifiers (combine with an action, any order):
                         resolved against built-in and installed community
                         themes, a path must point to a theme YAML file
   --check               validate syntax before running the action
+  --notes               with --export pdf: speaker-notes handout (1-up)
+  --per-page <1|2|4|6>  with --export pdf: slides per page (default 1)
+  --paper <a4|letter|slide>  with --export pdf: page size (default: settings)
 
 Other:
   -h, --help            show this help
@@ -137,6 +152,9 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
     let mut action: Option<Action> = None;
     let mut theme: Option<ThemeArg> = None;
     let mut check = false;
+    let mut notes = false;
+    let mut per_page: Option<u32> = None;
+    let mut paper: Option<String> = None;
     let mut positionals: Vec<String> = Vec::new();
     let mut unknown: Option<String> = None;
 
@@ -182,6 +200,40 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
                     );
                 }
                 check = true;
+            }
+            "--notes" => {
+                if inline.is_some() {
+                    return CliArgs::Error("--notes does not take a value".into());
+                }
+                notes = true;
+            }
+            "--per-page" => {
+                let Some(value) = take_value(inline, &args, &mut i) else {
+                    return CliArgs::Error("--per-page requires a value (1, 2, 4, or 6)".into());
+                };
+                let Ok(n) = value.parse::<u32>() else {
+                    return CliArgs::Error(format!(
+                        "--per-page expects 1, 2, 4, or 6, got '{value}'"
+                    ));
+                };
+                if !matches!(n, 1 | 2 | 4 | 6) {
+                    return CliArgs::Error(format!(
+                        "--per-page expects 1, 2, 4, or 6, got '{value}'"
+                    ));
+                }
+                per_page = Some(n);
+            }
+            "--paper" => {
+                let Some(value) = take_value(inline, &args, &mut i) else {
+                    return CliArgs::Error("--paper requires a value (a4, letter, or slide)".into());
+                };
+                let lower = value.to_ascii_lowercase();
+                if !matches!(lower.as_str(), "a4" | "letter" | "slide") {
+                    return CliArgs::Error(format!(
+                        "--paper expects a4, letter, or slide, got '{value}'"
+                    ));
+                }
+                paper = Some(lower);
             }
             "--theme" => {
                 let Some(value) = take_value(inline, &args, &mut i) else {
@@ -324,7 +376,8 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
         }
     }
 
-    let cli_intent = action.is_some() || check || theme.is_some();
+    let cli_intent =
+        action.is_some() || check || notes || per_page.is_some() || paper.is_some() || theme.is_some();
     if cli_intent {
         // Strict mode: CLI invocations fail loudly.
         if let Some(flag) = unknown {
@@ -336,19 +389,56 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
         if action.is_none() {
             return CliArgs::Error("--theme requires --present, --import, or --export".into());
         }
-        CliArgs::Run(RunArgs { action, theme, check, open: Vec::new() })
+        let is_pdf_export = matches!(
+            action,
+            Some(Action::Export {
+                format: ExportFormat::Pdf,
+                ..
+            })
+        );
+        if (notes || per_page.is_some() || paper.is_some()) && !is_pdf_export {
+            return CliArgs::Error(
+                "--notes, --per-page, and --paper require --export pdf".into(),
+            );
+        }
+        CliArgs::Run(RunArgs {
+            action,
+            theme,
+            check,
+            notes,
+            per_page,
+            paper,
+            open: Vec::new(),
+        })
     } else {
         // Plain editor launch: positionals are files to open. Unknown
         // dash-arguments stay silently ignored — platform launchers and
         // desktop files pass flags Kova has never handled.
-        CliArgs::Run(RunArgs { action: None, theme: None, check: false, open: positionals })
+        CliArgs::Run(RunArgs {
+            action: None,
+            theme: None,
+            check: false,
+            notes: false,
+            per_page: None,
+            paper: None,
+            open: positionals,
+        })
     }
 }
 
 /// Long flags a single missing dash could turn into a silently-ignored typo
 /// (`-check` → `--check`). Exact match only — see the call site in
 /// `parse_cli_args` for why fuzzy matching would be unsafe here.
-const KNOWN_LONG_FLAGS: &[&str] = &["--present", "--check", "--theme", "--import", "--export"];
+const KNOWN_LONG_FLAGS: &[&str] = &[
+    "--present",
+    "--check",
+    "--notes",
+    "--per-page",
+    "--paper",
+    "--theme",
+    "--import",
+    "--export",
+];
 
 fn single_dash_typo_hint(arg: &str) -> Option<&'static str> {
     if !arg.starts_with('-') || arg.starts_with("--") {
@@ -483,7 +573,14 @@ fn resolve(run: RunArgs) -> Startup {
             // Unlike import's url case, export's input is always a local
             // Markdown file that must already exist.
             let input = canonicalise_or_exit(&input, "cannot open");
-            pending.export = Some(PendingExport { format, input, output: absolutize(&output) });
+            pending.export = Some(PendingExport {
+                format,
+                input,
+                output: absolutize(&output),
+                notes: run.notes,
+                per_page: run.per_page,
+                paper: run.paper,
+            });
         }
         None => {}
     }
@@ -733,6 +830,29 @@ mod tests {
                 output: "out.pptx".into(),
             })
         );
+    }
+
+    #[test]
+    fn export_pdf_notes_and_layout_flags() {
+        let run = expect_run(&[
+            "--notes",
+            "--per-page",
+            "1",
+            "--paper=letter",
+            "--export",
+            "pdf",
+            "in.md",
+            "out.pdf",
+        ]);
+        assert!(run.notes);
+        assert_eq!(run.per_page, Some(1));
+        assert_eq!(run.paper.as_deref(), Some("letter"));
+    }
+
+    #[test]
+    fn export_notes_flags_require_pdf() {
+        let msg = expect_error(&["--notes", "--export", "pptx", "in.md", "out.pptx"]);
+        assert!(msg.contains("--notes, --per-page, and --paper require --export pdf"), "{msg}");
     }
 
     // -- extension guards (glob-safety) --------------------------------------

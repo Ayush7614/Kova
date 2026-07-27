@@ -23,6 +23,12 @@ export interface PendingExport {
   input: string;
   /** Absolute path — not required to exist yet, it's the file being written. */
   output: string;
+  /** `--notes`: speaker-notes handout (PDF only). */
+  notes: boolean;
+  /** `--per-page` 1|2|4|6 (PDF only). */
+  per_page: number | null;
+  /** `--paper` a4|letter|slide (PDF only). */
+  paper: string | null;
 }
 
 export interface PendingCli {
