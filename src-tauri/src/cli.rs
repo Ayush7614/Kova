@@ -2,7 +2,7 @@
 //!
 //! Grammar: at most one action per invocation (`--present`, `--import`,
 //! `--export`, or standalone `--check FILE`) plus modifiers (`--theme`,
-//! `--check`) that combine with an action in any order.
+//! `--check`, `--force`) that combine with an action in any order.
 //!
 //! `parse_cli_args` is pure (no filesystem, no exit) so the grammar is unit
 //! testable; `startup` wraps it with the process-level concerns: printing,
@@ -44,6 +44,8 @@ pub struct PendingImport {
     pub format: ImportFormat,
     pub input: String,
     pub output: String,
+    /// `--force`: allow overwriting an existing output file.
+    pub force: bool,
 }
 
 /// `--export <format> <input> <output>`. Unlike import, `input` is always a
@@ -75,6 +77,8 @@ pub struct RunArgs {
     pub action: Option<Action>,
     pub theme: Option<ThemeArg>,
     pub check: bool,
+    /// Allow `--import` to overwrite an existing output path (issue #198).
+    pub force: bool,
     /// `--notes` with `--export pdf` (speaker-notes handout).
     pub notes: bool,
     /// `--per-page` with `--export pdf`.
@@ -129,6 +133,7 @@ Modifiers (combine with an action, any order):
                         resolved against built-in and installed community
                         themes, a path must point to a theme YAML file
   --check               validate syntax before running the action
+  --force               with --import, overwrite an existing output file
   --notes               with --export pdf: speaker-notes handout (1-up)
   --per-page <1|2|4|6>  with --export pdf: slides per page (default 1)
   --paper <a4|letter|slide>  with --export pdf: page size (default: settings)
@@ -152,6 +157,7 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
     let mut action: Option<Action> = None;
     let mut theme: Option<ThemeArg> = None;
     let mut check = false;
+    let mut force = false;
     let mut notes = false;
     let mut per_page: Option<u32> = None;
     let mut paper: Option<String> = None;
@@ -200,6 +206,12 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
                     );
                 }
                 check = true;
+            }
+            "--force" => {
+                if inline.is_some() {
+                    return CliArgs::Error("--force does not take a value".into());
+                }
+                force = true;
             }
             "--notes" => {
                 if inline.is_some() {
@@ -376,8 +388,13 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
         }
     }
 
-    let cli_intent =
-        action.is_some() || check || notes || per_page.is_some() || paper.is_some() || theme.is_some();
+    let cli_intent = action.is_some()
+        || check
+        || force
+        || notes
+        || per_page.is_some()
+        || paper.is_some()
+        || theme.is_some();
     if cli_intent {
         // Strict mode: CLI invocations fail loudly.
         if let Some(flag) = unknown {
@@ -387,7 +404,13 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
             return CliArgs::Error(format!("unexpected argument '{extra}'"));
         }
         if action.is_none() {
+            if force && theme.is_none() && !notes && per_page.is_none() && paper.is_none() {
+                return CliArgs::Error("--force requires --import".into());
+            }
             return CliArgs::Error("--theme requires --present, --import, or --export".into());
+        }
+        if force && !matches!(action, Some(Action::Import { .. })) {
+            return CliArgs::Error("--force requires --import".into());
         }
         let is_pdf_export = matches!(
             action,
@@ -401,10 +424,21 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
                 "--notes, --per-page, and --paper require --export pdf".into(),
             );
         }
+        // Glob footgun (#198): two .md paths still parse, but refuse to treat an
+        // *existing* file as output unless --force is set. Done here (not in
+        // resolve) so it returns CliArgs::Error and is unit-testable.
+        if let Some(Action::Import { ref output, .. }) = action {
+            if !force && std::path::Path::new(output).is_file() {
+                return CliArgs::Error(format!(
+                    "--import output '{output}' already exists; pass --force to overwrite"
+                ));
+            }
+        }
         CliArgs::Run(RunArgs {
             action,
             theme,
             check,
+            force,
             notes,
             per_page,
             paper,
@@ -418,6 +452,7 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
             action: None,
             theme: None,
             check: false,
+            force: false,
             notes: false,
             per_page: None,
             paper: None,
@@ -432,6 +467,7 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
 const KNOWN_LONG_FLAGS: &[&str] = &[
     "--present",
     "--check",
+    "--force",
     "--notes",
     "--per-page",
     "--paper",
@@ -567,7 +603,14 @@ fn resolve(run: RunArgs) -> Startup {
                     canonicalise_or_exit(&input, "cannot open")
                 }
             };
-            pending.import = Some(PendingImport { format, input, output: absolutize(&output) });
+            // Overwrite guard runs in parse_cli_args (CliArgs::Error); resolve
+            // only absolutizes and forwards --force.
+            pending.import = Some(PendingImport {
+                format,
+                input,
+                output: absolutize(&output),
+                force: run.force,
+            });
         }
         Some(Action::Export { format, input, output }) => {
             // Unlike import's url case, export's input is always a local
@@ -897,13 +940,11 @@ mod tests {
 
     #[test]
     fn import_rejects_glob_landing_on_a_second_md_file_as_output() {
-        // Simulates `--import marp *.md out.md` matching exactly two decks —
-        // the second must be caught, not silently overwritten... except a
-        // .md output IS what import always expects, so this specific pair
-        // parses (the danger case a naive extension check can't catch:
-        // both matched files already look like valid input/output). Kept as
-        // a documented residual case, not asserted as blocked.
+        // Two .md paths still parse when the output does not exist yet (out.md
+        // is the normal case). The data-loss guard kicks in when the output
+        // path already exists — see import_existing_output_requires_force.
         let run = expect_run(&["--import", "marp", "jan.md", "feb.md"]);
+        assert!(!run.force);
         assert_eq!(
             run.action,
             Some(Action::Import {
@@ -911,6 +952,40 @@ mod tests {
                 input: "jan.md".into(),
                 output: "feb.md".into(),
             })
+        );
+        let forced = expect_run(&["--force", "--import", "marp", "jan.md", "feb.md"]);
+        assert!(forced.force);
+    }
+
+    #[test]
+    fn import_existing_output_requires_force() {
+        let dir = std::env::temp_dir().join(format!("kova-cli-force-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let input = dir.join("in.md");
+        let output = dir.join("out.md");
+        std::fs::write(&input, "# in\n").unwrap();
+        std::fs::write(&output, "# existing\n").unwrap();
+        let out = output.to_string_lossy().into_owned();
+        let inp = input.to_string_lossy().into_owned();
+
+        let msg = expect_error(&["--import", "marp", &inp, &out]);
+        assert!(
+            msg.contains("already exists") && msg.contains("--force"),
+            "{msg}"
+        );
+
+        let run = expect_run(&["--force", "--import", "marp", &inp, &out]);
+        assert!(run.force);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn force_requires_import() {
+        assert_eq!(expect_error(&["--force"]), "--force requires --import");
+        assert_eq!(
+            expect_error(&["--force", "--present", "t.md"]),
+            "--force requires --import"
         );
     }
 
