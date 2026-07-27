@@ -8,6 +8,9 @@ import { imageMime } from './imageMime';
 import { buildExportMermaidInit, parseChannels } from './mermaidExportTheme';
 import { autoSplitElements, groupProgressRuns, splitByColumnBreaks } from '../layout/elementGrouping';
 import mermaid from 'mermaid';
+import katex from 'katex';
+import { toPng } from 'html-to-image';
+import 'katex/dist/katex.min.css';
 import hljs from 'highlight.js';
 import type { Slide, SlideElement, Frontmatter } from '../types';
 import type { Theme } from '../theme';
@@ -40,6 +43,48 @@ async function mermaidToDataUrl(value: string, t: Theme): Promise<{ dataUrl: str
     return await svgToPngDataUrl(svg, t.colors.background);
   } catch {
     return null;
+  }
+}
+
+/** Render display math (`$$…$$`) to a PNG data URL for PPTX (issue #196). */
+async function mathToDataUrl(
+  value: string,
+  bgColor: string,
+): Promise<{ dataUrl: string; aspectRatio: number } | null> {
+  let html: string;
+  try {
+    html = katex.renderToString(value, { displayMode: true, throwOnError: false });
+  } catch {
+    return null;
+  }
+  const wrap = document.createElement('div');
+  wrap.style.cssText = [
+    'position:fixed',
+    'left:-99999px',
+    'top:0',
+    'padding:24px',
+    `background:${bgColor}`,
+    'display:inline-block',
+    'font-size:28px',
+    'line-height:1.4',
+    'color:#111',
+  ].join(';');
+  wrap.innerHTML = html;
+  document.body.appendChild(wrap);
+  try {
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    const dataUrl = await toPng(wrap, {
+      backgroundColor: bgColor,
+      pixelRatio: 2,
+      cacheBust: true,
+    });
+    const w = Math.max(wrap.offsetWidth, 1);
+    const h = Math.max(wrap.offsetHeight, 1);
+    return { dataUrl, aspectRatio: w / h };
+  } catch {
+    return null;
+  } finally {
+    wrap.remove();
   }
 }
 
@@ -132,6 +177,20 @@ async function resolveSlideImages(slides: Slide[], theme: Theme, warnings: strin
           elements.push({ type: 'image' as const, src: result.dataUrl, alt: 'Diagram', title: String(result.aspectRatio), caption: el.caption });
         } else {
           warnings.push(`Mermaid diagram could not be rendered and was skipped (slide: "${slide.title ?? 'untitled'}")`);
+          elements.push(el);
+        }
+      } else if (el.type === 'math' && el.display) {
+        const result = await mathToDataUrl(el.value, theme.colors.background);
+        if (result) {
+          elements.push({
+            type: 'image' as const,
+            src: result.dataUrl,
+            alt: 'Formula',
+            title: String(result.aspectRatio),
+            caption: el.caption,
+          });
+        } else {
+          warnings.push(`Display math could not be rendered and was skipped (slide: "${slide.title ?? 'untitled'}")`);
           elements.push(el);
         }
       } else {
