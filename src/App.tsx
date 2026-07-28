@@ -44,7 +44,7 @@ import { parseBgLine, formatBgLine } from './engine/parser/bgImage';
 import { fetchUpdate } from './engine/updater';
 import { exportToPptx } from './engine/export/exportPptx';
 import { exportToPdf, printPresentation } from './engine/export/exportPdf';
-import { exportPdfNative, buildPrintDocument, type PdfExportOpts } from './engine/export/exportPdfNative';
+import { exportPdfNative, buildInteractiveDocument, type PdfExportOpts } from './engine/export/exportPdfNative';
 import { SlideRenderer } from './components/preview/SlideRenderer';
 import { BUILT_IN_THEMES, DEFAULT_THEME, parseThemeYaml, sanitiseThemeOverrides, type ThemeParseResult } from './engine/theme';
 import { registerBundledFonts, registerCachedFont } from './engine/bundledFonts';
@@ -1699,7 +1699,7 @@ export default function App() {
             (_, i) => pdfSlideRefs.current.get(i),
           ).filter((el): el is HTMLElement => Boolean(el));
 
-          const html = await buildPrintDocument(elements, aspectRatio, { fullBleed: true });
+          const html = await buildInteractiveDocument(elements, aspectRatio);
           await invoke('write_file', { path: savePath, content: html });
         } catch (err) {
           console.error('HTML export failed:', err);

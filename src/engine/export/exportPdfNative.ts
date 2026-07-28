@@ -194,6 +194,219 @@ ${pages}
 </html>`;
 }
 
+// ── Interactive standalone HTML (Export → HTML) ──────────────────────────────
+
+/**
+ * Self-contained presentable HTML deck: one slide at a time, keyboard/click
+ * navigation, fullscreen. Reuses the same asset-inlining pipeline as the print
+ * document so the file works offline from disk. PDF keeps using
+ * `buildPrintDocument`.
+ */
+export async function buildInteractiveDocument(
+  slideElements: HTMLElement[],
+  aspectRatio: AspectRatio,
+): Promise<string> {
+  const plan = planPage(aspectRatio, { fullBleed: true });
+
+  const slideFrame = slideElements[0]?.querySelector('.slide-frame');
+  const slideBg = slideFrame
+    ? getComputedStyle(slideFrame).getPropertyValue('--sl-bg').trim()
+    : '';
+
+  const clones = slideElements.map((el) => el.cloneNode(true) as HTMLElement);
+  await Promise.all(clones.map((el) => Promise.all([resolveImages(el), resolveVideos(el)])));
+  clones.forEach(injectMermaidFallbacks);
+  clones.forEach(inlinePrintColorAdjust);
+
+  const css = await extractAllCss();
+  return assembleInteractiveDocument({
+    css,
+    slideHtml: clones.map((el) => el.outerHTML),
+    slideW: SLIDE_PX_W,
+    slideH: plan.slideNativeHpx,
+    background: slideBg || '#111',
+  });
+}
+
+/** Pure HTML assembler — unit-tested without Tauri/DOM asset fetches. */
+export function assembleInteractiveDocument(opts: {
+  css: string;
+  slideHtml: string[];
+  slideW: number;
+  slideH: number;
+  background?: string;
+}): string {
+  const { css, slideHtml, slideW, slideH } = opts;
+  const background = opts.background || '#111';
+  const slides = slideHtml.map((html, i) =>
+    `<div class="kova-deck-slide${i === 0 ? ' is-active' : ''}" data-index="${i}" aria-hidden="${i === 0 ? 'false' : 'true'}">` +
+    `<div class="kova-deck-frame"><div class="kova-deck-scale">${html}</div></div></div>`,
+  ).join('\n');
+  const total = slideHtml.length;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="Kova">
+<title>Presentation</title>
+<style>
+${css}
+html, body {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  background: ${background} !important;
+}
+.kova-deck {
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: ${background} !important;
+  cursor: default;
+}
+.kova-deck-slide {
+  display: none !important;
+}
+.kova-deck-slide.is-active {
+  display: block !important;
+}
+.kova-deck-frame {
+  width: ${slideW}px !important;
+  height: ${slideH}px !important;
+  overflow: hidden !important;
+  position: relative !important;
+  transform-origin: center center !important;
+}
+.kova-deck-scale {
+  width: ${slideW}px !important;
+  height: ${slideH}px !important;
+}
+.kova-chrome {
+  position: fixed !important;
+  right: 16px !important;
+  bottom: 12px !important;
+  z-index: 10 !important;
+  color: #fff !important;
+  font: 13px/1.2 -apple-system, system-ui, sans-serif !important;
+  opacity: 0.75 !important;
+  pointer-events: none !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  user-select: none !important;
+}
+.kova-chrome kbd {
+  font: inherit !important;
+  opacity: 0.85 !important;
+}
+@media print {
+  html, body {
+    overflow: visible !important;
+    height: auto !important;
+    background: #fff !important;
+  }
+  .kova-chrome { display: none !important; }
+  .kova-deck {
+    position: static !important;
+    display: block !important;
+    background: #fff !important;
+  }
+  .kova-deck-slide {
+    display: block !important;
+    break-after: page;
+    page-break-after: always;
+    margin: 0 auto !important;
+  }
+  .kova-deck-slide:last-child {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .kova-deck-frame {
+    transform: none !important;
+  }
+}
+</style>
+</head>
+<body>
+<div class="kova-deck" id="kova-deck" role="application" aria-label="Presentation">
+${slides}
+</div>
+<div class="kova-chrome" aria-live="polite">
+  <span id="kova-counter">1 / ${total}</span>
+  · <kbd>←</kbd>/<kbd>→</kbd> <kbd>Space</kbd> · <kbd>F</kbd> fullscreen
+</div>
+<script>
+(function () {
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.kova-deck-slide'));
+  var frame = document.querySelector('.kova-deck-frame');
+  var counter = document.getElementById('kova-counter');
+  var deck = document.getElementById('kova-deck');
+  var slideW = ${slideW};
+  var slideH = ${slideH};
+  var i = 0;
+  function fit() {
+    if (!frame) return;
+    var pad = 24;
+    var sx = (window.innerWidth - pad) / slideW;
+    var sy = (window.innerHeight - pad) / slideH;
+    var s = Math.max(0.05, Math.min(sx, sy));
+    var frames = document.querySelectorAll('.kova-deck-frame');
+    for (var f = 0; f < frames.length; f++) {
+      frames[f].style.transform = 'scale(' + s + ')';
+    }
+  }
+  function show(n) {
+    if (!slides.length) return;
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    for (var j = 0; j < slides.length; j++) {
+      var on = j === i;
+      slides[j].classList.toggle('is-active', on);
+      slides[j].setAttribute('aria-hidden', on ? 'false' : 'true');
+    }
+    if (counter) counter.textContent = (i + 1) + ' / ' + slides.length;
+  }
+  function next() { show(i + 1); }
+  function prev() { show(i - 1); }
+  document.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+      e.preventDefault(); next();
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') {
+      e.preventDefault(); prev();
+    } else if (e.key === 'Home') {
+      e.preventDefault(); show(0);
+    } else if (e.key === 'End') {
+      e.preventDefault(); show(slides.length - 1);
+    } else if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault();
+      if (!document.fullscreenElement) {
+        (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen || function () {}).call(document.documentElement);
+      } else {
+        (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document);
+      }
+    }
+  });
+  if (deck) {
+    deck.addEventListener('click', function (e) {
+      if (e.target.closest('a, button, video, audio, input, textarea, select, label')) return;
+      if (e.clientX >= window.innerWidth / 2) next();
+      else prev();
+    });
+  }
+  window.addEventListener('resize', fit);
+  fit();
+  show(0);
+})();
+</script>
+</body>
+</html>`;
+}
+
 // ── Mermaid cache fallback ───────────────────────────────────────────────────
 
 // If a Mermaid container was cloned before React committed the SVG to the DOM
