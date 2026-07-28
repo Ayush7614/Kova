@@ -5,6 +5,7 @@ import { svgToPngDataUrl } from './svgToPng';
 import { queuedMermaidRender } from './mermaidRenderQueue';
 import { buildMermaidRenderSource } from './mermaidSource';
 import { imageMime } from './imageMime';
+import { videoMime } from './videoMime';
 import { buildExportMermaidInit, parseChannels } from './mermaidExportTheme';
 import { autoSplitElements, groupProgressRuns, splitByColumnBreaks } from '../layout/elementGrouping';
 import mermaid from 'mermaid';
@@ -155,6 +156,57 @@ async function resolveImageSrcForExport(src: string): Promise<string> {
   return src;
 }
 
+/** Resolve a video src to a data: URL for PPTX `addMedia` (mirrors image path). */
+async function videoUrlToDataUrl(src: string): Promise<string> {
+  try {
+    if (src.startsWith('data:')) return src;
+    if (src.startsWith('asset://')) {
+      const path = decodeURIComponent(src.replace(/^asset:\/\/[^/]*/, ''));
+      const b64 = await invoke<string>('read_file_b64', { path });
+      return `data:${videoMime(path)};base64,${b64}`;
+    }
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      return fetchUrlToDataUrl(src);
+    }
+    if (src.startsWith('tauri://') || src.startsWith('/')) {
+      const fetchUrl = src.startsWith('/') ? `tauri://localhost${src}` : src;
+      const res = await fetch(fetchUrl);
+      const blob = await res.blob();
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+    return src;
+  } catch {
+    return src;
+  }
+}
+
+function extractYoutubeId(url: string): string | null {
+  const patterns = [
+    /[?&]v=([^&#]+)/,
+    /youtu\.be\/([^?&#]+)/,
+    /youtube\.com\/embed\/([^?&#]+)/,
+  ];
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function videoExtnFromDataUrl(dataUrl: string): string {
+  const mime = (dataUrl.match(/^data:([^;,]+)/i)?.[1] ?? 'video/mp4').toLowerCase();
+  if (mime.includes('webm')) return 'webm';
+  if (mime.includes('quicktime') || mime.endsWith('/mov')) return 'mov';
+  if (mime.includes('ogg')) return 'ogv';
+  if (mime.includes('matroska') || mime.includes('x-m4v')) return mime.includes('m4v') ? 'm4v' : 'mkv';
+  return 'mp4';
+}
+
 // Mermaid uses global DOM state and cannot handle concurrent render() calls —
 // running slides in parallel causes the second Mermaid render to hang forever.
 // Process everything sequentially so Mermaid renders one at a time.
@@ -193,6 +245,9 @@ async function resolveSlideImages(slides: Slide[], theme: Theme, warnings: strin
           warnings.push(`Display math could not be rendered and was skipped (slide: "${slide.title ?? 'untitled'}")`);
           elements.push(el);
         }
+      } else if (el.type === 'video') {
+        const src = await videoUrlToDataUrl(el.src);
+        elements.push({ ...el, src });
       } else {
         elements.push(el);
       }
@@ -347,7 +402,7 @@ function addSlide(
     case 'three-column':  addMultiColumnSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor, 3); break;
     case 'bsp':           addBspSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor); break;
     case 'grid':          addGridSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor, slideBoldColor); break;
-    case 'media':         addMediaSlide(s, slide, t, cy, ch, slideTextColor, slideHeadingColor); break;
+    case 'media':         addMediaSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideHeadingColor); break;
     case 'code':          addCodeSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg, slideHeadingColor); break;
     case 'math':          addTitleContentSlide(s, slide, t, cy, ch, warnings, slideTextColor, slideCodeBg, slideHeadingColor, slideBoldColor); break;
     case 'blank':         addBlankSlide(s, t); break;
@@ -659,7 +714,7 @@ function addGridSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, war
   });
 }
 
-function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc: string = hex(t.colors.text), hc: string = tc) {
+function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, warnings: string[], tc: string = hex(t.colors.text), hc: string = tc) {
   s.background = { fill: hex(t.colors.background) };
   const hh = slide.title ? 0.65 : 0;
   if (slide.title) {
@@ -677,33 +732,21 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc
   const vid   = slide.elements.find((e) => e.type === 'video');
   const poll  = slide.elements.find((e) => e.type === 'poll');
 
-  // ponytail: PPTX can't embed local video without bundling the file — emit a
-  // labelled placeholder, same as the YouTube branch. Real embed is the upgrade path.
-  if (vid && vid.type === 'video') {
-    s.addText([
-      { text: '▶ ', options: { fontSize: 30, bold: true } },
-      { text: vid.label || 'Video', options: { fontSize: 20, breakLine: true } },
-      { text: vid.src, options: { fontSize: 11, color: hex(t.colors.accent) } },
-    ], {
-      x: M, y: bodyY, w: W - M * 2, h: bodyH,
-      color: tc, fontFace: firstFont(t.fonts.body),
-      align: 'center', valign: 'middle', wrap: true,
-    });
-  }
-
   const both  = yt && poll;
   const halfH = (bodyH - 0.2) / 2;
+  const full: Area = { x: M, y: bodyY, w: W - M * 2, h: bodyH };
+  const ytArea: Area = { x: M, y: bodyY, w: W - M * 2, h: both ? halfH : bodyH };
+
+  if (vid && vid.type === 'video') {
+    if (!tryAddLocalVideo(s, vid.src, full, warnings)) {
+      addMediaTextFallback(s, vid.label || 'Video', vid.src, full, t, tc);
+    }
+  }
 
   if (yt && yt.type === 'youtube') {
-    s.addText([
-      { text: '▶ ', options: { fontSize: 30, bold: true } },
-      { text: yt.label || 'YouTube Video', options: { fontSize: 20, breakLine: true } },
-      { text: yt.url, options: { fontSize: 11, color: hex(t.colors.accent) } },
-    ], {
-      x: M, y: bodyY, w: W - M * 2, h: both ? halfH : bodyH,
-      color: tc, fontFace: firstFont(t.fonts.body),
-      align: 'center', valign: 'middle', wrap: true,
-    });
+    if (!tryAddOnlineVideo(s, yt.url, ytArea, warnings)) {
+      addMediaTextFallback(s, yt.label || 'YouTube Video', yt.url, ytArea, t, tc);
+    }
   }
   if (poll && poll.type === 'poll') {
     const pollY = both ? bodyY + halfH + 0.2 : bodyY;
@@ -715,6 +758,62 @@ function addMediaSlide(s: PS, slide: Slide, t: Theme, cy: number, ch: number, tc
       color: tc, fontFace: firstFont(t.fonts.body),
       align: 'center', valign: 'middle', wrap: true,
     });
+  }
+}
+
+function addMediaTextFallback(
+  s: PS,
+  label: string,
+  detail: string,
+  area: Area,
+  t: Theme,
+  tc: string,
+) {
+  s.addText([
+    { text: '▶ ', options: { fontSize: 30, bold: true } },
+    { text: label, options: { fontSize: 20, breakLine: true } },
+    { text: detail, options: { fontSize: 11, color: hex(t.colors.accent) } },
+  ], {
+    x: area.x, y: area.y, w: area.w, h: area.h,
+    color: tc, fontFace: firstFont(t.fonts.body),
+    align: 'center', valign: 'middle', wrap: true,
+  });
+}
+
+/** Embed a YouTube URL as an online media object (desktop PowerPoint). */
+function tryAddOnlineVideo(s: PS, url: string, area: Area, warnings: string[]): boolean {
+  const id = extractYoutubeId(url);
+  if (!id) return false;
+  try {
+    s.addMedia({
+      type: 'online',
+      link: `https://www.youtube.com/embed/${id}`,
+      x: area.x, y: area.y, w: area.w, h: area.h,
+    });
+    return true;
+  } catch {
+    warnings.push(`YouTube embed could not be added to PPTX: ${url.slice(0, 80)}`);
+    return false;
+  }
+}
+
+/** Embed a pre-resolved `data:` video via pptxgenjs `addMedia`. */
+function tryAddLocalVideo(s: PS, src: string, area: Area, warnings: string[]): boolean {
+  if (!src.startsWith('data:')) {
+    warnings.push(`Video skipped (could not be fetched): ${src.slice(0, 80)}`);
+    return false;
+  }
+  try {
+    s.addMedia({
+      type: 'video',
+      data: src,
+      extn: videoExtnFromDataUrl(src),
+      x: area.x, y: area.y, w: area.w, h: area.h,
+    });
+    return true;
+  } catch {
+    warnings.push(`Embedded video could not be added to PPTX: ${src.slice(0, 60)}…`);
+    return false;
   }
 }
 
@@ -1321,16 +1420,8 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
         break;
 
       case 'video':
-        // pptx can't embed local video without bundling the file — emit a
-        // labelled placeholder, matching the media-slide placeholder in addMediaSlide.
-        runs.push({ text: `▶ ${el.label || 'Video'}`, options: { fontSize: 16, bold: true, breakLine: true } });
-        runs.push({ text: el.src, options: { fontSize: 11, color: hex(t.colors.accent), breakLine: true, paraSpaceAfter: 4 } });
-        break;
-
       case 'youtube':
-        // Mirrors the addMediaSlide YouTube placeholder styling above.
-        runs.push({ text: `▶ ${el.label || 'YouTube Video'}`, options: { fontSize: 16, bold: true, breakLine: true } });
-        runs.push({ text: el.url, options: { fontSize: 11, color: hex(t.colors.accent), breakLine: true, paraSpaceAfter: 4 } });
+        // Placed as real media objects below (with text/image/table), not as runs.
         break;
 
       // Images and tables handled separately below
@@ -1397,13 +1488,14 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
   // `default` case above and vanish from the export with no warning.
   const tableEl = elements.find((e) => e.type === 'table');
   const imageEls = elements.filter((e) => e.type === 'image') as Extract<SlideElement, { type: 'image' }>[];
-  if (tableEl?.type === 'table' || imageEls.length > 0) {
+  const mediaEls = elements.filter((e) => e.type === 'youtube' || e.type === 'video');
+  if (tableEl?.type === 'table' || imageEls.length > 0 || mediaEls.length > 0) {
     const textFrac = runs.length > 0 ? Math.min(0.5, 0.15 + runs.length * 0.08) : 0;
     const belowY = area.y + area.h * textFrac;
     const belowH = area.h * (1 - textFrac - 0.02);
     // With both a table and image(s) present, give the table the larger share
     // (it usually carries the primary content) and stack the image(s) below it.
-    const tableFrac = tableEl?.type === 'table' && imageEls.length > 0 ? 0.6 : 1;
+    const tableFrac = tableEl?.type === 'table' && (imageEls.length > 0 || mediaEls.length > 0) ? 0.6 : 1;
 
     if (tableEl?.type === 'table') {
       const tableH = belowH * tableFrac;
@@ -1412,17 +1504,34 @@ function addElements(s: PS, elements: SlideElement[], t: Theme, area: Area, warn
       addCaption(s, tableEl.caption, t, area.x, belowY + tableH - capH, area.w);
     }
 
-    if (imageEls.length > 0) {
-      const imagesY = belowY + belowH * (tableEl?.type === 'table' ? tableFrac : 0);
-      const imagesH = belowH * (1 - (tableEl?.type === 'table' ? tableFrac : 0));
-      const perImgH = imagesH / imageEls.length;
-      imageEls.forEach((img, i) => {
-        const capH = img.caption ? CAPTION_H : 0;
-        const y = imagesY + i * perImgH;
-        tryAddImage(s, img.src, { x: area.x, y, w: area.w, h: perImgH - capH }, warnings, imgAr(img));
-        addCaption(s, img.caption, t, area.x, y + perImgH - capH, area.w);
-      });
-    }
+    const mediaY = belowY + belowH * (tableEl?.type === 'table' ? tableFrac : 0);
+    const mediaH = belowH * (1 - (tableEl?.type === 'table' ? tableFrac : 0));
+    const stackCount = imageEls.length + mediaEls.length;
+    const perH = stackCount > 0 ? mediaH / stackCount : mediaH;
+    let stackI = 0;
+
+    imageEls.forEach((img) => {
+      const capH = img.caption ? CAPTION_H : 0;
+      const y = mediaY + stackI * perH;
+      stackI += 1;
+      tryAddImage(s, img.src, { x: area.x, y, w: area.w, h: perH - capH }, warnings, imgAr(img));
+      addCaption(s, img.caption, t, area.x, y + perH - capH, area.w);
+    });
+
+    mediaEls.forEach((el) => {
+      const y = mediaY + stackI * perH;
+      stackI += 1;
+      const mediaArea: Area = { x: area.x, y, w: area.w, h: perH };
+      if (el.type === 'youtube') {
+        if (!tryAddOnlineVideo(s, el.url, mediaArea, warnings)) {
+          addMediaTextFallback(s, el.label || 'YouTube Video', el.url, mediaArea, t, tc);
+        }
+      } else if (el.type === 'video') {
+        if (!tryAddLocalVideo(s, el.src, mediaArea, warnings)) {
+          addMediaTextFallback(s, el.label || 'Video', el.src, mediaArea, t, tc);
+        }
+      }
+    });
   }
 }
 
