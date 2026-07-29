@@ -424,16 +424,6 @@ pub fn parse_cli_args(args: Vec<String>) -> CliArgs {
                 "--notes, --per-page, and --paper require --export pdf".into(),
             );
         }
-        // Glob footgun (#198): two .md paths still parse, but refuse to treat an
-        // *existing* file as output unless --force is set. Done here (not in
-        // resolve) so it returns CliArgs::Error and is unit-testable.
-        if let Some(Action::Import { ref output, .. }) = action {
-            if !force && std::path::Path::new(output).is_file() {
-                return CliArgs::Error(format!(
-                    "--import output '{output}' already exists; pass --force to overwrite"
-                ));
-            }
-        }
         CliArgs::Run(RunArgs {
             action,
             theme,
@@ -603,8 +593,17 @@ fn resolve(run: RunArgs) -> Startup {
                     canonicalise_or_exit(&input, "cannot open")
                 }
             };
-            // Overwrite guard runs in parse_cli_args (CliArgs::Error); resolve
-            // only absolutizes and forwards --force.
+            // Glob footgun (#198): two .md paths still parse, but refuse to
+            // overwrite an *existing* output unless --force is set. Lives here
+            // (not in parse_cli_args) so the grammar stays pure / disk-free.
+            if !run.force && std::path::Path::new(&output).is_file() {
+                attach_parent_console();
+                eprintln!(
+                    "kova: --import output '{output}' already exists; pass --force to overwrite"
+                );
+                eprintln!("Try 'kova --help' for usage.");
+                std::process::exit(2);
+            }
             pending.import = Some(PendingImport {
                 format,
                 input,
@@ -940,9 +939,9 @@ mod tests {
 
     #[test]
     fn import_rejects_glob_landing_on_a_second_md_file_as_output() {
-        // Two .md paths still parse when the output does not exist yet (out.md
-        // is the normal case). The data-loss guard kicks in when the output
-        // path already exists — see import_existing_output_requires_force.
+        // Two .md paths still parse (out.md is the normal case). The data-loss
+        // guard that refuses an *existing* output lives in resolve() so
+        // parse_cli_args stays pure — it only forwards the --force flag here.
         let run = expect_run(&["--import", "marp", "jan.md", "feb.md"]);
         assert!(!run.force);
         assert_eq!(
@@ -955,29 +954,6 @@ mod tests {
         );
         let forced = expect_run(&["--force", "--import", "marp", "jan.md", "feb.md"]);
         assert!(forced.force);
-    }
-
-    #[test]
-    fn import_existing_output_requires_force() {
-        let dir = std::env::temp_dir().join(format!("kova-cli-force-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&dir);
-        let input = dir.join("in.md");
-        let output = dir.join("out.md");
-        std::fs::write(&input, "# in\n").unwrap();
-        std::fs::write(&output, "# existing\n").unwrap();
-        let out = output.to_string_lossy().into_owned();
-        let inp = input.to_string_lossy().into_owned();
-
-        let msg = expect_error(&["--import", "marp", &inp, &out]);
-        assert!(
-            msg.contains("already exists") && msg.contains("--force"),
-            "{msg}"
-        );
-
-        let run = expect_run(&["--force", "--import", "marp", &inp, &out]);
-        assert!(run.force);
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
